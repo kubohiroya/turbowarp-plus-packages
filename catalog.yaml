@@ -1,0 +1,172 @@
+# TurboWarp Plus - package catalog
+#
+# This file is the only hand-maintained input to the dashboard. Everything else
+# (issue counts, versions, Pages status, dependency freshness) is collected from
+# the GitHub and npm APIs by scripts/collect.mjs.
+#
+# Adding a package: put its repository name in the right category. The npm
+# package name defaults to "@<scope>/<repo>"; override it with `npm:` when they
+# differ, or set `npm: false` for repositories that are not published to npm.
+
+owner: kubohiroya
+scope: "@kubohiroya"
+
+site:
+  title: TurboWarp Plus
+  tagline: >-
+    An independent family of extensions, toolchains and applications that
+    complement the TurboWarp project.
+  disclaimer: >-
+    Unofficial. Not affiliated with or endorsed by the TurboWarp project.
+    These packages add capabilities on top of TurboWarp rather than replacing it.
+  repoUrl: https://github.com/kubohiroya/turbowarp-plus-packages
+
+# Dependency ranges using any of these protocols are reported as local (skull).
+localProtocols: [file:, link:, workspace:, portal:, patch:]
+
+categories:
+  - id: toolchain
+    title: Toolchain & Templates
+    titleJa: ツールチェーン・テンプレート
+    description: Build, package and preview TurboWarp extensions and projects.
+    packages:
+      - sb3-toolchain
+      - vite-plugin-turbowarp-extension
+      - turbowarp-extension-template
+      - turbowarp-app-template
+      - turbowarp-extension-manifest
+      - turbowarp-sb3-source-builder
+      - turbowarp-local-preview
+      - turbowarp-live-reload-controller
+
+  - id: foundation
+    title: Runtime Foundation
+    titleJa: ランタイム基盤
+    description: Host-neutral contracts and adapters the other extensions build on.
+    packages:
+      - turbowarp-runtime-adapter
+      - turbowarp-runtime-expression
+      - turbowarp-app-shell
+      - turbowarp-named-data
+      - turbowarp-named-functions
+      - turbowarp-jotai-adapter
+      - turbowarp-react-islands
+      - turbowarp-extension-security-dialog
+
+  - id: data
+    title: Data & Documents
+    titleJa: データ・ドキュメント
+    description: Structured data, serialisation formats and editors.
+    packages:
+      - turbowarp-structured-data
+      - turbowarp-yaml-json
+      - turbowarp-document-data
+      - turbowarp-markdown
+      - turbowarp-html
+      - turbowarp-text-lines
+      - turbowarp-binary-data
+      - turbowarp-kvs
+      - turbowarp-uuid
+      - turbowarp-extension-data-editor
+
+  - id: media
+    title: Stage & Presentation
+    titleJa: ステージ・表示
+    description: Text, bubbles, overlays and asset handling on the stage.
+    packages:
+      - turbowarp-svg-text
+      - turbowarp-bubble
+      - turbowarp-diagnostic-overlay
+      - turbowarp-asset-cache
+      - turbowarp-asset-manager
+      - turbowarp-title-menu
+      - turbowarp-extended-notification
+
+  - id: spatial
+    title: 3D, AR & Space
+    titleJa: 3D・AR・空間
+    description: Scene graphs, 3D scene description and spatial calibration.
+    packages:
+      - turbowarp-scene-graph
+      - turbowarp-3d-scene-dsl
+      - turbowarp-3d-scene-runtime
+      - turbowarp-aframe
+      - turbowarp-ar
+      - turbowarp-photogrammetry
+      - turbowarp-time-space-sync
+
+  - id: sensing
+    title: Sensing & Input
+    titleJa: センシング・入力
+    description: Cameras, codes, pose estimation, NFC, speech and pointer input.
+    packages:
+      - turbowarp-camera-source
+      - turbowarp-camera-calibration
+      - turbowarp-jsqr
+      - turbowarp-qr-display
+      - qrcode-structured-append
+      - turbowarp-teachable-machine
+      - turbowarp-realtime-motion-capture
+      - turbowarp-visual-tracking
+      - turbowarp-webusb-pasori
+      - turbowarp-web-speech
+      - turbowarp-async-input
+
+  - id: network
+    title: Networking & Services
+    titleJa: 通信・外部サービス
+    description: Peer connections, HTTP bridges and third-party service adapters.
+    packages:
+      - turbowarp-webrtc
+      - turbowarp-webrtc-qrcode-pairing
+      - turbowarp-http-server
+      - turbowarp-cloudflare-worker
+      - turbowarp-openai-realtime-api
+      - turbowarp-voice-chat
+      - turbowarp-sesame
+
+  - id: apps
+    title: Applications
+    titleJa: アプリケーション
+    description: Deployable applications built from the packages above.
+    packages:
+      - turbowarp-kamishibai-app
+      - turbowarp-camera-calibration-app
+      - turbowarp-photogrammetry-app
+      - turbowarp-time-space-sync-app
+      - turbowarp-webrtc-qrcode-pairing-app
+      - turbowarp-realtime-motion-capture-app
+
+  - id: docs
+    title: Documentation & Samples
+    titleJa: ドキュメント・サンプル
+    description: Guides, sample projects and the shared documentation shell.
+    packages:
+      - turbowarp-kamishibai-docs
+      - turbowarp-kamishibai-samples
+      - turbowarp-kamishibai-site-navigation
+
+# Per-package overrides. Only the keys that differ from the defaults are needed.
+# `npm: false` marks a repository that is deliberately not an npm package
+# (documentation sites, sample collections, deployed applications). Repositories
+# left at the default are reported as "unpublished" until they appear on npm,
+# which is intentional: that is a status worth seeing.
+overrides:
+  turbowarp-realtime-motion-capture-app:
+    npm: turbowarp-realtime-motion-capture-app
+  turbowarp-app-template:
+    npm: false
+  turbowarp-kamishibai-docs:
+    npm: false
+  turbowarp-kamishibai-samples:
+    npm: false
+  turbowarp-camera-calibration-app:
+    npm: false
+  turbowarp-photogrammetry-app:
+    npm: false
+  turbowarp-time-space-sync-app:
+    npm: false
+  turbowarp-webrtc-qrcode-pairing-app:
+    npm: false
+  turbowarp-asset-manager:
+    note: Deprecated. Use turbowarp-asset-cache and turbowarp-named-data instead.

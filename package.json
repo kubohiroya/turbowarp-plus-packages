@@ -1,0 +1,35 @@
+{
+  "name": "@kubohiroya/turbowarp-plus-packages",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Index and dashboard for the TurboWarp Plus family of packages, apps and documentation sites",
+  "license": "GPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kubohiroya/turbowarp-plus-packages.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kubohiroya/turbowarp-plus-packages/issues"
+  },
+  "homepage": "https://kubohiroya.github.io/turbowarp-plus-packages/",
+  "scripts": {
+    "collect": "node scripts/collect.mjs",
+    "thumbnails": "node scripts/thumbnails.mjs",
+    "render": "node scripts/render.mjs",
+    "build": "npm run collect && npm run thumbnails && npm run render",
+    "build:no-thumbnails": "npm run collect && npm run render",
+    "serve": "node scripts/serve.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "semver": "7.7.2",
+    "yaml": "2.8.1"
+  },
+  "devDependencies": {
+    "playwright": "1.56.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

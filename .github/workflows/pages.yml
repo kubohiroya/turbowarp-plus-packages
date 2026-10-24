@@ -1,0 +1,73 @@
+name: Collect and publish the dashboard
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Every day at 21:00 UTC (06:00 JST), after a typical day of releases.
+    - cron: '0 21 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      - name: Install the browser used for icons and thumbnails
+        run: npx playwright install --with-deps chromium
+
+      - name: Generate brand assets
+        run: node scripts/icons.mjs
+
+      - name: Collect package data
+        run: node scripts/collect.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Screenshot the published sites
+        run: node scripts/thumbnails.mjs
+
+      - name: Render the dashboard
+        run: node scripts/render.mjs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-data
+          path: data/dashboard.json
+          retention-days: 30
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

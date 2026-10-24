@@ -1,0 +1,8 @@
+node_modules/
+data/
+site/index.html
+site/thumbs/
+# Rasterised from site/assets/*.svg by scripts/icons.mjs at build time.
+site/assets/*.png
+*.log
+.DS_Store
