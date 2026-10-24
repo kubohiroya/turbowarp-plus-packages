@@ -53,7 +53,9 @@ async function main() {
   await mkdir(THUMBS, { recursive: true });
 
   const { chromium } = await import('playwright');
-  const browser = await chromium.launch();
+  // The full Chromium build, not the headless shell: it renders these pages
+  // the way a visitor's browser does, which is the point of a thumbnail.
+  const browser = await chromium.launch({ channel: 'chromium' });
   const context = await browser.newContext({
     viewport: VIEWPORT,
     deviceScaleFactor: 0.5,
