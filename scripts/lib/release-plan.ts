@@ -4,12 +4,13 @@ import { DEPENDENCY_KINDS } from './dependencies.ts';
 import type { DashboardPackage, DashboardReport, Dependency } from './types.ts';
 
 type DependencyField = keyof typeof DEPENDENCY_KINDS;
-type VersionChange = 'none' | 'minor' | 'prepared' | 'initial';
+type VersionChange = 'none' | 'minor' | 'prerelease' | 'prepared' | 'initial';
 
 export interface PlanIssue {
   severity: 'warning' | 'blocker';
   code: string;
   message: string;
+  requiresReview?: boolean;
 }
 
 export interface DependencyUpdate {
@@ -45,6 +46,7 @@ export interface ReleasePlan {
   snapshot: { generatedAt: string; sha256: string };
   target: string;
   ready: boolean;
+  applyReady: boolean;
   order: string[];
   steps: PackagePlan[];
   publishTargets: { repository: string; name: string; version: string; tag: string; headSha: string }[];
@@ -98,6 +100,17 @@ function packageName(pkg: DashboardPackage): string | null {
 
 function isPublishable(pkg: DashboardPackage): boolean {
   return Boolean(pkg.npm?.name && !pkg.npm.notAPackage && !pkg.manifest?.private);
+}
+
+/** Only replace Git references that identify the recorded upstream repository. */
+function familyGitReference(range: string, owner: string, repo: string): boolean {
+  try {
+    const url = new URL(range.replace(/^git\+/, ''));
+    return ['https:', 'ssh:', 'git:'].includes(url.protocol) && url.hostname === 'github.com' &&
+      url.pathname.replace(/^\//, '').replace(/\.git$/, '') === `${owner}/${repo}` && !url.search;
+  } catch {
+    return false;
+  }
 }
 
 /** Pure snapshot planning: no API requests, repository writes or release commands. */
@@ -183,6 +196,7 @@ function createPlan(input: unknown, target: string, downstream: boolean): Releas
     },
     target: root.repo,
     ready: steps.every((step) => step.action !== 'blocked'),
+    applyReady: steps.every((step) => step.action !== 'blocked' && !step.issues.some(issue => issue.requiresReview)),
     order: steps.map((step) => step.repo),
     steps,
     publishTargets: steps.flatMap((step) => step.action === 'publish' && step.name &&
@@ -211,6 +225,8 @@ function planPackage(
   };
   const issue = (code: string, message: string, severity: PlanIssue['severity'] = 'blocker') =>
     step.issues.push({ severity, code, message });
+  const review = (code: string, message: string) =>
+    step.issues.push({ severity: 'warning', code, message, requiresReview: true });
   for (const error of pkg.errors) issue('collection-error', error);
   if (!pkg.npm || !pkg.dependencies || !pkg.revision) issue('incomplete-snapshot', '公開状態・依存一覧・リビジョンの収集結果が不足しています。');
   if (pkg.npm && ((!pkg.npm.name && !pkg.npm.notAPackage) ||
@@ -255,7 +271,7 @@ function planPackage(
     if (referenceOnly || (affected && !affected.has(upstream.repo))) continue;
     const range = dep.range.trim();
     if (dep.kind === 'peer' && semver.satisfies(version, range)) continue;
-    const match = /^(\^|~)?(\d+\.\d+\.\d+)$/.exec(range);
+    const match = /^(\^|~)?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/.exec(range);
     const simple = match && semver.valid(match[2]) ? match : null;
     if (simple && semver.gt(simple[2], version)) {
       issue('dependency-ahead', `${dep.name}: 依存指定 ${range} が解析結果の ${version} より新しいため下げられません。`);
@@ -263,7 +279,14 @@ function planPackage(
     }
     if (simple && range === `${simple[1] ?? ''}${version}`) continue;
     if (!simple && dep.kind !== 'peer' && semver.validRange(range) && semver.satisfies(version, range)) continue;
-    const to = dep.kind !== 'peer' && simple ? `${simple[1] ?? ''}${version}` : null;
+    let to = simple ? `${simple[1] ?? ''}${version}` : null;
+    if (dep.kind === 'peer' && (simple || semver.validRange(range))) {
+      to ??= `${range} || ${version}`;
+      review('peer-compatibility', `${dep.name}: ${range} → ${to} を提案します。対象版との互換性は未検証です。`);
+    } else if (to === null && upstream.npm?.published && familyGitReference(range, owner, upstream.repo)) {
+      to = version;
+      review('git-to-npm', `${dep.name}: Git参照をnpm版 ${version} に置換する案です。Git固有の変更・配布内容の同等性は未検証です。`);
+    }
     step.dependencyUpdates.push({
       field: FIELDS.find((field) => DEPENDENCY_KINDS[field] === dep.kind)!,
       name: dep.name, upstreamRepo: upstream.repo, from: dep.range, to,
@@ -287,22 +310,27 @@ function planPackage(
   }
 
   if (step.reasons.length && current) {
-    if (semver.prerelease(current) || (published && semver.prerelease(published))) {
-      issue('prerelease-review', 'プレリリースから通常版への変更は自動計画しません。');
-    } else if (prepared) {
+    const base = published && semver.gt(published, current) ? published : current;
+    if (prepared) {
       step.nextVersion = current;
       step.versionChange = 'prepared';
     } else if (!pkg.npm?.published && isPublishable(pkg)) {
       step.nextVersion = current;
       step.versionChange = 'initial';
     } else {
-      const base = published && semver.gt(published, current) ? published : current;
-      let next = semver.inc(base, 'minor');
-      while (next && semver.valid(next) && versions.includes(next)) next = semver.inc(next, 'minor');
+      const increment = semver.prerelease(base) ? 'prerelease' : 'minor';
+      // Do not implicitly promote an older RC manifest beyond a stable registry version.
+      const implicitPromotion = Boolean(semver.prerelease(current) && increment === 'minor');
+      let next = implicitPromotion ? null : semver.inc(base, increment);
+      while (next && semver.valid(next) && versions.includes(next)) next = semver.inc(next, increment);
       if (next && semver.valid(next)) {
         step.nextVersion = next;
-        step.versionChange = 'minor';
-      } else issue('version-overflow', 'minorバージョンを採番できません。');
+        step.versionChange = increment;
+      } else if (implicitPromotion) issue('prerelease-series', 'RC系列より新しい通常版が公開済みのため、同じ系列での更新を計画できません。');
+      else issue('version-overflow', `${increment}バージョンを採番できません。`);
+    }
+    if (step.nextVersion && (semver.prerelease(current) || (published && semver.prerelease(published)))) {
+      review('prerelease-channel', `${step.nextVersion} を提案します。プレリリース系列・配布先dist-tagの確認が必要です。`);
     }
   }
   if (pkg.github?.isArchived && step.nextVersion) issue('archived', 'アーカイブ済みrepoの変更・公開は計画できません。');
@@ -336,6 +364,8 @@ export function formatReleasePlan(plan: ReleasePlan): string {
   for (const target of plan.publishTargets) lines.push(`  ${target.name}@${target.version} (${target.repository}, ${target.tag})`);
   const warnings = plan.steps.reduce((count, step) => count + step.issues.filter(issue => issue.severity === 'warning').length, 0);
   if (warnings) lines.push(`警告: ${warnings}件。ソース変更が未判定のrepoは、変更なしと確認されたものではありません。`);
+  const reviews = plan.steps.flatMap(step => step.issues).filter(issue => issue.requiresReview).length;
+  if (reviews) lines.push(`レビュー必要: ${reviews}件。変更先は計画済みですが、ローカル自動適用は停止します。`);
   lines.push(plan.ready ? '計画生成完了。実行時には現状の再確認・検証・承認が必要です。' : '未解決事項があります。公開対象を含む計画全体の実行を保留してください。');
   return lines.join('\n');
 }

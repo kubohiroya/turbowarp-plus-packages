@@ -82,13 +82,14 @@ test('compatible peers and broad ranges stay unchanged, and an unchanged graph n
   assert.deepEqual(plan.publishTargets, []);
 });
 
-test('incompatible peer ranges and collection failures block consumers transitively', () => {
+test('peer proposals propagate with review required while collection failures still block', () => {
   const plan = createDownstreamReleasePlan(report(prepared('tool'),
     pkg('a', [dep('tool', '1.2.3', 'peer')]), pkg('b', [dep('a')])), 'tool');
-  assert.equal(plan.ready, false);
-  assert.equal(plan.steps[1].dependencyUpdates[0].to, null);
-  assert(plan.steps[1].issues.some(i => i.code === 'range-review'));
-  assert(plan.steps[2].issues.some(i => i.code === 'upstream-blocked'));
+  assert.equal(plan.ready, true);
+  assert.equal(plan.applyReady, false);
+  assert.equal(plan.steps[1].dependencyUpdates[0].to, '1.3.0');
+  assert(plan.steps[1].issues.some(i => i.code === 'peer-compatibility' && i.requiresReview));
+  assert.equal(plan.steps[2].dependencyUpdates[0].to, '1.3.0');
   const broken = pkg('other');
   broken.errors.push('manifest fetch failed');
   const failed = createDownstreamReleasePlan(report(pkg('tool'), broken,
@@ -201,8 +202,36 @@ test('preflight failures in a later checkout leave earlier manifests untouched',
   }
 });
 
+test('review-required peer, Git and RC proposals cannot write even when planning is complete', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'downstream-review-'));
+  try {
+    for (const mode of ['peer', 'git', 'rc']) {
+      const tool = pkg('tool');
+      const a = pkg('a', [dep('tool', mode === 'git' ? 'git+https://github.com/family/tool.git#abc' : '0.1.0',
+        mode === 'peer' ? 'peer' : 'prod')]);
+      if (mode === 'rc') a.manifest!.version = '2.0.0-rc.1';
+      for (const p of [tool, a]) await checkout(dir, p);
+      const plan = createDownstreamReleasePlan(report(tool, a), 'tool');
+      const path = join(dir, 'a/package.json');
+      const before = await readFile(path, 'utf8');
+      assert.equal(plan.ready, true);
+      assert.equal(plan.applyReady, false);
+      await assert.rejects(applyReleasePlan(plan, dir), /レビューが必要/);
+      // The issue-level guard also rejects a mistakenly enabled aggregate flag.
+      plan.applyReady = true;
+      await assert.rejects(applyReleasePlan(plan, dir), /レビューが必要/);
+      assert.equal(await readFile(path, 'utf8'), before);
+      for (const p of [tool, a]) await rm(join(dir, p.repo), { recursive: true });
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('apply refuses blocked or upstream plans and unsafe checkout names before writing', async () => {
-  const blocked = createDownstreamReleasePlan(report(pkg('tool'), pkg('a', [dep('tool', '0.1.0', 'peer')])), 'tool');
+  const broken = pkg('tool');
+  broken.errors.push('collection failed');
+  const blocked = createDownstreamReleasePlan(report(broken, pkg('a', [dep('tool')])), 'tool');
   await assert.rejects(applyReleasePlan(blocked, '/missing'), /未解決事項/);
   await assert.rejects(applyReleasePlan(createReleasePlan(report(pkg('tool')), 'tool'), '/missing'), /依存元への計画だけ/);
   const plan = createDownstreamReleasePlan(report(pkg('../escape')), '../escape');
@@ -280,7 +309,8 @@ test('downstream CLI is offline, validates flags, reports blockers, and applies 
     const beforeBlocked = await readFile(join(dir, 'a/package.json'), 'utf8');
     const blocked = run('tool', '--data', path, '--apply', '--repos-dir', dir, '--json');
     assert.equal(blocked.status, 2);
-    assert.equal(JSON.parse(blocked.stdout).ready, false);
+    assert.equal(JSON.parse(blocked.stdout).ready, true);
+    assert.equal(JSON.parse(blocked.stdout).applyReady, false);
     assert.equal(await readFile(join(dir, 'a/package.json'), 'utf8'), beforeBlocked);
   } finally {
     await rm(dir, { recursive: true, force: true });

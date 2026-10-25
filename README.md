@@ -122,25 +122,35 @@ publish to npm. There is no `--apply` option.
 - Propagate planned publications, falling back to recorded npm versions. Preserve
   exact, caret and tilde styles for ordinary dependencies, raising their minimum
   versions without downgrading. Preserve complex ranges that include the target;
-  flag incompatible complex ranges and git/workspace references for review.
-- Preserve compatible peer ranges. Report incompatible peers with a `null` edit
-  target until compatibility is reviewed. Private and non-npm projects never
-  enter the publish list.
+  leave unsupported complex ranges, workspace references and aliases blocked.
+- Preserve compatible peer ranges. For excluded versions, preserve exact/caret/tilde
+  styles, or extend a complex peer range with `|| <target>`. These are proposals;
+  peer compatibility remains unverified. A Git URL identifying the recorded family
+  GitHub repository can be replaced with an exact npm version when that package
+  is already published. Git/npm content equivalence remains unverified. Both
+  proposals carry `requiresReview: true` warnings. Private and non-npm projects
+  never enter the publish list.
 - Propose one minor increment for commits ahead or dependency edits, starting
   from the higher of manifest and npm versions and avoiding occupied numbers.
   Reuse an already prepared unpublished version and use the current version for
-  initial publication. Versioned private/non-npm projects can be `update-only`.
+  initial publication. RC/prerelease versions reuse a prepared version or increment
+  within the same prerelease series, skipping occupied versions. They never
+  implicitly become stable versions; the release channel needs review. Versioned
+  private/non-npm projects can be `update-only`.
 - Each step's `sourceChanges` is `none` (baseline tag equals HEAD), `ahead`
   (ahead of the tag matching the npm version), or `unknown`. Missing/mismatched
   tags and unknown ahead counts produce warnings without triggering a minor bump
   themselves. Recorded published versions remain usable for dependency edits;
   known edits and prepared versions can still justify publication plans.
   Unknown does not mean that source changes were ruled out.
-- Peer compatibility, unsupported ranges, prereleases and missing data remain
-  blockers and propagate to dependents. `steps` includes tentative blocked
-  changes; `publishTargets` includes only unblocked publication targets. Hold the
-  entire plan when `ready` is false. A true value does not establish every
-  repository's release needs: inspect warnings and `sourceChanges` as well.
+- Missing data, collection errors, invalid versions, unsupported ranges and cycles
+  still stop planning. `steps` includes tentative blocked changes; `publishTargets`
+  includes unblocked publication proposals, including those needing review.
+  `ready` means the plan has concrete decisions without blockers. `applyReady`
+  additionally requires no `requiresReview` warnings. Peer, Git and prerelease
+  proposals can complete planning while keeping local automatic apply disabled.
+  A true `ready` value does not confirm compatibility or every repository's release
+  needs: inspect warnings and `sourceChanges` as well.
 
 Plans include the analysis timestamp, SHA-256 of the reserialized JSON, and each
 repository's recorded HEAD SHA. They describe the snapshot, without checking
@@ -177,7 +187,7 @@ npm run bump:downstream -- vite-plugin-turbowarp-extension \
 - `--apply` defaults to off and requires `--repos-dir`. Check every selected
   checkout's HEAD SHA, clean working tree, manifest name/version and dependency
   edit sources before writing. Stale SHAs, dirty/untracked files, missing checkouts
-  and blocked plans prevent the entire application. Even an unchanged root needs
+  and blocked or review-required plans prevent the entire application. Even an unchanged root needs
   a checkout.
 - Only manifest dependency declarations and versions change. Update lockfiles,
   rebuild, validate, commit, push, tag and publish separately. An unpublished
@@ -189,7 +199,9 @@ npm run bump:downstream -- vite-plugin-turbowarp-extension \
 
 Plan JSON includes `direction: "downstream"`; successful application returns
 `{ "mode": "apply", "plan": ..., "files": [...] }`. Exit codes are `0` for success,
-`1` for argument/input/application errors and `2` for unresolved plan items.
+`1` for argument/input/application errors and `2` for unresolved plan items or
+review-required proposals when `--apply` is requested. Planning alone still
+succeeds with exit code `0` when `ready: true` and `applyReady: false`.
 Review snapshot warnings and actual compatibility before applying.
 
 ## How it is published

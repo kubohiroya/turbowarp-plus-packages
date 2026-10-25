@@ -17,9 +17,9 @@ const HELP = `使い方: npm run bump:downstream -- <npm名またはrepo名> [�
 --help                 この説明を表示
 
 適用前に全対象のHEAD SHA・name/version・依存指定・作業ツリーを確認します。
-阻害事項や未コミット変更がある場合は全体を保留します。
+阻害事項・要レビューの変更案・未コミット変更がある場合は適用しません。
 lockfile更新・再ビルド・Git書き込み・ネットワークアクセス・公開操作は行いません。
-終了コード: 0=成功、1=引数/入力/適用エラー、2=計画に未解決事項あり。`;
+終了コード: 0=成功、1=引数/入力/適用エラー、2=計画に未解決事項あり、または適用時にレビュー必要。`;
 
 try {
   const { values, positionals } = parseArgs({
@@ -44,7 +44,7 @@ try {
       throw new Error(`解析JSONを読み込めません: ${path}。--dataで入力を指定してください。`, { cause: error });
     }
     const plan = createDownstreamReleasePlan(JSON.parse(source), positionals[0]);
-    if (!plan.ready) {
+    if (!plan.ready || (values.apply && !plan.applyReady)) {
       console.log(values.json ? JSON.stringify(plan, null, 2) : formatReleasePlan(plan));
       process.exitCode = 2;
     } else if (values.apply) {
