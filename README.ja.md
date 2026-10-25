@@ -116,14 +116,58 @@ npm run --silent bump -- turbowarp-title-menu --json > /tmp/release-plan.json
 - 先行コミットまたは依存更新があればminorを1回上げます。package.jsonとnpm公開版の大きい方を
   基準に、使用済みの番号を避けます。すでに用意された未公開版は再bumpせず、初回公開も
   現在の番号を使います。private等のバージョン付きrepoの変更は `update-only` として表示します。
-- タグとnpm公開版の不一致、先行数不明、プレリリース、収集漏れ等は未解決事項として表示します。
-  未解決の上流があれば依存元も保留します。`steps` には保留中の仮の変更も含み、
-  `publishTargets` は未解決事項のない公開対象です。`ready: false` の計画全体は実行保留です。
+- 各stepの `sourceChanges` は `none`（基準タグとHEADが一致）、`ahead`（npm公開版に対応する
+  タグから先行）、`unknown`（未判定）です。タグ不足・npm版との不一致・先行数不明は警告として
+  表示し、それだけを理由にminorを上げません。既存npm版への依存更新や準備済み版の公開計画は
+  作成できます。未判定は「ソース変更なし」の確認ではありません。
+- peer互換性・特殊レンジ・プレリリース・収集漏れ等の阻害事項があれば、依存元も保留します。
+  `steps` には保留中の仮の変更も含み、`publishTargets` は阻害事項のない公開対象です。
+  `ready: false` の計画全体は実行保留です。`ready: true` も、全repoの公開要否を確定したことを
+  意味しません。警告と `sourceChanges` を併せて確認してください。
 
 計画には解析日時・JSON全体のSHA-256（JSON再シリアライズ後）・各repoのHEAD SHAを含みます。
 現在のGitHub/npm状態や互換性を確認したものではなく、記録されたスナップショットに基づく
 計画です。終了コードは `0` が生成成功、`1` が引数/入力エラー、`2` が未解決事項ありです。
 公開機能を導入する際は、現状の再確認・検証・承認を別途必要とします。
+
+## 依存元へのbump
+
+上流パッケージを指定し、それに直接・間接に依存するパッケージの更新を、依存関係の順に
+計画・適用できます。開発依存も対象なので、拡張ビルド用プラグインの変更を伝播できます。
+
+```bash
+# 既定は計画のみ。入力は既存のdata/dashboard.json
+npm run bump:downstream -- vite-plugin-turbowarp-extension
+npm run --silent bump:downstream -- @kubohiroya/vite-plugin-turbowarp-extension --json
+
+# <親dir>/<repo名>に各repoの独立したcheckoutがある場合にローカル適用
+npm run bump:downstream -- vite-plugin-turbowarp-extension \
+  --data /path/to/dashboard.json --apply --repos-dir /path/to/checkouts
+```
+
+- 起点自身とその依存元を列挙し、上流を先に処理します。共有依存は1回だけ処理します。
+  直接・間接の依存元を特定するには、入力JSONに依存元のrepoがすべて収録され、各repoの
+  依存一覧が必要です。未収録repoは発見できません。
+- 起点が公開済みならそのnpm版を利用し、準備済みの未公開版があれば再bumpせず使います。
+  依存指定の更新とminor bumpの規則は`bump`と共通です。すでに更新済みなら再bumpせず、
+  互換範囲内のpeer・複雑なレンジは維持します。
+- 対象外の上流は公開済み版と収集結果を参照するだけです。その上流の未公開変更・
+  準備済み版や、対象外への古い依存指定を根拠としたbumpは行いません。
+- `--apply`は既定OFFです。`--repos-dir`と同時に指定すると、全対象checkoutのHEAD SHA・
+  作業ツリー・manifestのname/version・変更対象の依存指定を事前確認します。
+  SHA不一致、未コミット変更、未追跡ファイル、checkout不足や計画の阻害事項があれば、
+  全体を変更前に停止します。起点が変更不要でもcheckoutは必要です。
+- 適用するのは`package.json`の依存指定とversionだけです。lockfile更新・再ビルド・検証・
+  commit・push・タグ・Release・npm公開は別途行ってください。予定上流版がまだnpmに
+  存在しない場合、下流のlockfile生成には上流の公開が必要になります。
+- 後続ファイルの書き込みに失敗した場合、適用済みファイルを元の内容へ復元します。
+  同時編集等で復元できないファイルがあればそのパスを報告します。成功後の取り消しは、
+  表示された変更ファイルをdiffで確認したうえでGitから復元してください。
+
+出力JSONは`direction: "downstream"`を持ちます。適用成功時は
+`{ "mode": "apply", "plan": ..., "files": [...] }`を返します。
+終了コードは`0`が成功、`1`が引数・入力・適用エラー、`2`が計画の未解決事項です。
+スナップショットの警告と実際の互換性を確認してから適用してください。
 
 ## 公開の仕組み
 

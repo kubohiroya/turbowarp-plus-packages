@@ -130,16 +130,67 @@ publish to npm. There is no `--apply` option.
   from the higher of manifest and npm versions and avoiding occupied numbers.
   Reuse an already prepared unpublished version and use the current version for
   initial publication. Versioned private/non-npm projects can be `update-only`.
-- Flag tag/npm mismatches, unknown ahead counts, prereleases and missing data.
-  Block dependents of unresolved upstreams. `steps` includes tentative blocked
+- Each step's `sourceChanges` is `none` (baseline tag equals HEAD), `ahead`
+  (ahead of the tag matching the npm version), or `unknown`. Missing/mismatched
+  tags and unknown ahead counts produce warnings without triggering a minor bump
+  themselves. Recorded published versions remain usable for dependency edits;
+  known edits and prepared versions can still justify publication plans.
+  Unknown does not mean that source changes were ruled out.
+- Peer compatibility, unsupported ranges, prereleases and missing data remain
+  blockers and propagate to dependents. `steps` includes tentative blocked
   changes; `publishTargets` includes only unblocked publication targets. Hold the
-  entire plan when `ready` is false.
+  entire plan when `ready` is false. A true value does not establish every
+  repository's release needs: inspect warnings and `sourceChanges` as well.
 
 Plans include the analysis timestamp, SHA-256 of the reserialized JSON, and each
 repository's recorded HEAD SHA. They describe the snapshot, without checking
 current GitHub/npm state or compatibility. Exit codes: `0` for a completed plan,
 `1` for argument/input errors, `2` for unresolved items. Future execution requires
 fresh state checks, validation and approval.
+
+## Bumping downstream dependents
+
+Select an upstream package to plan updates for all its direct and transitive
+dependents in dependency order, including development dependencies used to build
+extensions.
+
+```bash
+# Preview using the existing data/dashboard.json
+npm run bump:downstream -- vite-plugin-turbowarp-extension
+npm run --silent bump:downstream -- @kubohiroya/vite-plugin-turbowarp-extension --json
+
+# Apply to independent checkouts at <parent>/<repo>
+npm run bump:downstream -- vite-plugin-turbowarp-extension \
+  --data /path/to/dashboard.json --apply --repos-dir /path/to/checkouts
+```
+
+- Include the selected package and its consumers; process each once, upstream
+  first. All potential consumers must be present in the snapshot, with dependency
+  lists. Repositories absent from the snapshot cannot be discovered.
+- Use the root's published version or reuse a prepared unpublished version.
+  Dependency edits and minor increments follow the same rules as `bump`.
+  Already updated consumers do not get another bump; compatible peers and broad
+  ranges remain unchanged.
+- Other upstreams supply recorded publications and collection status only.
+  Their unpublished changes, prepared versions and stale declarations outside
+  the selected scope do not trigger bumps.
+- `--apply` defaults to off and requires `--repos-dir`. Check every selected
+  checkout's HEAD SHA, clean working tree, manifest name/version and dependency
+  edit sources before writing. Stale SHAs, dirty/untracked files, missing checkouts
+  and blocked plans prevent the entire application. Even an unchanged root needs
+  a checkout.
+- Only manifest dependency declarations and versions change. Update lockfiles,
+  rebuild, validate, commit, push, tag and publish separately. An unpublished
+  planned upstream version may need publishing before a downstream lockfile can
+  be generated.
+- A later write failure restores earlier writes when possible. Concurrent edits
+  or recovery errors report the affected paths. To undo a successful application,
+  inspect the reported files' diffs and restore those files from Git.
+
+Plan JSON includes `direction: "downstream"`; successful application returns
+`{ "mode": "apply", "plan": ..., "files": [...] }`. Exit codes are `0` for success,
+`1` for argument/input/application errors and `2` for unresolved plan items.
+Review snapshot warnings and actual compatibility before applying.
 
 ## How it is published
 
