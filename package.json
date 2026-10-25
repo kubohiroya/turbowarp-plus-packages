@@ -14,6 +14,7 @@
   },
   "homepage": "https://kubohiroya.github.io/turbowarp-plus-packages/",
   "scripts": {
+    "bump": "node --import tsx scripts/bump.ts",
     "collect": "node --import tsx scripts/collect.ts",
     "thumbnails": "node --import tsx scripts/thumbnails.ts",
     "render": "node --import tsx scripts/render.ts",

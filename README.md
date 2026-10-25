@@ -100,6 +100,47 @@ The collector needs a GitHub token: it reads `GITHUB_TOKEN`, and otherwise falls
 back to `gh auth token`. Unauthenticated access is capped at 60 requests an
 hour, which is not enough for a single package.
 
+## Planning recursive releases
+
+Preview the upstream processing order, dependency edits, version changes and publish
+targets for one package using the existing analysis. The default input is
+`data/dashboard.json`. If absent locally, use the JSON from the Pages workflow's
+`dashboard-data` artifact, or select another snapshot with `--data`.
+
+```bash
+npm run bump -- @kubohiroya/turbowarp-title-menu
+npm run bump -- turbowarp-title-menu --data /path/to/dashboard.json
+npm run --silent bump -- turbowarp-title-menu --json > /tmp/release-plan.json
+```
+
+The command only prints a plan. It does not change the snapshot, repositories,
+manifests or lockfiles, access the network, run Git, create tags/releases, or
+publish to npm. There is no `--apply` option.
+
+- Follow the snapshot's `family: true` prod, dev, peer and optional edges in DFS
+  postorder. Visit shared upstreams once; reject cycles and missing upstreams.
+- Propagate planned publications, falling back to recorded npm versions. Preserve
+  exact, caret and tilde styles for ordinary dependencies, raising their minimum
+  versions without downgrading. Preserve complex ranges that include the target;
+  flag incompatible complex ranges and git/workspace references for review.
+- Preserve compatible peer ranges. Report incompatible peers with a `null` edit
+  target until compatibility is reviewed. Private and non-npm projects never
+  enter the publish list.
+- Propose one minor increment for commits ahead or dependency edits, starting
+  from the higher of manifest and npm versions and avoiding occupied numbers.
+  Reuse an already prepared unpublished version and use the current version for
+  initial publication. Versioned private/non-npm projects can be `update-only`.
+- Flag tag/npm mismatches, unknown ahead counts, prereleases and missing data.
+  Block dependents of unresolved upstreams. `steps` includes tentative blocked
+  changes; `publishTargets` includes only unblocked publication targets. Hold the
+  entire plan when `ready` is false.
+
+Plans include the analysis timestamp, SHA-256 of the reserialized JSON, and each
+repository's recorded HEAD SHA. They describe the snapshot, without checking
+current GitHub/npm state or compatibility. Exit codes: `0` for a completed plan,
+`1` for argument/input errors, `2` for unresolved items. Future execution requires
+fresh state checks, validation and approval.
+
 ## How it is published
 
 [`.github/workflows/pages.yml`](.github/workflows/pages.yml) runs the whole

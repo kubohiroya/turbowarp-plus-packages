@@ -90,6 +90,41 @@ npm run serve                     # http://localhost:4180/
 `gh auth token` にフォールバックします。未認証は 1 時間あたり 60 リクエストに
 制限され、1 パッケージ分にも足りません。
 
+## 再帰的リリースの計画
+
+既存の解析結果から、指定パッケージとその上流だけの処理順・依存更新・バージョン変更・
+公開対象を確認できます。入力は既定で `data/dashboard.json` です。ローカルにない場合は、
+Pages workflow の `dashboard-data` artifact にある JSON を配置するか、`--data` で指定します。
+
+```bash
+npm run bump -- @kubohiroya/turbowarp-title-menu
+npm run bump -- turbowarp-title-menu --data /path/to/dashboard.json
+npm run --silent bump -- turbowarp-title-menu --json > /tmp/release-plan.json
+```
+
+このコマンドは計画の標準出力だけを行います。解析JSON・対象repo・package.json・lockfileを
+変更せず、ネットワークアクセス、Git操作、タグ・Release作成、npm公開も行いません。
+`--apply` などの実行オプションはありません。
+
+- `family: true` の prod・dev・peer・optional 依存を深さ優先の後行順で探索します。
+  共有上流は1回だけ処理し、循環や解析結果に存在しない上流は入力エラーとして停止します。
+- 上流の予定公開版、予定がなければ解析済みnpm公開版を依存元へ伝播します。通常依存の
+  完全固定・`^`・`~` は記法を保って下限を更新します。新しい依存指定を古い版へ下げません。
+  複雑なレンジは対象版を含む場合に維持し、含まない場合やgit・workspace参照は要確認にします。
+- peerは対象版を許容する場合に維持し、許容しない場合は互換性の確認事項として、変更先を
+  `null` で表示します。privateやnpm対象外のrepoは公開対象に入りません。
+- 先行コミットまたは依存更新があればminorを1回上げます。package.jsonとnpm公開版の大きい方を
+  基準に、使用済みの番号を避けます。すでに用意された未公開版は再bumpせず、初回公開も
+  現在の番号を使います。private等のバージョン付きrepoの変更は `update-only` として表示します。
+- タグとnpm公開版の不一致、先行数不明、プレリリース、収集漏れ等は未解決事項として表示します。
+  未解決の上流があれば依存元も保留します。`steps` には保留中の仮の変更も含み、
+  `publishTargets` は未解決事項のない公開対象です。`ready: false` の計画全体は実行保留です。
+
+計画には解析日時・JSON全体のSHA-256（JSON再シリアライズ後）・各repoのHEAD SHAを含みます。
+現在のGitHub/npm状態や互換性を確認したものではなく、記録されたスナップショットに基づく
+計画です。終了コードは `0` が生成成功、`1` が引数/入力エラー、`2` が未解決事項ありです。
+公開機能を導入する際は、現状の再確認・検証・承認を別途必要とします。
+
 ## 公開の仕組み
 
 [`.github/workflows/pages.yml`](.github/workflows/pages.yml) が `main` への push、
