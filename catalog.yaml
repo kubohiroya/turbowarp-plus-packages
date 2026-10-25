@@ -4,9 +4,10 @@
 # (issue counts, versions, Pages status, dependency freshness) is collected from
 # the GitHub and npm APIs by scripts/collect.mjs.
 #
-# Adding a package: put its repository name in the right category. The npm
-# package name defaults to "@<scope>/<repo>"; override it with `npm:` when they
-# differ, or set `npm: false` for repositories that are not published to npm.
+# Adding a package: put its repository name in the right category (see the
+# criteria just above `categories:`). The npm package name defaults to
+# "@<scope>/<repo>"; override it with `npm:` when they differ, or set
+# `npm: false` for repositories that are not published to npm.
 
 owner: kubohiroya
 scope: "@kubohiroya"
@@ -28,7 +29,33 @@ site:
 # Dependency ranges using any of these protocols are reported as local (skull).
 localProtocols: [file:, link:, workspace:, portal:, patch:]
 
+# Choosing a category. Every package belongs to exactly one. Ask these in order
+# and stop at the first "yes":
+#   1. Is it deployed and used as-is rather than depended on?       -> apps
+#   2. Is it a guide, sample collection or documentation site?      -> docs
+#   3. Is it for building, packaging or previewing extensions, or
+#      a shared kit extensions use to declare their block editors?  -> toolchain
+#   4. Is it the forked editor (scratch-gui) or a package that the
+#      fork lists in its dependencies to extend the editor?         -> foundation
+#   5. Does a packaged app use it to host the TurboWarp runtime in
+#      its own page?                                                -> shell
+#   6. Is it a contract or adapter that extensions from several
+#      other categories build on, with no domain of its own?        -> contracts
+#   7. Does it mostly expose one JavaScript library or one browser
+#      API as blocks, adding little model of its own?               -> wraps
+#   8. Otherwise, pick by what the package is for, not by the medium
+#      it happens to use: a QR code that carries a WebRTC offer is
+#      networking, a QR code that is read from the camera is sensing.
+# Each category below lists what it includes and what it sends elsewhere.
+
 categories:
+  # Includes: build tools, bundler plugins, project and app templates, manifest
+  #   contracts consumed by those templates, local preview and live reload, and
+  #   the data editor kit that extensions use to declare schema-driven block
+  #   editors (the forked editor also bundles it, but it is authored here).
+  # Excludes: anything else a running project loads at runtime (-> shell,
+  #   contracts or a domain category). A template stays here even though its
+  #   name says "app".
   - id: toolchain
     title: Toolchain & Templates
     titleJa: ツールチェーン・テンプレート
@@ -43,53 +70,104 @@ categories:
       - turbowarp-sb3-source-builder
       - turbowarp-local-preview
       - turbowarp-live-reload-controller
+      - turbowarp-extension-data-editor
 
+  # Includes: the scratch-gui fork of the TurboWarp editor, and the packages it
+  #   lists in its dependencies to extend the editor itself (the extension
+  #   security dialog).
+  # Excludes: extensions that only run inside the editor (-> their domain),
+  #   anything a packaged app uses outside the editor (-> shell), and the data
+  #   editor kit, which extensions use as well (-> toolchain).
   - id: foundation
-    title: Runtime Foundation
-    titleJa: ランタイム基盤
-    description: Host-neutral contracts and adapters the other extensions build on.
-    descriptionJa: 他の拡張が土台にする、ホスト非依存の契約とアダプタ。
+    title: Editor Foundation
+    titleJa: エディター基盤
+    description: The forked TurboWarp editor and the packages built into it.
+    descriptionJa: フォークした TurboWarp エディターと、それに組み込まれたパッケージ。
     packages:
-      - turbowarp-runtime-adapter
-      - turbowarp-runtime-expression
+      - scratch-gui
+      - turbowarp-extension-security-dialog
+
+  # Includes: DOM shell primitives, runtime adapters, and the title and
+  #   application menu chrome that a packaged app uses to host the TurboWarp
+  #   runtime in its own page. Every app depends on turbowarp-app-shell.
+  # Excludes: the editor (-> foundation), build-time preview and live reload
+  #   (-> toolchain), and the apps themselves (-> apps).
+  - id: shell
+    title: App Shell
+    titleJa: アプリシェル
+    description: Host the TurboWarp runtime inside a packaged application page.
+    descriptionJa: パッケージ化したアプリのページに TurboWarp の実行環境を載せる。
+    packages:
       - turbowarp-app-shell
+      - turbowarp-runtime-adapter
+      - turbowarp-title-menu
+
+  # Includes: contracts that packages in several categories implement or
+  #   consume (named data, named functions, runtime expressions, structured
+  #   diagnostics that any DSL host or app reports and the stage displays),
+  #   and adapters to external UI and state frameworks (React, Jotai).
+  # Excludes: a contract used only within one family, or a package that mainly
+  #   provides blocks for one kind of data, device or service (-> that domain's
+  #   category); anything built into the editor (-> foundation).
+  - id: contracts
+    title: Extension Contracts
+    titleJa: 拡張共通の契約
+    description: Contracts and adapters shared by extensions across categories.
+    descriptionJa: カテゴリをまたいで拡張が共有する契約とアダプタ。
+    packages:
+      - turbowarp-runtime-expression
       - turbowarp-named-data
       - turbowarp-named-functions
       - turbowarp-jotai-adapter
       - turbowarp-react-islands
-      - turbowarp-extension-security-dialog
+      - turbowarp-diagnostic-overlay
 
+  # Includes: values held and transformed inside the project: structured and
+  #   binary data, text, HTML and Markdown built as values, and key-value
+  #   storage.
+  # Excludes: drawing it on the stage (-> media), sending it to another machine
+  #   (-> network), the shared named-data contract itself (-> contracts), the
+  #   data editor kit for block editors (-> toolchain), and thin
+  #   wrappers of a parser or generator library (-> wraps).
+  #   HTTP body integration alone does not make a data package networking.
   - id: data
     title: Data & Documents
     titleJa: データ・ドキュメント
-    description: Structured data, serialisation formats and editors.
-    descriptionJa: 構造化データ、シリアライズ形式、エディタ。
+    description: Structured data, documents, text and storage.
+    descriptionJa: 構造化データ、ドキュメント、テキスト、ストレージ。
     packages:
       - turbowarp-structured-data
-      - turbowarp-yaml-json
       - turbowarp-document-data
       - turbowarp-markdown
       - turbowarp-html
       - turbowarp-text-lines
       - turbowarp-binary-data
       - turbowarp-kvs
-      - turbowarp-uuid
-      - turbowarp-extension-data-editor
 
+  # Includes: what the player sees or hears in 2D: text rendering, bubbles,
+  #   notifications shown by the project, and the loading, caching and
+  #   playback of image and audio assets.
+  # Excludes: 3D and AR scenes (-> spatial), camera images used as input
+  #   (-> sensing), dialogs that guard extension loading (-> foundation), the
+  #   title and application menu around a packaged app (-> shell), and the
+  #   shared diagnostics overlay, defined by its input format (-> contracts).
   - id: media
     title: Stage & Presentation
     titleJa: ステージ・表示
-    description: Text, bubbles, overlays and asset handling on the stage.
-    descriptionJa: ステージ上のテキスト・吹き出し・オーバーレイと素材管理。
+    description: Text, bubbles, notifications and asset handling on the stage.
+    descriptionJa: ステージ上のテキスト・吹き出し・通知と素材管理。
     packages:
       - turbowarp-svg-text
       - turbowarp-bubble
-      - turbowarp-diagnostic-overlay
       - turbowarp-asset-cache
       - turbowarp-asset-manager
-      - turbowarp-title-menu
       - turbowarp-extended-notification
 
+  # Includes: scene graphs and 3D scene descriptions, A-Frame and AR rendering,
+  #   reconstruction of physical space, and calibration of where cameras and
+  #   displays sit in space and time relative to each other.
+  # Excludes: calibrating a single camera's lens (-> sensing) and estimating
+  #   poses from camera images (-> sensing), even when the result feeds a scene.
   - id: spatial
     title: 3D, AR & Space
     titleJa: 3D・AR・空間
@@ -104,24 +182,31 @@ categories:
       - turbowarp-photogrammetry
       - turbowarp-time-space-sync
 
+  # Includes: input from the physical world: camera sources and lens
+  #   calibration, optical code schemes, recognition models and pose
+  #   estimation, keyboard and pointer input.
+  # Excludes: packages whose purpose is reaching another machine or service,
+  #   even if they use a camera, QR codes or speech to do it (-> network), and
+  #   thin wrappers of one decoder library or device API (-> wraps).
   - id: sensing
     title: Sensing & Input
     titleJa: センシング・入力
-    description: Cameras, codes, pose estimation, NFC, speech and pointer input.
-    descriptionJa: カメラ、コード読み取り、姿勢推定、NFC、音声、ポインタ入力。
+    description: Cameras, codes, pose estimation and pointer input.
+    descriptionJa: カメラ、コード、姿勢推定、ポインタ入力。
     packages:
       - turbowarp-camera-source
       - turbowarp-camera-calibration
-      - turbowarp-jsqr
-      - turbowarp-qr-display
       - qrcode-structured-append
       - turbowarp-teachable-machine
       - turbowarp-realtime-motion-capture
       - turbowarp-visual-tracking
-      - turbowarp-webusb-pasori
-      - turbowarp-web-speech
       - turbowarp-async-input
 
+  # Includes: talking to other machines: peer connections and their pairing,
+  #   HTTP servers and the platforms that host them, AI and other third-party
+  #   APIs, and remotely controlled devices reached through a cloud service.
+  # Excludes: devices attached to this machine (-> sensing or wraps) and data
+  #   packages that only format request or response bodies (-> data).
   - id: network
     title: Networking & Services
     titleJa: 通信・外部サービス
@@ -136,6 +221,30 @@ categories:
       - turbowarp-voice-chat
       - turbowarp-sesame
 
+  # Includes: thin extensions whose blocks mostly expose one JavaScript library
+  #   (a QR encoder or decoder, a YAML parser) or one browser API (Web Speech,
+  #   WebUSB, Web Crypto) as it is, adding little model of their own.
+  # Excludes: packages that build their own model on top of a library, such as
+  #   a scene graph over A-Frame or a recognition pipeline over Teachable
+  #   Machine (-> their domain), and libraries that implement a specification
+  #   themselves rather than wrap one (-> their domain).
+  - id: wraps
+    title: Library & API Wrappers
+    titleJa: ライブラリ・API ラッパー
+    description: Thin blocks over one JavaScript library or browser API.
+    descriptionJa: 1つの JavaScript ライブラリやブラウザ API を薄くブロック化したもの。
+    packages:
+      - turbowarp-qr-display
+      - turbowarp-jsqr
+      - turbowarp-yaml-json
+      - turbowarp-web-speech
+      - turbowarp-webusb-pasori
+      - turbowarp-uuid
+
+  # Includes: applications that are deployed and used as-is, including ones
+  #   that exist to verify an extension against real cameras and displays.
+  # Excludes: app templates (-> toolchain) and documentation sites (-> docs).
+  #   An app goes here even when it is published to npm.
   - id: apps
     title: Applications
     titleJa: アプリケーション
@@ -149,6 +258,9 @@ categories:
       - turbowarp-webrtc-qrcode-pairing-app
       - turbowarp-realtime-motion-capture-app
 
+  # Includes: guides, sample projects, and the navigation and shell shared by
+  #   documentation sites.
+  # Excludes: a package's own README and API docs, which stay with the package.
   - id: docs
     title: Documentation & Samples
     titleJa: ドキュメント・サンプル
@@ -165,6 +277,8 @@ categories:
 # left at the default are reported as "unpublished" until they appear on npm,
 # which is intentional: that is a status worth seeing.
 overrides:
+  scratch-gui:
+    npm: false
   turbowarp-realtime-motion-capture-app:
     npm: turbowarp-realtime-motion-capture-app
   turbowarp-app-template:
