@@ -216,7 +216,7 @@ async function revisionStatus(owner: string, repo: string, node: RepositoryNode)
  * deployed by a workflow report null. So we also ask the site itself whether
  * it is serving, which is the thing the dashboard actually claims.
  */
-async function pagesStatus(owner: string, repo: string, discoverSvgFavicon = false): Promise<PagesStatus> {
+async function pagesStatus(owner: string, repo: string, discoverFavicon = false): Promise<PagesStatus> {
   let pages = null;
   try {
     pages = await rest<PagesResponse>(`/repos/${owner}/${repo}/pages`);
@@ -236,7 +236,7 @@ async function pagesStatus(owner: string, repo: string, discoverSvgFavicon = fal
     cname: pages.cname ?? null,
   };
 
-  if (url) Object.assign(result, await checkLive(url, discoverSvgFavicon));
+  if (url) Object.assign(result, await checkLive(url, discoverFavicon));
   return result;
 }
 

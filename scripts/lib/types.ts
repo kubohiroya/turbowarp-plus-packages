@@ -120,6 +120,7 @@ export interface PagesStatus {
   live?: boolean;
   httpStatus?: number | null;
   svgFaviconUrl?: string | null;
+  faviconUrl?: string | null;
   error?: string;
 }
 

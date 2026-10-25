@@ -438,7 +438,7 @@ function row(pkg: DashboardPackage, thumb: Thumbnail | undefined) {
 
   const archived = gh.isArchived ? ` <span class="tag">${t('archived', 'アーカイブ')}</span>` : '';
   // Favicons stay in an image context; only vetted palette drawings are inlined.
-  const favicon = pkg.category === 'apps' ? pkg.pages?.svgFaviconUrl : null;
+  const favicon = pkg.category === 'apps' ? pkg.pages?.svgFaviconUrl ?? pkg.pages?.faviconUrl : null;
   const icon = favicon
     ? `<img class="icon" src="${esc(favicon)}" alt="" width="20" height="20">`
     : pkg.icon ? `<span class="icon" aria-hidden="true">${pkg.icon}</span>` : '';
