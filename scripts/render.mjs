@@ -21,6 +21,14 @@ const DATA = join(ROOT, 'data', 'dashboard.json');
 const SITE = join(ROOT, 'site');
 const OUT = join(SITE, 'index.html');
 
+/**
+ * The shared header every documentation site in this family loads. Served from
+ * its own repository so that a change there reaches every site, this one
+ * included, without editing any of them.
+ */
+const DEFAULT_HEADER_SCRIPT =
+  'https://kubohiroya.github.io/turbowarp-plus-site-header/dist/auto.js';
+
 const esc = (value) =>
   String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -559,6 +567,11 @@ ${rows}
 <style>${STYLE}</style>
 </head>
 <body>
+<!-- The family bar, the same one every package's documentation site carries.
+     It is placed here rather than left to the script so that it does not
+     become sticky: on this page the filter toolbar is what should stay in
+     view. npm="none" because this repository is the index, not a package. -->
+<turbowarp-plus-header repo="turbowarp-plus-packages" npm="none"></turbowarp-plus-header>
 <div class="wrap">
 <header class="hero">
   <img class="mark" src="assets/icon.svg" alt="">
@@ -597,6 +610,7 @@ ${sections}
 </footer>
 </div>
 <script>${SCRIPT}</script>
+<script type="module" src="${esc(site.headerScript ?? DEFAULT_HEADER_SCRIPT)}"></script>
 </body>
 </html>
 `;
