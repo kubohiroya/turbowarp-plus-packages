@@ -18,6 +18,7 @@ import { loadCatalog } from './lib/catalog.mjs';
 import { graphql, rest, pool } from './lib/github.mjs';
 import { packageStatus, allVersions } from './lib/npm.mjs';
 import { declaredDependencies, evaluateRange } from './lib/dependencies.mjs';
+import { describeFromReadme } from './lib/descriptions.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'data', 'dashboard.json');
@@ -52,7 +53,39 @@ const REPO_FIELDS = `
     }
   }
   packageJson: object(expression: "HEAD:package.json") { ... on Blob { text } }
+  readmeEn: object(expression: "HEAD:README.md") { ... on Blob { text } }
+  readmeJa: object(expression: "HEAD:README.ja.md") { ... on Blob { text } }
 `;
+
+/**
+ * The summary in each language, and where it came from.
+ *
+ * English prefers the repository description: it is the curated one-liner and
+ * GitHub shows it everywhere. Japanese has no such field, so it comes from the
+ * first paragraph of README.ja.md. A catalog entry overrides either one.
+ */
+function describe(node, entry) {
+  const names = [entry.npm, entry.repo].filter(Boolean);
+
+  const fromReadmeJa = describeFromReadme(node.readmeJa?.text, { names });
+  const fromReadmeEn = describeFromReadme(node.readmeEn?.text, { names });
+
+  const en = entry.description ?? node.description ?? fromReadmeEn ?? null;
+  const ja = entry.descriptionJa ?? fromReadmeJa ?? null;
+
+  return {
+    en,
+    ja,
+    enSource: entry.description
+      ? 'catalog'
+      : node.description
+        ? 'github'
+        : fromReadmeEn
+          ? 'readme'
+          : null,
+    jaSource: entry.descriptionJa ? 'catalog' : fromReadmeJa ? 'readme' : null,
+  };
+}
 
 async function fetchRepositories(owner, repoNames) {
   const results = new Map();
@@ -255,6 +288,8 @@ async function main() {
       openPullRequests: node.pullRequests?.totalCount ?? 0,
       defaultBranch: node.defaultBranchRef?.name ?? null,
     };
+
+    record.descriptions = describe(node, entry);
 
     const [revision, pages, deps] = await Promise.all([
       revisionStatus(owner, entry.repo, node).catch((error) => {

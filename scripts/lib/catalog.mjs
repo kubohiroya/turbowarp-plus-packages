@@ -34,6 +34,10 @@ export async function loadCatalog(path = 'catalog.yaml') {
         npm: override.npm === false ? null : (override.npm ?? `${scope}/${repo}`),
         note: override.note ?? null,
         label: override.label ?? repo,
+        // Summaries are read from the repository's own READMEs; these only
+        // exist for the cases where that text does not suit a table cell.
+        description: override.description ?? null,
+        descriptionJa: override.descriptionJa ?? null,
       });
     }
   }

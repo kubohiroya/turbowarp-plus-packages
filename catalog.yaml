@@ -160,6 +160,12 @@ categories:
       - turbowarp-kamishibai-site-navigation
 
 # Per-package overrides. Only the keys that differ from the defaults are needed.
+#
+# Summaries are collected automatically: English from the GitHub repository
+# description, Japanese from the first paragraph under the opening heading of
+# the repository's README.ja.md. Set `description` or `descriptionJa` here only
+# when that text does not suit a table cell — a correction belongs in the
+# repository itself, where it also helps everyone reading the README.
 # `npm: false` marks a repository that is deliberately not an npm package
 # (documentation sites, sample collections, deployed applications). Repositories
 # left at the default are reported as "unpublished" until they appear on npm,

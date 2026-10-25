@@ -156,7 +156,13 @@ html[lang="ja"] thead th { text-transform: none; letter-spacing: 0; font-size: 1
 tbody tr:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
 td.name { min-width: 230px; }
 td.name .pkg { font-weight: 600; }
-td.name .desc { color: var(--muted); font-size: 12.5px; margin-top: 2px; max-width: 42ch; }
+td.name .desc {
+  color: var(--muted); font-size: 12.5px; margin-top: 2px; max-width: 42ch;
+  /* Summaries come from READMEs and vary in length; bound the row without
+     cutting the text out of the document. */
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4;
+  overflow: hidden;
+}
 td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 td.deps { min-width: 280px; }
 td.npm { min-width: 150px; }
@@ -407,18 +413,24 @@ function flagsFor(pkg) {
 
 function row(pkg, thumb) {
   const gh = pkg.github ?? {};
-  const haystack = [pkg.repo, pkg.npm?.name, gh.description, pkg.category]
+  const { en = '', ja = '' } = pkg.descriptions ?? {};
+
+  // Both languages are searchable whichever one is on screen.
+  const haystack = [pkg.repo, pkg.npm?.name, en, ja, pkg.category]
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
 
   const archived = gh.isArchived ? ` <span class="tag">${t('archived', 'アーカイブ')}</span>` : '';
   const note = pkg.note ? `<span class="sub">${esc(pkg.note)}</span>` : '';
+  // With no Japanese summary the English one stands in, untagged, so it shows
+  // in both languages rather than leaving an empty cell.
+  const summary = ja && ja !== en ? t(esc(en), esc(ja)) : esc(en);
 
   return `<tr data-search="${esc(haystack)}" data-flags="${esc(flagsFor(pkg).join(' '))}">
   <td class="name">
     <div class="pkg"><a href="${esc(gh.url ?? '#')}">${esc(pkg.label)}</a>${archived}</div>
-    <div class="desc">${esc(gh.description ?? '')}</div>
+    <div class="desc">${summary}</div>
     ${note}
   </td>
   <td class="num">${issuesCell(pkg)}</td>

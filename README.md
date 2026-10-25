@@ -25,6 +25,17 @@ easy to lose track of across sixty-odd repositories.
 | **npm** | The published version, how long ago it went out, and `⚠️ tag ≠ npm` when the newest git tag and the npm version disagree. |
 | **Upstream dependencies** | Every dependency the package declares on another npm package, with the declared range. 💀 marks a range that points at a local path (`file:`, `link:`, `workspace:` …); ⚠️ marks a range that no longer covers the newest published version. |
 
+Each package's summary follows the page language. English comes from the
+GitHub repository description, falling back to the first paragraph of
+`README.md`. Japanese comes from the first paragraph under the opening heading
+of the repository's `README.ja.md` — badge rows and the `English | 日本語`
+switcher above it are skipped, and a leading `@scope/name は、` is dropped
+because the package name is already the row label. A repository with no
+`README.ja.md` shows its English summary in both languages. The way to give a
+package a Japanese summary is to write one in its own README, where it also
+helps everyone reading the repository; `descriptionJa` in `catalog.yaml`
+exists for the cases where that text does not suit a table cell.
+
 The page is bilingual. It opens in Japanese for a browser that asks for
 Japanese and in English otherwise, the switch in the top right changes it, and
 the choice is remembered. Both languages are in the same HTML: switching sets
