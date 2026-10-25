@@ -41,6 +41,7 @@ export interface PackagePlan {
 export interface ReleasePlan {
   schemaVersion: 1;
   mode: 'plan';
+  direction?: 'downstream';
   snapshot: { generatedAt: string; sha256: string };
   target: string;
   ready: boolean;
@@ -101,6 +102,15 @@ function isPublishable(pkg: DashboardPackage): boolean {
 
 /** Pure snapshot planning: no API requests, repository writes or release commands. */
 export function createReleasePlan(input: unknown, target: string): ReleasePlan {
+  return createPlan(input, target, false);
+}
+
+/** Discover dependents first, then plan their updates in dependency order. */
+export function createDownstreamReleasePlan(input: unknown, target: string): ReleasePlan {
+  return createPlan(input, target, true);
+}
+
+function createPlan(input: unknown, target: string, downstream: boolean): ReleasePlan {
   const report = snapshot(input);
   const repos = new Map<string, DashboardPackage>();
   const names = new Map<string, DashboardPackage>();
@@ -115,6 +125,23 @@ export function createReleasePlan(input: unknown, target: string): ReleasePlan {
   const matches = new Set([repos.get(target), names.get(target)].filter((p) => p !== undefined));
   if (matches.size !== 1) throw new Error(`パッケージ名が不明または曖昧です: ${target}`);
   const root = [...matches][0];
+  const affected = downstream ? new Set([root.repo]) : undefined;
+  if (affected) {
+    const dependents = new Map<string, Set<string>>();
+    for (const pkg of report.packages) {
+      if (!pkg.dependencies) throw new Error(`${pkg.repo}: 依存一覧がなく、依存元を確定できません。`);
+      for (const dep of (pkg.dependencies ?? []).filter((dep) => dep.family)) {
+        const upstream = names.get(dep.name);
+        if (!upstream) continue; // The ordered traversal rejects missing selected upstreams.
+        const entries = dependents.get(upstream.repo) ?? new Set<string>();
+        entries.add(pkg.repo);
+        dependents.set(upstream.repo, entries);
+      }
+    }
+    for (const repo of affected) {
+      for (const dependent of dependents.get(repo) ?? []) affected.add(dependent);
+    }
+  }
   const ordered: DashboardPackage[] = [];
   const done = new Set<string>();
   const path: string[] = [];
@@ -136,16 +163,20 @@ export function createReleasePlan(input: unknown, target: string): ReleasePlan {
     ordered.push(pkg);
   }
   visit(root);
+  if (affected) {
+    for (const repo of [...affected].sort(compare)) visit(repos.get(repo)!);
+  }
 
   const planned = new Map<string, PackagePlan>();
   for (const pkg of ordered) {
-    const step = planPackage(report.owner, pkg, names, planned);
+    const step = planPackage(report.owner, pkg, names, planned, affected);
     planned.set(pkg.repo, step);
   }
-  const steps = [...planned.values()];
+  const steps = [...planned.values()].filter((step) => !affected || affected.has(step.repo));
   return {
     schemaVersion: 1,
     mode: 'plan',
+    ...(downstream ? { direction: 'downstream' as const } : {}),
     snapshot: {
       generatedAt: report.generatedAt,
       sha256: createHash('sha256').update(JSON.stringify(report)).digest('hex'),
@@ -167,7 +198,9 @@ function planPackage(
   pkg: DashboardPackage,
   names: Map<string, DashboardPackage>,
   planned: Map<string, PackagePlan>,
+  affected?: ReadonlySet<string>,
 ): PackagePlan {
+  const referenceOnly = affected !== undefined && !affected.has(pkg.repo);
   const step: PackagePlan = {
     repo: pkg.repo, repository: `${owner}/${pkg.repo}`, name: packageName(pkg),
     headSha: pkg.revision?.head?.oid ?? null,
@@ -219,6 +252,7 @@ function planPackage(
       issue('upstream-unavailable', `${dep.name}: 利用できる公開版または公開予定版がありません。`);
       continue;
     }
+    if (referenceOnly || (affected && !affected.has(upstream.repo))) continue;
     const range = dep.range.trim();
     if (dep.kind === 'peer' && semver.satisfies(version, range)) continue;
     const match = /^(\^|~)?(\d+\.\d+\.\d+)$/.exec(range);
@@ -238,8 +272,8 @@ function planPackage(
     if (to === null) issue('range-review', `${dep.name}: ${dep.kind === 'peer' ? 'peer互換性' : '依存指定'} ${range} → ${version} の変更方法を確認してください。`);
   }
   if (step.dependencyUpdates.length) step.reasons.push('dependency-update');
-  if (step.sourceChanges === 'ahead') step.reasons.push('commits-ahead');
-  if (isPublishable(pkg) && pkg.npm?.published === false) step.reasons.push('unpublished');
+  if (!referenceOnly && step.sourceChanges === 'ahead') step.reasons.push('commits-ahead');
+  if (!referenceOnly && isPublishable(pkg) && pkg.npm?.published === false) step.reasons.push('unpublished');
 
   if (pkg.npm?.published && !pkg.npm.versions) {
     issue('incomplete-version-list', '公開済みバージョン一覧がなく、予定バージョンの未使用を確認できません。');
@@ -248,7 +282,7 @@ function planPackage(
     issue('inconsistent-registry', 'npm公開版が公開済みバージョン一覧にありません。');
   }
   const prepared = Boolean(current && published && semver.gt(current, published) && !versions.includes(current));
-  if (prepared) {
+  if (prepared && !referenceOnly) {
     step.reasons.push('prepared-version');
   }
 
@@ -281,7 +315,7 @@ function planPackage(
 export function formatReleasePlan(plan: ReleasePlan): string {
   const sourceLabels = { none: '変更なし', ahead: '公開版から先行', unknown: '未判定' };
   const lines = [
-    `リリース計画: ${plan.target}（計画のみ）`,
+    `リリース計画: ${plan.target}（${plan.direction === 'downstream' ? '依存元へ伝播・' : ''}計画のみ）`,
     `解析日時: ${plan.snapshot.generatedAt}`,
     `解析SHA-256: ${plan.snapshot.sha256}`,
     `処理順: ${plan.order.join(' → ')}`,

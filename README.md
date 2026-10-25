@@ -148,6 +148,50 @@ current GitHub/npm state or compatibility. Exit codes: `0` for a completed plan,
 `1` for argument/input errors, `2` for unresolved items. Future execution requires
 fresh state checks, validation and approval.
 
+## Bumping downstream dependents
+
+Select an upstream package to plan updates for all its direct and transitive
+dependents in dependency order, including development dependencies used to build
+extensions.
+
+```bash
+# Preview using the existing data/dashboard.json
+npm run bump:downstream -- vite-plugin-turbowarp-extension
+npm run --silent bump:downstream -- @kubohiroya/vite-plugin-turbowarp-extension --json
+
+# Apply to independent checkouts at <parent>/<repo>
+npm run bump:downstream -- vite-plugin-turbowarp-extension \
+  --data /path/to/dashboard.json --apply --repos-dir /path/to/checkouts
+```
+
+- Include the selected package and its consumers; process each once, upstream
+  first. All potential consumers must be present in the snapshot, with dependency
+  lists. Repositories absent from the snapshot cannot be discovered.
+- Use the root's published version or reuse a prepared unpublished version.
+  Dependency edits and minor increments follow the same rules as `bump`.
+  Already updated consumers do not get another bump; compatible peers and broad
+  ranges remain unchanged.
+- Other upstreams supply recorded publications and collection status only.
+  Their unpublished changes, prepared versions and stale declarations outside
+  the selected scope do not trigger bumps.
+- `--apply` defaults to off and requires `--repos-dir`. Check every selected
+  checkout's HEAD SHA, clean working tree, manifest name/version and dependency
+  edit sources before writing. Stale SHAs, dirty/untracked files, missing checkouts
+  and blocked plans prevent the entire application. Even an unchanged root needs
+  a checkout.
+- Only manifest dependency declarations and versions change. Update lockfiles,
+  rebuild, validate, commit, push, tag and publish separately. An unpublished
+  planned upstream version may need publishing before a downstream lockfile can
+  be generated.
+- A later write failure restores earlier writes when possible. Concurrent edits
+  or recovery errors report the affected paths. To undo a successful application,
+  inspect the reported files' diffs and restore those files from Git.
+
+Plan JSON includes `direction: "downstream"`; successful application returns
+`{ "mode": "apply", "plan": ..., "files": [...] }`. Exit codes are `0` for success,
+`1` for argument/input/application errors and `2` for unresolved plan items.
+Review snapshot warnings and actual compatibility before applying.
+
 ## How it is published
 
 [`.github/workflows/pages.yml`](.github/workflows/pages.yml) runs the whole
