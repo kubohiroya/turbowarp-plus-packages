@@ -130,10 +130,17 @@ publish to npm. There is no `--apply` option.
   from the higher of manifest and npm versions and avoiding occupied numbers.
   Reuse an already prepared unpublished version and use the current version for
   initial publication. Versioned private/non-npm projects can be `update-only`.
-- Flag tag/npm mismatches, unknown ahead counts, prereleases and missing data.
-  Block dependents of unresolved upstreams. `steps` includes tentative blocked
+- Each step's `sourceChanges` is `none` (baseline tag equals HEAD), `ahead`
+  (ahead of the tag matching the npm version), or `unknown`. Missing/mismatched
+  tags and unknown ahead counts produce warnings without triggering a minor bump
+  themselves. Recorded published versions remain usable for dependency edits;
+  known edits and prepared versions can still justify publication plans.
+  Unknown does not mean that source changes were ruled out.
+- Peer compatibility, unsupported ranges, prereleases and missing data remain
+  blockers and propagate to dependents. `steps` includes tentative blocked
   changes; `publishTargets` includes only unblocked publication targets. Hold the
-  entire plan when `ready` is false.
+  entire plan when `ready` is false. A true value does not establish every
+  repository's release needs: inspect warnings and `sourceChanges` as well.
 
 Plans include the analysis timestamp, SHA-256 of the reserialized JSON, and each
 repository's recorded HEAD SHA. They describe the snapshot, without checking

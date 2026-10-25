@@ -116,9 +116,14 @@ npm run --silent bump -- turbowarp-title-menu --json > /tmp/release-plan.json
 - 先行コミットまたは依存更新があればminorを1回上げます。package.jsonとnpm公開版の大きい方を
   基準に、使用済みの番号を避けます。すでに用意された未公開版は再bumpせず、初回公開も
   現在の番号を使います。private等のバージョン付きrepoの変更は `update-only` として表示します。
-- タグとnpm公開版の不一致、先行数不明、プレリリース、収集漏れ等は未解決事項として表示します。
-  未解決の上流があれば依存元も保留します。`steps` には保留中の仮の変更も含み、
-  `publishTargets` は未解決事項のない公開対象です。`ready: false` の計画全体は実行保留です。
+- 各stepの `sourceChanges` は `none`（基準タグとHEADが一致）、`ahead`（npm公開版に対応する
+  タグから先行）、`unknown`（未判定）です。タグ不足・npm版との不一致・先行数不明は警告として
+  表示し、それだけを理由にminorを上げません。既存npm版への依存更新や準備済み版の公開計画は
+  作成できます。未判定は「ソース変更なし」の確認ではありません。
+- peer互換性・特殊レンジ・プレリリース・収集漏れ等の阻害事項があれば、依存元も保留します。
+  `steps` には保留中の仮の変更も含み、`publishTargets` は阻害事項のない公開対象です。
+  `ready: false` の計画全体は実行保留です。`ready: true` も、全repoの公開要否を確定したことを
+  意味しません。警告と `sourceChanges` を併せて確認してください。
 
 計画には解析日時・JSON全体のSHA-256（JSON再シリアライズ後）・各repoのHEAD SHAを含みます。
 現在のGitHub/npm状態や互換性を確認したものではなく、記録されたスナップショットに基づく

@@ -31,6 +31,7 @@ export interface PackagePlan {
   publishedVersion: string | null;
   nextVersion: string | null;
   versionChange: VersionChange;
+  sourceChanges: 'none' | 'ahead' | 'unknown';
   action: 'none' | 'publish' | 'update-only' | 'blocked';
   reasons: string[];
   dependencyUpdates: DependencyUpdate[];
@@ -172,7 +173,7 @@ function planPackage(
     headSha: pkg.revision?.head?.oid ?? null,
     currentVersion: pkg.manifest?.version ?? null,
     publishedVersion: pkg.npm?.published ? pkg.npm.latest ?? null : null,
-    nextVersion: null, versionChange: 'none', action: 'none',
+    nextVersion: null, versionChange: 'none', sourceChanges: 'unknown', action: 'none',
     reasons: [], dependencyUpdates: [], issues: [],
   };
   const issue = (code: string, message: string, severity: PlanIssue['severity'] = 'blocker') =>
@@ -187,6 +188,26 @@ function planPackage(
   if (pkg.npm?.published && !semver.valid(step.publishedVersion)) issue('invalid-published-version', 'npm公開バージョンが不明または不正です。');
   if (step.currentVersion && !semver.valid(step.currentVersion)) issue('invalid-version', 'package.jsonのバージョンが不正です。');
   if (isPublishable(pkg) && !step.currentVersion) issue('missing-version', 'package.jsonのバージョンがありません。');
+
+  const current = semver.valid(step.currentVersion);
+  const published = semver.valid(step.publishedVersion);
+  const versions = pkg.npm?.versions ?? [];
+  const tag = pkg.revision?.tag;
+  // A coercible fragment in an arbitrary tag does not identify an npm release.
+  const tagVersion = semver.valid(tag?.name);
+  const tagMatchesPublication = Boolean(published && tagVersion === published && tag?.oid);
+  const canAssessSource = !isPublishable(pkg) || !pkg.npm?.published || tagMatchesPublication;
+  if (!canAssessSource) {
+    issue('publication-baseline',
+      'npm公開版に対応するタグのSHAがなく、ソース変更は未判定です。既存npm版を利用し、先行コミットを根拠としたbumpは計画しません。',
+      'warning');
+  } else if (step.headSha && tag?.oid === step.headSha) {
+    step.sourceChanges = 'none';
+  } else if (pkg.revision?.state === 'unreleased') {
+    if (pkg.revision.aheadBy != null && pkg.revision.aheadBy > 0) {
+      step.sourceChanges = 'ahead';
+    } else issue('revision-review', 'タグとHEADが異なりますが、先行コミット数が不明なためソース変更は未判定です。', 'warning');
+  }
 
   for (const dep of (pkg.dependencies ?? []).filter((dep) => dep.family)) {
     const upstream = names.get(dep.name)!;
@@ -217,15 +238,9 @@ function planPackage(
     if (to === null) issue('range-review', `${dep.name}: ${dep.kind === 'peer' ? 'peer互換性' : '依存指定'} ${range} → ${version} の変更方法を確認してください。`);
   }
   if (step.dependencyUpdates.length) step.reasons.push('dependency-update');
-  if (pkg.revision?.state === 'unreleased') {
-    if (pkg.revision.aheadBy != null && pkg.revision.aheadBy > 0) step.reasons.push('commits-ahead');
-    else issue('revision-review', 'タグとHEADが異なりますが、先行コミット数を確認できません。');
-  }
+  if (step.sourceChanges === 'ahead') step.reasons.push('commits-ahead');
   if (isPublishable(pkg) && pkg.npm?.published === false) step.reasons.push('unpublished');
 
-  const current = semver.valid(step.currentVersion);
-  const published = semver.valid(step.publishedVersion);
-  const versions = pkg.npm?.versions ?? [];
   if (pkg.npm?.published && !pkg.npm.versions) {
     issue('incomplete-version-list', '公開済みバージョン一覧がなく、予定バージョンの未使用を確認できません。');
   }
@@ -235,15 +250,6 @@ function planPackage(
   const prepared = Boolean(current && published && semver.gt(current, published) && !versions.includes(current));
   if (prepared) {
     step.reasons.push('prepared-version');
-  }
-  const tagVersion = semver.coerce(pkg.revision?.tag?.name ?? '')?.version;
-  const preparedTagOnHead = prepared && tagVersion === current && pkg.revision?.tag?.oid === step.headSha;
-  if (isPublishable(pkg) && pkg.npm?.published && pkg.revision?.tag &&
-      tagVersion !== published && !preparedTagOnHead) {
-    issue('publication-baseline', '最新タグとnpm公開版が異なり、公開済みコミットを特定できません。');
-  }
-  if (isPublishable(pkg) && published && !pkg.revision?.tag) {
-    issue('publication-baseline', 'npm公開版に対応するタグがなく、公開済みコミットを特定できません。');
   }
 
   if (step.reasons.length && current) {
@@ -258,8 +264,8 @@ function planPackage(
     } else {
       const base = published && semver.gt(published, current) ? published : current;
       let next = semver.inc(base, 'minor');
-      while (next && versions.includes(next)) next = semver.inc(next, 'minor');
-      if (next) {
+      while (next && semver.valid(next) && versions.includes(next)) next = semver.inc(next, 'minor');
+      if (next && semver.valid(next)) {
         step.nextVersion = next;
         step.versionChange = 'minor';
       } else issue('version-overflow', 'minorバージョンを採番できません。');
@@ -273,6 +279,7 @@ function planPackage(
 
 /** Human-readable preview; JSON output contains the complete machine-readable plan. */
 export function formatReleasePlan(plan: ReleasePlan): string {
+  const sourceLabels = { none: '変更なし', ahead: '公開版から先行', unknown: '未判定' };
   const lines = [
     `リリース計画: ${plan.target}（計画のみ）`,
     `解析日時: ${plan.snapshot.generatedAt}`,
@@ -283,8 +290,9 @@ export function formatReleasePlan(plan: ReleasePlan): string {
   for (const [index, step] of plan.steps.entries()) {
     lines.push(`${index + 1}. ${step.repository} [${step.action}]`,
       `   SHA: ${step.headSha ?? '不明'}`,
+      `   ソース変更: ${sourceLabels[step.sourceChanges]}`,
       `   version: ${step.currentVersion ?? 'なし'} → ${step.nextVersion ?? step.currentVersion ?? 'なし'} (${step.versionChange}) / npm: ${step.publishedVersion ?? '未公開・対象外'}`,
-      `   理由: ${step.reasons.join(', ') || '変更なし'}`);
+      `   理由: ${step.reasons.join(', ') || '計画上の変更なし'}`);
     for (const update of step.dependencyUpdates) {
       lines.push(`   ${update.field}.${update.name}: ${update.from} → ${update.to ?? '要確認'} (対象 ${update.targetVersion}, ${update.source})`);
     }
@@ -292,6 +300,8 @@ export function formatReleasePlan(plan: ReleasePlan): string {
   }
   lines.push('', `公開対象: ${plan.publishTargets.length}件`);
   for (const target of plan.publishTargets) lines.push(`  ${target.name}@${target.version} (${target.repository}, ${target.tag})`);
+  const warnings = plan.steps.reduce((count, step) => count + step.issues.filter(issue => issue.severity === 'warning').length, 0);
+  if (warnings) lines.push(`警告: ${warnings}件。ソース変更が未判定のrepoは、変更なしと確認されたものではありません。`);
   lines.push(plan.ready ? '計画生成完了。実行時には現状の再確認・検証・承認が必要です。' : '未解決事項があります。公開対象を含む計画全体の実行を保留してください。');
   return lines.join('\n');
 }

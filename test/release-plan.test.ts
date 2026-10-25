@@ -135,12 +135,15 @@ test('a prepared version already tagged at HEAD can complete its missing npm pub
 });
 
 test('minor bumps start above the published version and skip already occupied versions', () => {
-  const plan = createReleasePlan(report(ahead('a', {
+  const node = ahead('a', {
     npm: { name: '@family/a', published: true, latest: '1.4.0', versions: ['1.2.3', '1.4.0', '1.5.0'] },
-  })), 'a');
+  });
+  node.revision!.tag!.name = 'v1.4.0';
+  const plan = createReleasePlan(report(node), 'a');
   assert.equal(plan.steps[0].nextVersion, '1.6.0');
   assert.equal(plan.steps[0].versionChange, 'minor');
-  assert(plan.steps[0].issues.some(i => i.code === 'publication-baseline'));
+  assert.equal(plan.steps[0].sourceChanges, 'ahead');
+  assert.equal(plan.ready, true);
 });
 
 test('first publication uses the existing version and private or non-npm projects are update-only', () => {
@@ -169,14 +172,78 @@ test('untagged and prerelease states remain explicit instead of implying publica
   const untagged = pkg('a', { revision: { ...pkg('a').revision!, tag: null, state: 'untagged' } });
   const plan = createReleasePlan(report(untagged), 'a');
   assert.equal(plan.steps[0].nextVersion, null);
-  assert.equal(plan.ready, false);
-  assert(plan.steps[0].issues.some(i => i.code === 'publication-baseline'));
+  assert.equal(plan.ready, true);
+  assert.equal(plan.steps[0].sourceChanges, 'unknown');
+  assert(plan.steps[0].issues.some(i => i.code === 'publication-baseline' && i.severity === 'warning'));
   const prerelease = createReleasePlan(report(ahead('a', {
     manifest: { ...pkg('a').manifest!, version: '2.0.0-rc.1' },
   })), 'a');
   assert.equal(prerelease.ready, false);
   assert.equal(prerelease.steps[0].nextVersion, null);
   assert.deepEqual(prerelease.publishTargets, []);
+});
+
+test('an untagged upstream supplies its published version without blocking the dependent', () => {
+  const upstream = pkg('b', { revision: { ...pkg('b').revision!, tag: null, state: 'untagged' } });
+  const plan = createReleasePlan(report(pkg('a', { dependencies: [dep('b', '1.0.0')] }), upstream), 'a');
+  assert.equal(plan.ready, true);
+  assert.equal(plan.steps[0].action, 'none');
+  assert.equal(plan.steps[0].sourceChanges, 'unknown');
+  assert.equal(plan.steps[0].nextVersion, null);
+  assert(plan.steps[0].issues.some(i => i.code === 'publication-baseline' && i.severity === 'warning'));
+  assert.equal(plan.steps[1].action, 'publish');
+  assert.equal(plan.steps[1].dependencyUpdates[0].to, '1.2.3');
+  assert.equal(plan.steps[1].dependencyUpdates[0].source, 'published');
+  assert.deepEqual(plan.publishTargets.map(t => t.name), ['@family/a']);
+});
+
+test('mismatched, arbitrary and SHA-less tags do not establish unpublished source changes', () => {
+  for (const tagName of ['v1.0.0', 'build-1.2.3', 'v1.2.3']) {
+    const node = ahead('a');
+    node.revision!.tag!.name = tagName;
+    if (tagName === 'v1.2.3') node.revision!.tag!.oid = null;
+    const plan = createReleasePlan(report(node), 'a');
+    assert.equal(plan.ready, true, tagName);
+    assert.equal(plan.steps[0].sourceChanges, 'unknown', tagName);
+    assert.equal(plan.steps[0].nextVersion, null, tagName);
+    assert(!plan.steps[0].reasons.includes('commits-ahead'), tagName);
+    assert.deepEqual(plan.publishTargets, []);
+  }
+});
+
+test('known dependency edits still justify one minor bump when the source baseline is unknown', () => {
+  for (const tag of [null, { name: 'v1.0.0', oid: 'old-a', committedDate: null }]) {
+    const node = ahead('a', { dependencies: [dep('b', '1.0.0')] });
+    node.revision!.tag = tag;
+    const plan = createReleasePlan(report(node, pkg('b')), 'a');
+    assert.equal(plan.ready, true);
+    assert.equal(plan.steps[1].sourceChanges, 'unknown');
+    assert.deepEqual(plan.steps[1].reasons, ['dependency-update']);
+    assert.equal(plan.steps[1].nextVersion, '1.3.0');
+    assert.equal(plan.publishTargets[0].name, '@family/a');
+    assert(plan.steps[1].issues.some(i => i.severity === 'warning'));
+  }
+});
+
+test('source uncertainty does not weaken collection-error blockers or their propagation', () => {
+  const node = pkg('b', { errors: ['collection failed'],
+    revision: { ...pkg('b').revision!, tag: null, state: 'untagged' } });
+  const plan = createReleasePlan(report(pkg('a', { dependencies: [dep('b')] }), node), 'a');
+  assert.equal(plan.ready, false);
+  assert(plan.steps[0].issues.some(i => i.code === 'collection-error' && i.severity === 'blocker'));
+  assert(plan.steps[0].issues.some(i => i.code === 'publication-baseline' && i.severity === 'warning'));
+  assert(plan.steps[1].issues.some(i => i.code === 'upstream-blocked'));
+  assert.deepEqual(plan.publishTargets, []);
+});
+
+test('human output distinguishes unknown source changes from confirmed unchanged sources', () => {
+  const node = pkg('a', { revision: { ...pkg('a').revision!, tag: null, state: 'untagged' } });
+  const rendered = formatReleasePlan(createReleasePlan(report(node), 'a'));
+  assert.match(rendered, /ソース変更: 未判定/);
+  assert.match(rendered, /理由: 計画上の変更なし/);
+  assert.match(rendered, /warning \[publication-baseline\]/);
+  assert.match(rendered, /警告: 1件/);
+  assert.match(rendered, /変更なしと確認されたものではありません/);
 });
 
 test('collection errors, absent metadata, invalid versions and mismatched package names block publication', () => {
@@ -205,10 +272,12 @@ test('archived repositories and version overflow do not become publish targets',
     manifest: { ...pkg('a').manifest!, version: '1.9007199254740991.0' },
     npm: { name: '@family/a', published: true, latest: '1.9007199254740991.0', versions: ['1.9007199254740991.0'] },
   });
-  for (const node of [archived, overflow]) {
+  overflow.revision!.tag!.name = 'v1.9007199254740991.0';
+  for (const [node, code] of [[archived, 'archived'], [overflow, 'version-overflow']] as const) {
     const plan = createReleasePlan(report(node), 'a');
     assert.equal(plan.ready, false);
     assert.deepEqual(plan.publishTargets, []);
+    assert(plan.steps[0].issues.some(issue => issue.code === code));
   }
 });
 
@@ -217,9 +286,10 @@ test('an unknown or zero ahead count does not invent an unpublished change', () 
     const node = ahead('a');
     node.revision!.aheadBy = aheadBy;
     const plan = createReleasePlan(report(node), 'a');
-    assert.equal(plan.ready, false);
+    assert.equal(plan.ready, true);
     assert.equal(plan.steps[0].nextVersion, null);
-    assert(plan.steps[0].issues.some(i => i.code === 'revision-review'));
+    assert.equal(plan.steps[0].sourceChanges, 'unknown');
+    assert(plan.steps[0].issues.some(i => i.code === 'revision-review' && i.severity === 'warning'));
   }
 });
 
@@ -280,6 +350,12 @@ test('CLI writes only stdout, works offline, validates flags, and reports blocke
     const blocked = run('a', '--data', path, '--json');
     assert.equal(blocked.status, 2);
     assert.equal(JSON.parse(blocked.stdout).ready, false);
+    await writeFile(path, JSON.stringify(report(pkg('a', { dependencies: [dep('b', '1.0.0')] }),
+      pkg('b', { revision: { ...pkg('b').revision!, tag: null, state: 'untagged' } }))));
+    const warned = run('a', '--data', path, '--json');
+    assert.equal(warned.status, 0);
+    assert.equal(JSON.parse(warned.stdout).ready, true);
+    assert.equal(JSON.parse(warned.stdout).steps[0].sourceChanges, 'unknown');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
