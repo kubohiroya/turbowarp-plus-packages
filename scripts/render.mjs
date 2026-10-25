@@ -5,6 +5,11 @@
  * The page is plain HTML with one inline stylesheet and one small inline
  * script: no framework, no build step, nothing to go stale. Everything that
  * changes lives in the JSON.
+ *
+ * It carries both languages at once. Every translated string is emitted twice,
+ * tagged with its own `lang`, and the stylesheet hides whichever does not match
+ * `<html lang>`. Switching is then one attribute write: no re-render, no second
+ * page to keep in step, and the page still reads correctly with scripting off.
  */
 import { access, readFile, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
@@ -23,6 +28,9 @@ const esc = (value) =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
+/** One phrase in both languages; the stylesheet shows the active one. */
+const t = (en, ja) => `<span lang="en">${en}</span><span lang="ja">${ja}</span>`;
+
 const exists = (path) =>
   access(path, constants.R_OK).then(
     () => true,
@@ -32,11 +40,15 @@ const exists = (path) =>
 function relativeDate(iso) {
   if (!iso) return '';
   const days = Math.round((Date.now() - new Date(iso).getTime()) / 86_400_000);
-  if (days < 1) return 'today';
-  if (days === 1) return 'yesterday';
-  if (days < 30) return `${days}d ago`;
-  if (days < 365) return `${Math.round(days / 30)}mo ago`;
-  return `${Math.round(days / 365)}y ago`;
+  if (days < 1) return t('today', '今日');
+  if (days === 1) return t('yesterday', '昨日');
+  if (days < 30) return t(`${days}d ago`, `${days}日前`);
+  if (days < 365) {
+    const months = Math.round(days / 30);
+    return t(`${months}mo ago`, `${months}か月前`);
+  }
+  const years = Math.round(days / 365);
+  return t(`${years}y ago`, `${years}年前`);
 }
 
 const STYLE = `
@@ -69,6 +81,11 @@ const STYLE = `
     --shadow: none;
   }
 }
+
+/* Only the phrases matching <html lang> are shown. */
+html[lang="en"] [lang="ja"],
+html[lang="ja"] [lang="en"] { display: none; }
+
 * { box-sizing: border-box; }
 body {
   margin: 0;
@@ -89,13 +106,24 @@ header.hero p { margin: 6px 0 0; color: var(--muted); max-width: 70ch; }
   background: var(--idle-bg); color: var(--idle-fg); font-size: 13px; max-width: 80ch;
 }
 
+.langswitch {
+  margin-left: auto; flex: none; align-self: flex-start;
+  display: inline-flex; border: 1px solid var(--border); border-radius: 999px;
+  overflow: hidden; background: var(--panel);
+}
+.langswitch button {
+  font: inherit; font-size: 13px; padding: 6px 14px;
+  border: 0; background: transparent; color: var(--muted); cursor: pointer;
+}
+.langswitch button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+
 .stats { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 8px; }
 .stat {
   background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
   padding: 10px 16px; box-shadow: var(--shadow); min-width: 118px;
 }
 .stat b { display: block; font-size: 24px; line-height: 1.2; }
-.stat span { color: var(--muted); font-size: 12px; }
+.stat span.label { color: var(--muted); font-size: 12px; }
 
 .toolbar {
   position: sticky; top: 0; z-index: 5; margin: 16px 0 24px; padding: 12px 0;
@@ -112,7 +140,6 @@ header.hero p { margin: 6px 0 0; color: var(--muted); max-width: 70ch; }
 
 section { margin-bottom: 36px; }
 section > h2 { margin: 0 0 2px; font-size: 19px; }
-section > h2 .ja { color: var(--muted); font-weight: 400; font-size: 14px; margin-left: 8px; }
 section > p.lead { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
 
 .panel {
@@ -125,6 +152,7 @@ thead th {
   border-top: 0; font-size: 11px; text-transform: uppercase; letter-spacing: .6px;
   color: var(--muted); font-weight: 600; white-space: nowrap;
 }
+html[lang="ja"] thead th { text-transform: none; letter-spacing: 0; font-size: 12px; }
 tbody tr:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
 td.name { min-width: 230px; }
 td.name .pkg { font-weight: 600; }
@@ -164,10 +192,34 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--borde
 tr[hidden], section[hidden] { display: none; }
 `;
 
+/** Chooses the language before first paint, so the page never flashes. */
+const EARLY_SCRIPT = `
+try {
+  var saved = localStorage.getItem('lang');
+  document.documentElement.lang =
+    saved || ((navigator.language || 'en').toLowerCase().startsWith('ja') ? 'ja' : 'en');
+} catch (e) {}
+`;
+
 const SCRIPT = `
 const search = document.getElementById('q');
 const filters = [...document.querySelectorAll('[data-filter]')];
 const showExternal = document.getElementById('external');
+const langButtons = [...document.querySelectorAll('[data-lang]')];
+
+const PLACEHOLDER = {
+  en: 'Filter by name or description…',
+  ja: '名前や説明で絞り込み…',
+};
+
+function setLang(lang) {
+  document.documentElement.lang = lang;
+  search.placeholder = PLACEHOLDER[lang];
+  for (const button of langButtons) {
+    button.setAttribute('aria-pressed', String(button.dataset.lang === lang));
+  }
+  try { localStorage.setItem('lang', lang); } catch (e) {}
+}
 
 function apply() {
   const needle = search.value.trim().toLowerCase();
@@ -198,36 +250,54 @@ showExternal.addEventListener('change', () => {
 });
 search.addEventListener('input', apply);
 for (const f of filters) f.addEventListener('change', apply);
+for (const button of langButtons) {
+  button.addEventListener('click', () => setLang(button.dataset.lang));
+}
+
+setLang(document.documentElement.lang === 'ja' ? 'ja' : 'en');
 `;
 
 function issuesCell(pkg) {
   const count = pkg.github?.openIssues ?? 0;
-  const href = `${pkg.github?.url}/issues`;
   if (!count) return '<span class="muted">0</span>';
-  return `<a class="tag warn" href="${esc(href)}">${count}</a>`;
+  return `<a class="tag warn" href="${esc(`${pkg.github?.url}/issues`)}">${count}</a>`;
 }
 
 function pullsCell(pkg) {
   const count = pkg.github?.openPullRequests ?? 0;
-  const href = `${pkg.github?.url}/pulls`;
   if (!count) return '<span class="muted">0</span>';
-  return `<a class="tag warn" href="${esc(href)}">${count}</a>`;
+  return `<a class="tag warn" href="${esc(`${pkg.github?.url}/pulls`)}">${count}</a>`;
 }
 
 function revisionCell(pkg) {
   const rev = pkg.revision;
   if (!rev || rev.state === 'empty') return '<span class="muted">—</span>';
 
-  const tag = rev.tag?.name ? esc(rev.tag.name) : null;
+  const tag = rev.tag?.name ? esc(rev.tag.name) : '';
+  const when = relativeDate(rev.head?.committedDate);
+
   if (rev.state === 'untagged') {
-    return `<span class="tag">untagged</span><span class="sub">${relativeDate(rev.head?.committedDate)}</span>`;
+    return `<span class="tag">${t('untagged', 'タグなし')}</span><span class="sub">${when}</span>`;
   }
   if (rev.state === 'released') {
-    return `<span class="tag ok">${tag}</span><span class="sub">tip is tagged</span>`;
+    return `<span class="tag ok">${tag}</span><span class="sub">${t('tip is tagged', '先頭にタグあり')}</span>`;
   }
-  const ahead = rev.aheadBy == null ? 'ahead' : `${rev.aheadBy} ahead`;
-  return `<span class="tag warn">${ahead}</span><span class="sub">since ${tag} · ${relativeDate(rev.head?.committedDate)}</span>`;
+
+  const ahead =
+    rev.aheadBy == null
+      ? t('ahead', '先行')
+      : t(`${rev.aheadBy} ahead`, `${rev.aheadBy} コミット先行`);
+  return `<span class="tag warn">${ahead}</span><span class="sub">${t(`since ${tag}`, `${tag} 以降`)} · ${when}</span>`;
 }
+
+const PAGES_LABEL = {
+  live: ['live', '公開中'],
+  built: ['built', 'ビルド済'],
+  building: ['building', 'ビルド中'],
+  errored: ['errored', 'エラー'],
+  down: ['down', '応答なし'],
+  unknown: ['unknown', '不明'],
+};
 
 function pagesCell(pkg, thumb) {
   const pages = pkg.pages;
@@ -244,25 +314,36 @@ function pagesCell(pkg, thumb) {
       : status === 'errored' || status === 'down'
         ? 'bad'
         : 'warn';
+  const [en, ja] = PAGES_LABEL[status] ?? [status, status];
+  const label = t(esc(en), esc(ja));
 
-  if (!url) return `<span class="tag ${badgeClass}">${esc(status)}</span>`;
+  if (!url) return `<span class="tag ${badgeClass}">${label}</span>`;
 
-  const badge = `<a class="tag ${badgeClass}" href="${esc(url)}">${esc(status)}</a>`;
+  const badge = `<a class="tag ${badgeClass}" href="${esc(url)}">${label}</a>`;
   if (!thumb) return badge;
 
-  return `<a href="${esc(url)}"><img class="thumb" loading="lazy" src="${esc(thumb)}" alt="${esc(pkg.repo)} home page"></a>${badge}`;
+  const alt = `${pkg.repo} home page`;
+  return `<a href="${esc(url)}"><img class="thumb" loading="lazy" src="${esc(thumb)}" alt="${esc(alt)}"></a>${badge}`;
 }
 
 function npmCell(pkg) {
   const npm = pkg.npm ?? {};
-  if (npm.notAPackage) return '<span class="muted">—<span class="sub">not published</span></span>';
-  if (!npm.published) return '<span class="tag bad">unpublished</span>';
+  if (npm.notAPackage) {
+    return `<span class="muted">—<span class="sub">${t('not an npm package', 'npm 対象外')}</span></span>`;
+  }
+  if (!npm.published) {
+    return `<span class="tag bad">${t('unpublished', '未公開')}</span>`;
+  }
 
   const href = `https://www.npmjs.com/package/${npm.name}`;
   const parts = [`<a class="tag ok" href="${esc(href)}">${esc(npm.latest ?? '?')}</a>`];
-  if (npm.deprecated) parts.push('<span class="tag bad">deprecated</span>');
+  if (npm.deprecated) parts.push(`<span class="tag bad">${t('deprecated', '非推奨')}</span>`);
+
   if (npm.matchesTag === false) {
-    parts.push(`<span class="sub">⚠️ tag ${esc(pkg.revision?.tag?.name ?? '')} ≠ npm</span>`);
+    const tag = esc(pkg.revision?.tag?.name ?? '');
+    parts.push(
+      `<span class="sub">⚠️ ${t(`tag ${tag} ≠ npm`, `タグ ${tag} と npm が不一致`)}</span>`,
+    );
   } else {
     parts.push(`<span class="sub">${relativeDate(npm.lastPublishedAt)}</span>`);
   }
@@ -275,7 +356,12 @@ function depsCell(pkg) {
 
   const order = { prod: 0, peer: 1, optional: 2, dev: 3 };
   const chips = [...deps]
-    .sort((a, b) => Number(b.family) - Number(a.family) || order[a.kind] - order[b.kind] || a.name.localeCompare(b.name))
+    .sort(
+      (a, b) =>
+        Number(b.family) - Number(a.family) ||
+        order[a.kind] - order[b.kind] ||
+        a.name.localeCompare(b.name),
+    )
     .map((dep) => {
       const classes = ['chip'];
       if (dep.local) classes.push('local');
@@ -285,17 +371,19 @@ function depsCell(pkg) {
 
       const short = dep.name.startsWith('@') ? dep.name.split('/')[1] : dep.name;
       const mark = dep.local ? '💀' : dep.stale ? '⚠️' : '';
+      // A tooltip cannot hold two languages, so this one is built from the
+      // names and numbers themselves rather than from sentences.
       const title = [
         dep.name,
-        `range ${dep.range}`,
-        dep.latest ? `latest ${dep.latest}` : null,
-        dep.local ? 'local reference' : null,
-        dep.stale ? `stale: ${dep.latest} is outside the range` : null,
-        dep.missing ? 'not on the registry' : null,
+        dep.range,
+        dep.latest && dep.latest !== dep.wanted ? `→ ${dep.latest}` : null,
         `(${dep.kind})`,
+        dep.local ? '💀' : null,
+        dep.stale ? '⚠️' : null,
+        dep.missing ? '404' : null,
       ]
         .filter(Boolean)
-        .join(' · ');
+        .join(' ');
 
       return `<span class="${classes.join(' ')}" title="${esc(title)}">${esc(short)}@${esc(dep.range)}${mark}</span>`;
     });
@@ -323,7 +411,7 @@ function row(pkg, thumb) {
     .join(' ')
     .toLowerCase();
 
-  const archived = gh.isArchived ? ' <span class="tag">archived</span>' : '';
+  const archived = gh.isArchived ? ` <span class="tag">${t('archived', 'アーカイブ')}</span>` : '';
   const note = pkg.note ? `<span class="sub">${esc(pkg.note)}</span>` : '';
 
   return `<tr data-search="${esc(haystack)}" data-flags="${esc(flagsFor(pkg).join(' '))}">
@@ -340,6 +428,37 @@ function row(pkg, thumb) {
   <td class="deps">${depsCell(pkg)}</td>
 </tr>`;
 }
+
+const HEADERS = [
+  ['Package', 'パッケージ'],
+  ['Issues', 'Issue'],
+  ['PRs', 'PR'],
+  ['Revision', 'リビジョン'],
+  ['GitHub&nbsp;Pages', 'GitHub&nbsp;Pages'],
+  ['npm', 'npm'],
+  ['Upstream dependencies', '上流依存'],
+];
+
+const STAT_LABELS = [
+  ['packages', 'パッケージ'],
+  ['published on npm', 'npm 公開済み'],
+  ['with GitHub Pages', 'Pages あり'],
+  ['open issues', '未クローズ issue'],
+  ['open pull requests', '未クローズ PR'],
+  ['unreleased commits', '未リリースあり'],
+  ['behind our own upstreams', '自前上流が stale'],
+  ['behind third-party upstreams', '他社上流が stale'],
+  ['with local upstreams', 'ローカル参照あり'],
+];
+
+const FILTERS = [
+  ['issues', 'open issues', 'issue あり'],
+  ['unreleased', 'unreleased', '未リリース'],
+  ['unpublished', 'not on npm', 'npm 未公開'],
+  ['stale-family', 'stale (ours)', 'stale（自前）'],
+  ['stale-external', 'stale (third-party)', 'stale（他社）'],
+  ['local', 'local upstream', 'ローカル参照'],
+];
 
 async function main() {
   const report = JSON.parse(await readFile(DATA, 'utf8'));
@@ -358,19 +477,24 @@ async function main() {
     byCategory.get(pkg.category)?.push(pkg);
   }
 
+  const head = HEADERS.map(([en, ja]) => `<th>${t(en, ja)}</th>`).join('');
+
   const sections = report.categories
     .map((category) => {
       const packages = byCategory.get(category.id) ?? [];
       if (!packages.length) return '';
+
       const rows = packages.map((pkg) => row(pkg, thumbs.get(pkg.repo))).join('\n');
+      const heading = t(esc(category.title), esc(category.titleJa ?? category.title));
+      const lead = category.description
+        ? `<p class="lead">${t(esc(category.description), esc(category.descriptionJa ?? category.description))}</p>`
+        : '';
+
       return `<section data-category="${esc(category.id)}">
-  <h2>${esc(category.title)}${category.titleJa ? `<span class="ja">${esc(category.titleJa)}</span>` : ''}</h2>
-  ${category.description ? `<p class="lead">${esc(category.description)}</p>` : ''}
+  <h2>${heading}</h2>
+  ${lead}
   <div class="panel"><table>
-    <thead><tr>
-      <th>Package</th><th>Issues</th><th>PRs</th><th>Revision</th>
-      <th>GitHub&nbsp;Pages</th><th>npm</th><th>Upstream dependencies</th>
-    </tr></thead>
+    <thead><tr>${head}</tr></thead>
     <tbody>
 ${rows}
     </tbody>
@@ -379,21 +503,32 @@ ${rows}
     })
     .join('\n');
 
-  const total = report.packages.length;
-  const onNpm = report.packages.filter((p) => p.npm?.published).length;
-  const withPages = report.packages.filter((p) => p.pages?.enabled).length;
-  const openIssues = report.packages.reduce((sum, p) => sum + (p.github?.openIssues ?? 0), 0);
-  const openPulls = report.packages.reduce((sum, p) => sum + (p.github?.openPullRequests ?? 0), 0);
-  const unreleased = report.packages.filter((p) => p.revision?.state === 'unreleased').length;
-  const staleFamily = report.packages.filter((p) =>
-    p.dependencies?.some((d) => d.stale && d.family),
-  ).length;
-  const staleExternal = report.packages.filter((p) =>
-    p.dependencies?.some((d) => d.stale && !d.family),
-  ).length;
-  const localDeps = report.packages.filter((p) => p.dependencies?.some((d) => d.local)).length;
+  const counts = [
+    report.packages.length,
+    report.packages.filter((p) => p.npm?.published).length,
+    report.packages.filter((p) => p.pages?.enabled).length,
+    report.packages.reduce((sum, p) => sum + (p.github?.openIssues ?? 0), 0),
+    report.packages.reduce((sum, p) => sum + (p.github?.openPullRequests ?? 0), 0),
+    report.packages.filter((p) => p.revision?.state === 'unreleased').length,
+    report.packages.filter((p) => p.dependencies?.some((d) => d.stale && d.family)).length,
+    report.packages.filter((p) => p.dependencies?.some((d) => d.stale && !d.family)).length,
+    report.packages.filter((p) => p.dependencies?.some((d) => d.local)).length,
+  ];
+
+  const stats = STAT_LABELS.map(
+    ([en, ja], i) =>
+      `  <div class="stat"><b>${counts[i]}</b><span class="label">${t(en, ja)}</span></div>`,
+  ).join('\n');
+
+  const filterBoxes = FILTERS.map(
+    ([flag, en, ja]) =>
+      `  <label><input type="checkbox" data-filter="${flag}"> ${t(en, ja)}</label>`,
+  ).join('\n');
 
   const site = report.site ?? {};
+  const generated = esc(report.generatedAt);
+  const repoUrl = esc(site.repoUrl ?? '#');
+
   const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -407,6 +542,7 @@ ${rows}
 <meta property="og:description" content="${esc(site.tagline ?? '')}">
 <meta property="og:image" content="assets/og.png">
 <meta name="twitter:card" content="summary_large_image">
+<script>${EARLY_SCRIPT}</script>
 <style>${STYLE}</style>
 </head>
 <body>
@@ -415,41 +551,36 @@ ${rows}
   <img class="mark" src="assets/icon.svg" alt="">
   <div>
     <h1>${esc(site.title ?? 'Packages')}</h1>
-    <p>${esc(site.tagline ?? '')}</p>
-    ${site.disclaimer ? `<div class="disclaimer">${esc(site.disclaimer)}</div>` : ''}
+    <p>${t(esc(site.tagline ?? ''), esc(site.taglineJa ?? site.tagline ?? ''))}</p>
+    ${
+      site.disclaimer
+        ? `<div class="disclaimer">${t(esc(site.disclaimer), esc(site.disclaimerJa ?? site.disclaimer))}</div>`
+        : ''
+    }
+  </div>
+  <div class="langswitch" role="group" aria-label="Language / 言語">
+    <button type="button" data-lang="en" aria-pressed="true">English</button>
+    <button type="button" data-lang="ja" aria-pressed="false">日本語</button>
   </div>
 </header>
 
 <div class="stats">
-  <div class="stat"><b>${total}</b><span>packages</span></div>
-  <div class="stat"><b>${onNpm}</b><span>published on npm</span></div>
-  <div class="stat"><b>${withPages}</b><span>with GitHub Pages</span></div>
-  <div class="stat"><b>${openIssues}</b><span>open issues</span></div>
-  <div class="stat"><b>${openPulls}</b><span>open pull requests</span></div>
-  <div class="stat"><b>${unreleased}</b><span>unreleased commits</span></div>
-  <div class="stat"><b>${staleFamily}</b><span>behind our own upstreams</span></div>
-  <div class="stat"><b>${staleExternal}</b><span>behind third-party upstreams</span></div>
-  <div class="stat"><b>${localDeps}</b><span>with local upstreams</span></div>
+${stats}
 </div>
 
 <div class="toolbar">
   <input id="q" type="search" placeholder="Filter by name or description…" autocomplete="off">
-  <label><input type="checkbox" data-filter="issues"> open issues</label>
-  <label><input type="checkbox" data-filter="unreleased"> unreleased</label>
-  <label><input type="checkbox" data-filter="unpublished"> not on npm</label>
-  <label><input type="checkbox" data-filter="stale-family"> stale (ours)</label>
-  <label><input type="checkbox" data-filter="stale-external"> stale (third-party)</label>
-  <label><input type="checkbox" data-filter="local"> local upstream</label>
-  <label><input type="checkbox" id="external"> show external deps</label>
-  <span class="legend">💀 local reference · ⚠️ stale range</span>
+${filterBoxes}
+  <label><input type="checkbox" id="external"> ${t('show external deps', '他社依存も表示')}</label>
+  <span class="legend">${t('💀 local reference · ⚠️ stale range', '💀 ローカル参照 ・ ⚠️ stale')}</span>
 </div>
 
 ${sections}
 
 <footer>
-  Generated ${esc(report.generatedAt)} ·
-  <a href="${esc(site.repoUrl ?? '#')}">source</a> ·
-  <a href="${esc(site.repoUrl ?? '#')}/blob/main/catalog.yaml">catalog.yaml</a>
+  ${t(`Generated ${generated}`, `生成 ${generated}`)} ·
+  <a href="${repoUrl}">${t('source', 'ソース')}</a> ·
+  <a href="${repoUrl}/blob/main/catalog.yaml">catalog.yaml</a>
 </footer>
 </div>
 <script>${SCRIPT}</script>
@@ -458,7 +589,9 @@ ${sections}
 `;
 
   await writeFile(OUT, html);
-  console.log(`wrote ${OUT} (${total} packages in ${report.categories.length} categories)`);
+  console.log(
+    `wrote ${OUT} (${report.packages.length} packages in ${report.categories.length} categories, en/ja)`,
+  );
 }
 
 await main();

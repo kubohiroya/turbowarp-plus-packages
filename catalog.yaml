@@ -16,9 +16,13 @@ site:
   tagline: >-
     An independent family of extensions, toolchains and applications that
     complement the TurboWarp project.
+  taglineJa: TurboWarp を補完する、独立した拡張・ツールチェーン・アプリケーション群。
   disclaimer: >-
     Unofficial. Not affiliated with or endorsed by the TurboWarp project.
     These packages add capabilities on top of TurboWarp rather than replacing it.
+  disclaimerJa: >-
+    非公式。TurboWarp プロジェクトとは提携しておらず、承認も受けていません。
+    本家を置き換えるのではなく、その上に機能を足すものです。
   repoUrl: https://github.com/kubohiroya/turbowarp-plus-packages
 
 # Dependency ranges using any of these protocols are reported as local (skull).
@@ -29,6 +33,7 @@ categories:
     title: Toolchain & Templates
     titleJa: ツールチェーン・テンプレート
     description: Build, package and preview TurboWarp extensions and projects.
+    descriptionJa: TurboWarp 拡張とプロジェクトのビルド・パッケージ化・プレビュー。
     packages:
       - sb3-toolchain
       - vite-plugin-turbowarp-extension
@@ -43,6 +48,7 @@ categories:
     title: Runtime Foundation
     titleJa: ランタイム基盤
     description: Host-neutral contracts and adapters the other extensions build on.
+    descriptionJa: 他の拡張が土台にする、ホスト非依存の契約とアダプタ。
     packages:
       - turbowarp-runtime-adapter
       - turbowarp-runtime-expression
@@ -57,6 +63,7 @@ categories:
     title: Data & Documents
     titleJa: データ・ドキュメント
     description: Structured data, serialisation formats and editors.
+    descriptionJa: 構造化データ、シリアライズ形式、エディタ。
     packages:
       - turbowarp-structured-data
       - turbowarp-yaml-json
@@ -73,6 +80,7 @@ categories:
     title: Stage & Presentation
     titleJa: ステージ・表示
     description: Text, bubbles, overlays and asset handling on the stage.
+    descriptionJa: ステージ上のテキスト・吹き出し・オーバーレイと素材管理。
     packages:
       - turbowarp-svg-text
       - turbowarp-bubble
@@ -86,6 +94,7 @@ categories:
     title: 3D, AR & Space
     titleJa: 3D・AR・空間
     description: Scene graphs, 3D scene description and spatial calibration.
+    descriptionJa: シーングラフ、3D シーン記述、空間校正。
     packages:
       - turbowarp-scene-graph
       - turbowarp-3d-scene-dsl
@@ -99,6 +108,7 @@ categories:
     title: Sensing & Input
     titleJa: センシング・入力
     description: Cameras, codes, pose estimation, NFC, speech and pointer input.
+    descriptionJa: カメラ、コード読み取り、姿勢推定、NFC、音声、ポインタ入力。
     packages:
       - turbowarp-camera-source
       - turbowarp-camera-calibration
@@ -116,6 +126,7 @@ categories:
     title: Networking & Services
     titleJa: 通信・外部サービス
     description: Peer connections, HTTP bridges and third-party service adapters.
+    descriptionJa: ピア接続、HTTP ブリッジ、外部サービス連携。
     packages:
       - turbowarp-webrtc
       - turbowarp-webrtc-qrcode-pairing
@@ -129,6 +140,7 @@ categories:
     title: Applications
     titleJa: アプリケーション
     description: Deployable applications built from the packages above.
+    descriptionJa: 上記パッケージを組み合わせた、配布可能なアプリケーション。
     packages:
       - turbowarp-kamishibai-app
       - turbowarp-camera-calibration-app
@@ -141,6 +153,7 @@ categories:
     title: Documentation & Samples
     titleJa: ドキュメント・サンプル
     description: Guides, sample projects and the shared documentation shell.
+    descriptionJa: ガイド、サンプルプロジェクト、共通ドキュメント基盤。
     packages:
       - turbowarp-kamishibai-docs
       - turbowarp-kamishibai-samples
