@@ -29,7 +29,8 @@ localProtocols: [file:, link:, workspace:, portal:, patch:]
 # and stop at the first "yes":
 #   1. Is it deployed and used as-is rather than depended on?       -> apps
 #   2. Is it a guide, sample collection or documentation site?      -> docs
-#   3. Is it only used while building, packaging or previewing?     -> toolchain
+#   3. Is it for building, packaging or previewing extensions, or
+#      a shared kit extensions use to declare their block editors?  -> toolchain
 #   4. Is it the forked editor (scratch-gui) or a package that the
 #      fork lists in its dependencies to extend the editor?         -> foundation
 #   5. Does a packaged app use it to host the TurboWarp runtime in
@@ -45,10 +46,12 @@ localProtocols: [file:, link:, workspace:, portal:, patch:]
 
 categories:
   # Includes: build tools, bundler plugins, project and app templates, manifest
-  #   contracts consumed by those templates, local preview and live reload.
-  # Excludes: anything a running project loads at runtime (-> shell, contracts
-  #   or a domain category). A template stays here even though its name says
-  #   "app".
+  #   contracts consumed by those templates, local preview and live reload, and
+  #   the data editor kit that extensions use to declare schema-driven block
+  #   editors (the forked editor also bundles it, but it is authored here).
+  # Excludes: anything else a running project loads at runtime (-> shell,
+  #   contracts or a domain category). A template stays here even though its
+  #   name says "app".
   - id: toolchain
     title: Toolchain & Templates
     titleJa: ツールチェーン・テンプレート
@@ -62,19 +65,20 @@ categories:
       - turbowarp-sb3-source-builder
       - turbowarp-local-preview
       - turbowarp-live-reload-controller
+      - turbowarp-extension-data-editor
 
   # Includes: the scratch-gui fork of the TurboWarp editor, and the packages it
-  #   lists in its dependencies to extend the editor itself (the block data
-  #   editor, the extension security dialog).
-  # Excludes: extensions that only run inside the editor (-> their domain), and
-  #   anything a packaged app uses outside the editor (-> shell).
+  #   lists in its dependencies to extend the editor itself (the extension
+  #   security dialog).
+  # Excludes: extensions that only run inside the editor (-> their domain),
+  #   anything a packaged app uses outside the editor (-> shell), and the data
+  #   editor kit, which extensions use as well (-> toolchain).
   - id: foundation
     title: Editor Foundation
     titleJa: エディター基盤
     description: The forked TurboWarp editor and the packages built into it.
     packages:
       - scratch-gui
-      - turbowarp-extension-data-editor
       - turbowarp-extension-security-dialog
 
   # Includes: DOM shell primitives, runtime adapters, and the title and
@@ -113,7 +117,7 @@ categories:
   #   storage.
   # Excludes: drawing it on the stage (-> media), sending it to another machine
   #   (-> network), the shared named-data contract itself (-> contracts), the
-  #   data editor built into the forked editor (-> foundation), and thin
+  #   data editor kit for block editors (-> toolchain), and thin
   #   wrappers of a parser or generator library (-> wraps).
   #   HTTP body integration alone does not make a data package networking.
   - id: data
