@@ -88,16 +88,18 @@ test('compatible broad and peer ranges remain unchanged; external dependencies a
   assert.deepEqual(plan.steps[1].dependencyUpdates, []);
 });
 
-test('incompatible peer ranges require a compatibility decision and block dependents', () => {
+test('incompatible peer updates are concrete proposals and propagate without enabling apply', () => {
   const plan = createReleasePlan(report(pkg('root', { dependencies: [dep('a')] }),
     pkg('a', { dependencies: [dep('b', '0.9.0', 'peer')] }), pkg('b')), 'root');
-  assert.equal(plan.ready, false);
-  assert.equal(plan.steps[1].dependencyUpdates[0].to, null);
+  assert.equal(plan.ready, true);
+  assert.equal(plan.applyReady, false);
+  assert.equal(plan.steps[1].dependencyUpdates[0].to, '1.2.3');
   assert.equal(plan.steps[1].dependencyUpdates[0].targetVersion, '1.2.3');
   assert.equal(plan.steps[1].dependencyUpdates[0].field, 'peerDependencies');
-  assert(plan.steps[1].issues.some(i => i.code === 'range-review'));
-  assert(plan.steps[2].issues.some(i => i.code === 'upstream-blocked'));
-  assert.deepEqual(plan.publishTargets, []);
+  assert(plan.steps[1].issues.some(i => i.code === 'peer-compatibility' && i.requiresReview));
+  assert.equal(plan.steps[2].dependencyUpdates[0].to, '1.3.0');
+  assert.equal(plan.publishTargets.length, 2);
+  assert.match(formatReleasePlan(plan), /レビュー必要: 1件/);
 });
 
 test('git, workspace, alias and unsupported complex ranges are never silently replaced', () => {
@@ -108,6 +110,59 @@ test('git, workspace, alias and unsupported complex ranges are never silently re
     assert.equal(plan.steps[1].dependencyUpdates[0].to, null, range);
     assert.equal(plan.steps[1].dependencyUpdates[0].from, range);
   }
+});
+
+test('peer proposals preserve simple styles or extend complex ranges without claiming compatibility', () => {
+  for (const [range, to] of [['0.9.0', '1.2.3'], ['^0.9.0', '^1.2.3'], ['~0.9.0', '~1.2.3'],
+    ['>=0.1 <1', '>=0.1 <1 || 1.2.3']]) {
+    const plan = createReleasePlan(report(pkg('a', { dependencies: [dep('b', range, 'peer')] }), pkg('b')), 'a');
+    assert.equal(plan.ready, true, range);
+    assert.equal(plan.applyReady, false);
+    assert.equal(plan.steps[1].dependencyUpdates[0].to, to);
+    assert(plan.steps[1].issues.some(i => i.requiresReview && /互換性は未検証/.test(i.message)));
+  }
+});
+
+test('only Git references to the recorded family repository get an npm replacement proposal', () => {
+  for (const [range, ready] of [
+    ['git+https://github.com/family/b.git#abc', true],
+    ['git+ssh://git@github.com/family/b.git#abc', true],
+    ['git+https://github.com/other/b.git#abc', false],
+    ['git+https://github.com/family/other.git#abc', false],
+    ['git+https://github.com.example.com/family/b.git#abc', false],
+  ] as const) {
+    const plan = createReleasePlan(report(pkg('a', { dependencies: [dep('b', range)] }), pkg('b')), 'a');
+    assert.equal(plan.ready, ready, range);
+    assert.equal(plan.applyReady, false);
+    assert.equal(plan.steps[1].dependencyUpdates[0].to, ready ? '1.2.3' : null);
+    if (ready) assert(plan.steps[1].issues.some(i => i.code === 'git-to-npm' && i.requiresReview));
+  }
+});
+
+test('RC updates reuse prepared versions, otherwise advance the same series and skip occupied numbers', () => {
+  for (const [current, published, versions, next, change] of [
+    ['4.0.0-rc.56', '4.0.0-rc.49', ['4.0.0-rc.49', '4.0.0-rc.53'], '4.0.0-rc.56', 'prepared'],
+    ['4.0.0-rc.49', '4.0.0-rc.49', ['4.0.0-rc.49', '4.0.0-rc.50'], '4.0.0-rc.51', 'prerelease'],
+  ] as const) {
+    const node = ahead('a', {
+      manifest: { ...pkg('a').manifest!, version: current },
+      npm: { name: '@family/a', published: true, latest: published, versions: [...versions] },
+    });
+    node.revision!.tag!.name = `v${published}`;
+    const plan = createReleasePlan(report(node), 'a');
+    assert.equal(plan.ready, true);
+    assert.equal(plan.applyReady, false);
+    assert.equal(plan.steps[0].nextVersion, next);
+    assert.equal(plan.steps[0].versionChange, change);
+    assert(plan.steps[0].issues.some(i => i.code === 'prerelease-channel' && i.requiresReview));
+  }
+  const initial = pkg('a', { manifest: { ...pkg('a').manifest!, version: '4.0.0-rc.1' },
+    npm: { name: '@family/a', published: false } });
+  assert.equal(createReleasePlan(report(initial), 'a').steps[0].nextVersion, '4.0.0-rc.1');
+  const olderRC = ahead('a', { manifest: { ...pkg('a').manifest!, version: '1.2.3-rc.1' } });
+  const blocked = createReleasePlan(report(olderRC), 'a');
+  assert.equal(blocked.ready, false);
+  assert(blocked.steps[0].issues.some(i => i.code === 'prerelease-series'));
 });
 
 test('a newer declared dependency is never downgraded to the snapshot version', () => {
@@ -178,9 +233,10 @@ test('untagged and prerelease states remain explicit instead of implying publica
   const prerelease = createReleasePlan(report(ahead('a', {
     manifest: { ...pkg('a').manifest!, version: '2.0.0-rc.1' },
   })), 'a');
-  assert.equal(prerelease.ready, false);
-  assert.equal(prerelease.steps[0].nextVersion, null);
-  assert.deepEqual(prerelease.publishTargets, []);
+  assert.equal(prerelease.ready, true);
+  assert.equal(prerelease.applyReady, false);
+  assert.equal(prerelease.steps[0].nextVersion, '2.0.0-rc.1');
+  assert.equal(prerelease.steps[0].versionChange, 'prepared');
 });
 
 test('an untagged upstream supplies its published version without blocking the dependent', () => {
@@ -346,7 +402,7 @@ test('CLI writes only stdout, works offline, validates flags, and reports blocke
     assert.equal(run('a', '--data', join(dir, 'missing.json')).status, 1);
     await writeFile(path, '{');
     assert.equal(run('a', '--data', path).status, 1);
-    await writeFile(path, JSON.stringify(report(pkg('a', { dependencies: [dep('b', '0.1.0', 'peer')] }), pkg('b'))));
+    await writeFile(path, JSON.stringify(report(pkg('a', { dependencies: [dep('b')] }), pkg('b', { errors: ['collection failed'] }))));
     const blocked = run('a', '--data', path, '--json');
     assert.equal(blocked.status, 2);
     assert.equal(JSON.parse(blocked.stdout).ready, false);

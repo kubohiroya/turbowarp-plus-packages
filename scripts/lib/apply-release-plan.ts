@@ -31,6 +31,9 @@ export async function applyReleasePlan(plan: ReleasePlan, reposDir: string): Pro
   if (!plan.ready || plan.steps.some((step) => step.action === 'blocked')) {
     throw new Error('未解決事項があるため、ファイルは変更しません。');
   }
+  if (!plan.applyReady || plan.steps.some(step => step.issues.some(issue => issue.requiresReview))) {
+    throw new Error('レビューが必要な変更案があるため、ローカル自動適用は行いません。');
+  }
   const parent = await realpath(reposDir);
   const edits: Edit[] = [];
   for (const step of plan.steps) {
