@@ -119,6 +119,7 @@ export interface PagesStatus {
   cname?: string | null;
   live?: boolean;
   httpStatus?: number | null;
+  svgFaviconUrl?: string | null;
   error?: string;
 }
 

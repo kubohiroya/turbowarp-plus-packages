@@ -159,9 +159,9 @@ html[lang="ja"] thead th { text-transform: none; letter-spacing: 0; font-size: 1
 tbody tr:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
 td.name { min-width: 230px; }
 td.name .pkg { font-weight: 600; display: flex; align-items: center; gap: 7px; }
-/* The extension's own palette icon, at the size the palette gives it, so the
-   row shows the same mark a user sees on the block. */
+/* Show the app's favicon or the extension's palette icon at the same size. */
 td.name .pkg .icon { flex: 0 0 auto; width: 20px; height: 20px; }
+td.name .pkg img.icon { object-fit: contain; }
 td.name .pkg .icon svg { width: 100%; height: 100%; display: block; }
 td.name .desc {
   color: var(--muted); font-size: 12.5px; margin-top: 2px; max-width: 42ch;
@@ -437,9 +437,11 @@ function row(pkg: DashboardPackage, thumb: Thumbnail | undefined) {
     .toLowerCase();
 
   const archived = gh.isArchived ? ` <span class="tag">${t('archived', 'アーカイブ')}</span>` : '';
-  // Inlined as collected: the collector has already refused anything it could
-  // not vouch for, so what arrives here is a plain drawing.
-  const icon = pkg.icon ? `<span class="icon" aria-hidden="true">${pkg.icon}</span>` : '';
+  // Favicons stay in an image context; only vetted palette drawings are inlined.
+  const favicon = pkg.category === 'apps' ? pkg.pages?.svgFaviconUrl : null;
+  const icon = favicon
+    ? `<img class="icon" src="${esc(favicon)}" alt="" width="20" height="20">`
+    : pkg.icon ? `<span class="icon" aria-hidden="true">${pkg.icon}</span>` : '';
   const note = pkg.note ? `<span class="sub">${esc(pkg.note)}</span>` : '';
   // With no Japanese summary the English one stands in, untagged, so it shows
   // in both languages rather than leaving an empty cell.
