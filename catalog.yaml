@@ -17,9 +17,13 @@ site:
   tagline: >-
     An independent family of extensions, toolchains and applications that
     complement the TurboWarp project.
+  taglineJa: TurboWarp を補完する、独立した拡張・ツールチェーン・アプリケーション群。
   disclaimer: >-
     Unofficial. Not affiliated with or endorsed by the TurboWarp project.
     These packages add capabilities on top of TurboWarp rather than replacing it.
+  disclaimerJa: >-
+    非公式。TurboWarp プロジェクトとは提携しておらず、承認も受けていません。
+    本家を置き換えるのではなく、その上に機能を足すものです。
   repoUrl: https://github.com/kubohiroya/turbowarp-plus-packages
 
 # Dependency ranges using any of these protocols are reported as local (skull).
@@ -56,6 +60,7 @@ categories:
     title: Toolchain & Templates
     titleJa: ツールチェーン・テンプレート
     description: Build, package and preview TurboWarp extensions and projects.
+    descriptionJa: TurboWarp 拡張とプロジェクトのビルド・パッケージ化・プレビュー。
     packages:
       - sb3-toolchain
       - vite-plugin-turbowarp-extension
@@ -77,6 +82,7 @@ categories:
     title: Editor Foundation
     titleJa: エディター基盤
     description: The forked TurboWarp editor and the packages built into it.
+    descriptionJa: フォークした TurboWarp エディターと、それに組み込まれたパッケージ。
     packages:
       - scratch-gui
       - turbowarp-extension-security-dialog
@@ -90,6 +96,7 @@ categories:
     title: App Shell
     titleJa: アプリシェル
     description: Host the TurboWarp runtime inside a packaged application page.
+    descriptionJa: パッケージ化したアプリのページに TurboWarp の実行環境を載せる。
     packages:
       - turbowarp-app-shell
       - turbowarp-runtime-adapter
@@ -106,6 +113,7 @@ categories:
     title: Extension Contracts
     titleJa: 拡張共通の契約
     description: Contracts and adapters shared by extensions across categories.
+    descriptionJa: カテゴリをまたいで拡張が共有する契約とアダプタ。
     packages:
       - turbowarp-runtime-expression
       - turbowarp-named-data
@@ -126,6 +134,7 @@ categories:
     title: Data & Documents
     titleJa: データ・ドキュメント
     description: Structured data, documents, text and storage.
+    descriptionJa: 構造化データ、ドキュメント、テキスト、ストレージ。
     packages:
       - turbowarp-structured-data
       - turbowarp-document-data
@@ -146,6 +155,7 @@ categories:
     title: Stage & Presentation
     titleJa: ステージ・表示
     description: Text, bubbles, notifications and asset handling on the stage.
+    descriptionJa: ステージ上のテキスト・吹き出し・通知と素材管理。
     packages:
       - turbowarp-svg-text
       - turbowarp-bubble
@@ -162,6 +172,7 @@ categories:
     title: 3D, AR & Space
     titleJa: 3D・AR・空間
     description: Scene graphs, 3D scene description and spatial calibration.
+    descriptionJa: シーングラフ、3D シーン記述、空間校正。
     packages:
       - turbowarp-scene-graph
       - turbowarp-3d-scene-dsl
@@ -181,6 +192,7 @@ categories:
     title: Sensing & Input
     titleJa: センシング・入力
     description: Cameras, codes, pose estimation and pointer input.
+    descriptionJa: カメラ、コード、姿勢推定、ポインタ入力。
     packages:
       - turbowarp-camera-source
       - turbowarp-camera-calibration
@@ -199,6 +211,7 @@ categories:
     title: Networking & Services
     titleJa: 通信・外部サービス
     description: Peer connections, HTTP bridges and third-party service adapters.
+    descriptionJa: ピア接続、HTTP ブリッジ、外部サービス連携。
     packages:
       - turbowarp-webrtc
       - turbowarp-webrtc-qrcode-pairing
@@ -219,6 +232,7 @@ categories:
     title: Library & API Wrappers
     titleJa: ライブラリ・API ラッパー
     description: Thin blocks over one JavaScript library or browser API.
+    descriptionJa: 1つの JavaScript ライブラリやブラウザ API を薄くブロック化したもの。
     packages:
       - turbowarp-qr-display
       - turbowarp-jsqr
@@ -235,6 +249,7 @@ categories:
     title: Applications
     titleJa: アプリケーション
     description: Deployable applications built from the packages above.
+    descriptionJa: 上記パッケージを組み合わせた、配布可能なアプリケーション。
     packages:
       - turbowarp-kamishibai-app
       - turbowarp-camera-calibration-app
@@ -250,6 +265,7 @@ categories:
     title: Documentation & Samples
     titleJa: ドキュメント・サンプル
     description: Guides, sample projects and the shared documentation shell.
+    descriptionJa: ガイド、サンプルプロジェクト、共通ドキュメント基盤。
     packages:
       - turbowarp-kamishibai-docs
       - turbowarp-kamishibai-samples

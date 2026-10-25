@@ -25,6 +25,13 @@ easy to lose track of across sixty-odd repositories.
 | **npm** | The published version, how long ago it went out, and `⚠️ tag ≠ npm` when the newest git tag and the npm version disagree. |
 | **Upstream dependencies** | Every dependency the package declares on another npm package, with the declared range. 💀 marks a range that points at a local path (`file:`, `link:`, `workspace:` …); ⚠️ marks a range that no longer covers the newest published version. |
 
+The page is bilingual. It opens in Japanese for a browser that asks for
+Japanese and in English otherwise, the switch in the top right changes it, and
+the choice is remembered. Both languages are in the same HTML: switching sets
+`<html lang>` and the stylesheet shows the matching phrases, so there is no
+second page to keep in step and no reload. The Japanese strings for the
+categories and the banner live in `catalog.yaml` beside the English ones.
+
 Dependencies on packages in this family are always shown. Third-party
 dependencies are hidden unless they are stale or local — turn on **show external
 deps** to see the rest. Dev dependencies appear only when they are one of ours,

@@ -49,11 +49,12 @@ export async function loadCatalog(path = 'catalog.yaml') {
     scope,
     site: raw.site ?? {},
     localProtocols: raw.localProtocols ?? DEFAULT_LOCAL_PROTOCOLS,
-    categories: raw.categories.map(({ id, title, titleJa, description }) => ({
+    categories: raw.categories.map(({ id, title, titleJa, description, descriptionJa }) => ({
       id,
       title,
       titleJa: titleJa ?? null,
       description: description ?? null,
+      descriptionJa: descriptionJa ?? null,
     })),
     entries,
     /** npm package name -> repo name, for spotting in-family dependencies. */
