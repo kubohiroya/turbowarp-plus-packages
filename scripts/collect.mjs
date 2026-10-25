@@ -55,7 +55,23 @@ const REPO_FIELDS = `
   packageJson: object(expression: "HEAD:package.json") { ... on Blob { text } }
   readmeEn: object(expression: "HEAD:README.md") { ... on Blob { text } }
   readmeJa: object(expression: "HEAD:README.ja.md") { ... on Blob { text } }
+  blockIcon: object(expression: "HEAD:assets/block-icon.svg") { ... on Blob { text } }
 `;
+
+/**
+ * The extension's palette icon, if the repository commits one.
+ *
+ * It is inlined into the page rather than linked, so that it takes the row's
+ * colour scheme and costs no extra request. Markup that could do anything is
+ * refused rather than sanitised: an icon that cannot be shown safely is better
+ * left out than quietly rewritten.
+ */
+function blockIcon(node) {
+  const svg = node.blockIcon?.text?.trim();
+  if (!svg || !svg.startsWith('<svg')) return null;
+  if (/<script|<foreignObject|\son\w+\s*=|javascript:/i.test(svg)) return null;
+  return svg;
+}
 
 /**
  * The summary in each language, and where it came from.
@@ -303,6 +319,7 @@ async function main() {
     };
 
     record.descriptions = describe(node, entry);
+    record.icon = blockIcon(node);
 
     const [revision, pages, deps] = await Promise.all([
       revisionStatus(owner, entry.repo, node).catch((error) => {
@@ -357,7 +374,8 @@ async function main() {
   console.log(`wrote ${OUT}`);
   console.log(
     `${packages.length} packages, ${packages.filter((p) => p.npm?.published).length} on npm, ` +
-      `${packages.filter((p) => p.pages?.enabled).length} with Pages, ${failed.length} with errors`,
+      `${packages.filter((p) => p.pages?.enabled).length} with Pages, ` +
+      `${packages.filter((p) => p.icon).length} with a block icon, ${failed.length} with errors`,
   );
   for (const p of failed) console.warn(`  ${p.repo}: ${p.errors.join('; ')}`);
 }
