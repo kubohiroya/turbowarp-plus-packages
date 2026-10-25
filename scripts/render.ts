@@ -495,6 +495,8 @@ const FILTERS = [
 
 async function main() {
   const report = JSON.parse(await readFile(DATA, 'utf8')) as DashboardReport;
+  // Keep collected metadata for planning, but omit deprecated rows and totals.
+  report.packages = report.packages.filter((pkg) => !pkg.npm?.deprecated);
 
   // A site without dark mode produces two identical shots, so thumbnails.ts
   // keeps only the light one and `dark` stays null here.

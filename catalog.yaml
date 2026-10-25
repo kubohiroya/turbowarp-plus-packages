@@ -288,7 +288,7 @@ overrides:
     # translation to, so the Japanese summary lives here instead.
     descriptionJa: TurboWarp のエディター scratch-gui のフォーク。拡張機能セキュリティダイアログと拡張データエディターを組み込んでいます。
   turbowarp-realtime-motion-capture-app:
-    npm: turbowarp-realtime-motion-capture-app
+    npm: '@kubohiroya/turbowarp-realtime-motion-capture-app'
   turbowarp-app-template:
     npm: false
   turbowarp-kamishibai-docs:
