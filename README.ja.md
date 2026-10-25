@@ -18,7 +18,7 @@
 | --- | --- |
 | **Issues** / **PRs** | GitHub の未クローズ issue 数・PR 数。 |
 | **Revision** | 既定ブランチの先頭にタグが付いているか。`released` は最新タグ＝先頭、`N ahead` は最新タグ以降に N コミット積まれている状態。 |
-| **GitHub Pages** | Pages が設定されているか、実際にアクセスして応答したか、およびトップページのスクリーンショット。 |
+| **GitHub Pages** | Pages が設定されているか、実際にアクセスして応答したか、およびダッシュボードと同じ配色で撮ったトップページのスクリーンショット。 |
 | **npm** | 公開バージョン、最終公開からの経過、および最新 git タグと npm のバージョンが食い違う場合の `⚠️ tag ≠ npm`。 |
 | **Upstream dependencies** | 宣言されている npm 依存とそのレンジ。💀 はローカルパス参照（`file:`, `link:`, `workspace:` など）、⚠️ はレンジが最新公開版を含まなくなった状態（stale）。 |
 
@@ -71,6 +71,11 @@ npm run thumbnails                # スクリーンショット -> site/thumbs/
 npm run render                    # ダッシュボード  -> site/index.html
 npm run serve                     # http://localhost:4180/
 ```
+
+各サイトは `prefers-color-scheme` のライトとダークで2回撮ります。ダッシュボード自身が
+その設定に追従するためで、暗いページに明るいスクリーンショットが並ぶと表に穴が空いたように
+見えるからです。ダークに対応していないサイトは2枚が同一になるのでダーク側を捨て、
+`<picture>` がライト側にフォールバックします。実際に見た目が変わるサイトだけが2枚目を持ちます。
 
 `npm run build` は collect → thumbnails → render を順に実行します。
 `npm run build:no-thumbnails` は時間のかかる部分を飛ばします。

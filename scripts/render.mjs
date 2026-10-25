@@ -186,6 +186,7 @@ td.npm { min-width: 150px; }
 .muted { color: var(--muted); }
 .sub { display: block; font-size: 11.5px; color: var(--muted); margin-top: 3px; }
 
+picture { display: block; }
 .thumb {
   display: block; width: 136px; height: 85px; border-radius: 7px;
   border: 1px solid var(--border); object-fit: cover; object-position: top center;
@@ -335,10 +336,16 @@ function pagesCell(pkg, thumb) {
   if (!url) return `<span class="tag ${badgeClass}">${label}</span>`;
 
   const badge = `<a class="tag ${badgeClass}" href="${esc(url)}">${label}</a>`;
-  if (!thumb) return badge;
+  if (!thumb?.light) return badge;
 
   const alt = `${pkg.repo} home page`;
-  return `<a href="${esc(url)}"><img class="thumb" loading="lazy" src="${esc(thumb)}" alt="${esc(alt)}"></a>${badge}`;
+  // The dashboard follows prefers-color-scheme, so the thumbnail does too: a
+  // light screenshot on a dark page reads as a hole in the table. <picture>
+  // does the switch natively, with no script and no second request.
+  const darkSource = thumb.dark
+    ? `<source media="(prefers-color-scheme: dark)" srcset="${esc(thumb.dark)}">`
+    : '';
+  return `<a href="${esc(url)}"><picture>${darkSource}<img class="thumb" loading="lazy" src="${esc(thumb.light)}" alt="${esc(alt)}"></picture></a>${badge}`;
 }
 
 function npmCell(pkg) {
@@ -484,11 +491,20 @@ const FILTERS = [
 async function main() {
   const report = JSON.parse(await readFile(DATA, 'utf8'));
 
+  // A site without dark mode produces two identical shots, so thumbnails.mjs
+  // keeps only the light one and `dark` stays null here.
   const thumbs = new Map(
     await Promise.all(
       report.packages.map(async (pkg) => {
-        const file = `thumbs/${pkg.repo}.png`;
-        return [pkg.repo, (await exists(join(SITE, file))) ? file : null];
+        const light = `thumbs/${pkg.repo}.light.png`;
+        const dark = `thumbs/${pkg.repo}.dark.png`;
+        return [
+          pkg.repo,
+          {
+            light: (await exists(join(SITE, light))) ? light : null,
+            dark: (await exists(join(SITE, dark))) ? dark : null,
+          },
+        ];
       }),
     ),
   );

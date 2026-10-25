@@ -21,7 +21,7 @@ easy to lose track of across sixty-odd repositories.
 | --- | --- |
 | **Issues** / **PRs** | Open issues and pull requests on GitHub. |
 | **Revision** | Whether the tip of the default branch is tagged. `released` means the newest tag is the tip; `N ahead` means that many commits have landed since the newest tag. |
-| **GitHub Pages** | Whether a Pages site is configured, whether it answered when we asked, and a screenshot of its home page. |
+| **GitHub Pages** | Whether a Pages site is configured, whether it answered when we asked, and a screenshot of its home page in the same colour scheme as the dashboard. |
 | **npm** | The published version, how long ago it went out, and `⚠️ tag ≠ npm` when the newest git tag and the npm version disagree. |
 | **Upstream dependencies** | Every dependency the package declares on another npm package, with the declared range. 💀 marks a range that points at a local path (`file:`, `link:`, `workspace:` …); ⚠️ marks a range that no longer covers the newest published version. |
 
@@ -79,6 +79,12 @@ npm run thumbnails                # screenshots   -> site/thumbs/
 npm run render                    # dashboard     -> site/index.html
 npm run serve                     # http://localhost:4180/
 ```
+
+Each site is shot twice, under `prefers-color-scheme: light` and dark, because
+the dashboard follows that preference itself: a light screenshot on a dark page
+reads as a hole in the table. A site that does not implement dark mode produces
+two identical images, so the dark copy is dropped and `<picture>` falls back to
+the light one — only the sites that actually change get a second file.
 
 `npm run build` does collect, thumbnails and render in order.
 `npm run build:no-thumbnails` skips the slow part.
