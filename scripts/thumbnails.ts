@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S npx tsx
 /**
  * Screenshots the home page of every published GitHub Pages site into
  * site/thumbs/<repo>.<scheme>.png.
@@ -18,23 +18,33 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { BrowserContext } from 'playwright';
+import { errorMessage } from './lib/errors.ts';
+import type { DashboardPackage, DashboardReport, PagesStatus } from './lib/types.ts';
+
+type ColorScheme = 'light' | 'dark';
+type Target = DashboardPackage & { pages: PagesStatus & { url: string } };
+type Shot = { ok: true; bytes: Buffer } | { ok: false; reason: string };
+type CaptureResult =
+  | { repo: string; ok: true; dark: boolean }
+  | { repo: string; ok: false; scheme: ColorScheme; reason: string };
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DATA = join(ROOT, 'data', 'dashboard.json');
 const THUMBS = join(ROOT, 'site', 'thumbs');
 
 const VIEWPORT = { width: 1200, height: 750 };
-const SCHEMES = ['light', 'dark'];
+const SCHEMES = ['light', 'dark'] as const;
 const CONCURRENCY = 3;
 const TIMEOUT_MS = 30_000;
 
-const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
+const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 
 /**
  * One shot of one site under one colour scheme. The scheme is emulated before
  * navigation so that a page reading it at load time sees the right value.
  */
-async function shoot(context, pkg, scheme) {
+async function shoot(context: BrowserContext, pkg: Target, scheme: ColorScheme): Promise<Shot> {
   const page = await context.newPage();
   try {
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
@@ -50,15 +60,15 @@ async function shoot(context, pkg, scheme) {
     const bytes = await page.screenshot({ fullPage: false });
     return { ok: true, bytes };
   } catch (error) {
-    return { ok: false, reason: error.message.split('\n')[0] };
+    return { ok: false, reason: errorMessage(error).split('\n')[0] };
   } finally {
     await page.close();
   }
 }
 
 /** Both schemes for one site, keeping the dark copy only when it differs. */
-async function capture(context, pkg) {
-  const shots = {};
+async function capture(context: BrowserContext, pkg: Target): Promise<CaptureResult> {
+  const shots = {} as Record<ColorScheme, Buffer>;
   for (const scheme of SCHEMES) {
     const shot = await shoot(context, pkg, scheme);
     if (!shot.ok) return { repo: pkg.repo, ok: false, scheme, reason: shot.reason };
@@ -81,9 +91,9 @@ async function capture(context, pkg) {
 }
 
 async function main() {
-  const report = JSON.parse(await readFile(DATA, 'utf8'));
+  const report = JSON.parse(await readFile(DATA, 'utf8')) as DashboardReport;
   const targets = report.packages.filter(
-    (pkg) => pkg.pages?.enabled && pkg.pages.url && pkg.pages.live !== false,
+    (pkg): pkg is Target => Boolean(pkg.pages?.enabled && pkg.pages.url && pkg.pages.live !== false),
   );
 
   if (!targets.length) {
@@ -103,7 +113,7 @@ async function main() {
     reducedMotion: 'reduce',
   });
 
-  const results = [];
+  const results: CaptureResult[] = [];
   let next = 0;
   await Promise.all(
     Array.from({ length: Math.min(CONCURRENCY, targets.length) }, async () => {

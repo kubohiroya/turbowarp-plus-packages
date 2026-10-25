@@ -19,7 +19,7 @@
  * bare kanji with no kana would not be caught, but no summary here looks like
  * that, and guessing wrong is worse than leaving the text where it is.
  */
-export function looksJapanese(text) {
+export function looksJapanese(text: unknown) {
   return typeof text === 'string' && /[\u3040-\u309f\u30a0-\u30ff]/.test(text);
 }
 
@@ -42,7 +42,7 @@ const NAV_ONLY = /^(english|日本語|ja|en|[|·・\s])+$/i;
 
 const HEADING = /^#{1,6}\s/;
 
-const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
  * Characters that do not take a space at a line break. A Markdown paragraph
@@ -53,17 +53,17 @@ const NO_SPACE_AT_WRAP =
   /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uff00-\uffef]/;
 
 /** Joins the lines of one paragraph the way each script expects. */
-export function joinWrappedLines(lines) {
+export function joinWrappedLines(lines: string[]) {
   return lines.reduce((joined, line) => {
     if (!joined) return line;
     const glue =
-      NO_SPACE_AT_WRAP.test(joined.at(-1)) && NO_SPACE_AT_WRAP.test(line[0]) ? '' : ' ';
+      NO_SPACE_AT_WRAP.test(joined.at(-1) ?? '') && NO_SPACE_AT_WRAP.test(line[0]) ? '' : ' ';
     return joined + glue + line;
   }, '');
 }
 
 /** Removes inline links, emphasis and inline code, keeping the words. */
-function stripInlineMarkup(line) {
+function stripInlineMarkup(line: string) {
   return line
     .replace(/!\[[^\]]*\]\([^)]*\)/g, '') // images
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // links -> their text
@@ -79,8 +79,8 @@ function stripInlineMarkup(line) {
  * Only the Japanese particle form is removed. English summaries read
  * "name provides X", where cutting the subject would leave a fragment.
  */
-export function stripSelfReference(text, names = []) {
-  for (const name of names.filter(Boolean)) {
+export function stripSelfReference(text: string, names: readonly (string | null)[] = []) {
+  for (const name of names.filter((name): name is string => Boolean(name))) {
     const pattern = new RegExp(`^${escapeRegExp(name)}\\s*(?:は|とは)\\s*[、,]?\\s*`);
     if (pattern.test(text)) {
       const rest = text.replace(pattern, '').trim();
@@ -97,7 +97,10 @@ export function stripSelfReference(text, names = []) {
  * Returns null when that section holds no prose — a real answer, not a
  * failure: the caller then falls back to the other language.
  */
-export function describeFromReadme(markdown, { names = [], minLength = 8 } = {}) {
+export function describeFromReadme(markdown: unknown, { names = [], minLength = 8 }: {
+  names?: readonly (string | null)[];
+  minLength?: number;
+} = {}): string | null {
   if (typeof markdown !== 'string' || !markdown.trim()) return null;
 
   const lines = markdown.split('\n');

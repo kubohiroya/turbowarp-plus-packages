@@ -2,7 +2,7 @@
 #
 # This file is the only hand-maintained input to the dashboard. Everything else
 # (issue counts, versions, Pages status, dependency freshness) is collected from
-# the GitHub and npm APIs by scripts/collect.mjs.
+# the GitHub and npm APIs by scripts/collect.ts.
 #
 # Adding a package: put its repository name in the right category (see the
 # criteria just above `categories:`). The npm package name defaults to

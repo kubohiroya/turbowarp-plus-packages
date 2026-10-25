@@ -14,20 +14,26 @@
   },
   "homepage": "https://kubohiroya.github.io/turbowarp-plus-packages/",
   "scripts": {
-    "collect": "node scripts/collect.mjs",
-    "thumbnails": "node scripts/thumbnails.mjs",
-    "render": "node scripts/render.mjs",
+    "collect": "node --import tsx scripts/collect.ts",
+    "thumbnails": "node --import tsx scripts/thumbnails.ts",
+    "render": "node --import tsx scripts/render.ts",
+    "icons": "node --import tsx scripts/icons.ts",
     "build": "npm run collect && npm run thumbnails && npm run render",
     "build:no-thumbnails": "npm run collect && npm run render",
-    "serve": "node scripts/serve.mjs",
-    "test": "node --test test/*.test.mjs"
+    "serve": "node --import tsx scripts/serve.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
   },
   "dependencies": {
     "semver": "7.7.2",
     "yaml": "2.8.1"
   },
   "devDependencies": {
-    "playwright": "1.59.0"
+    "@types/node": "22.20.5",
+    "@types/semver": "7.8.0",
+    "playwright": "1.59.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
   },
   "engines": {
     "node": ">=22"

@@ -5,7 +5,7 @@ import {
   declaredDependencies,
   evaluateRange,
   isLocalRange,
-} from '../scripts/lib/dependencies.mjs';
+} from '../scripts/lib/dependencies.ts';
 
 const LOCAL = ['file:', 'link:', 'workspace:', 'portal:', 'patch:'];
 const versions = ['0.1.0', '0.2.0', '1.0.0', '1.1.0', '1.2.0-rc.1'];

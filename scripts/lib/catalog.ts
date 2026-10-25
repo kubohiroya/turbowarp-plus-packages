@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { parse } from 'yaml';
+import type { Catalog, CatalogEntry, RawCatalog } from './types.ts';
 
 const DEFAULT_LOCAL_PROTOCOLS = ['file:', 'link:', 'workspace:', 'portal:', 'patch:'];
 
@@ -8,16 +9,16 @@ const DEFAULT_LOCAL_PROTOCOLS = ['file:', 'link:', 'workspace:', 'portal:', 'pat
  * walks. The catalog is the only hand-maintained input: everything else is
  * derived from the GitHub and npm APIs.
  */
-export async function loadCatalog(path = 'catalog.yaml') {
-  const raw = parse(await readFile(path, 'utf8'));
+export async function loadCatalog(path = 'catalog.yaml'): Promise<Catalog> {
+  const raw = parse(await readFile(path, 'utf8')) as RawCatalog;
 
   if (!raw?.owner) throw new Error(`${path}: "owner" is required`);
   if (!Array.isArray(raw.categories)) throw new Error(`${path}: "categories" must be a list`);
 
   const scope = raw.scope ?? `@${raw.owner}`;
   const overrides = raw.overrides ?? {};
-  const entries = [];
-  const seen = new Map();
+  const entries: CatalogEntry[] = [];
+  const seen = new Map<string, string>();
 
   for (const category of raw.categories) {
     if (!category.id) throw new Error(`${path}: every category needs an "id"`);
@@ -62,6 +63,6 @@ export async function loadCatalog(path = 'catalog.yaml') {
     })),
     entries,
     /** npm package name -> repo name, for spotting in-family dependencies. */
-    npmToRepo: new Map(entries.filter((e) => e.npm).map((e) => [e.npm, e.repo])),
+    npmToRepo: new Map(entries.flatMap((e) => e.npm ? [[e.npm, e.repo] as const] : [])),
   };
 }

@@ -15,6 +15,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run typecheck
       - run: npm test
       - name: Check the catalog parses and every entry is unique
-        run: node -e "import('./scripts/lib/catalog.mjs').then(m => m.loadCatalog('catalog.yaml')).then(c => console.log(c.entries.length + ' entries'))"
+        run: node --import tsx -e "import('./scripts/lib/catalog.ts').then(m => m.loadCatalog('catalog.yaml')).then(c => console.log(c.entries.length + ' entries'))"

@@ -62,10 +62,16 @@ npm 名は既定で `@kubohiroya/<repo>` です。異なる場合は `npm:` で�
 
 ## ローカルでの実行
 
+Node.js 22 以上を使用します。更新スクリプトは TypeScript で記述し、
+npm コマンドから `tsx` を読み込んで実行します。事前の JavaScript 生成は不要です。
+
 ```bash
 npm install
 npx playwright install chromium   # サムネイルとアイコン PNG の生成時のみ必要
 
+npm run typecheck                 # スクリプトとテストの strict 型チェック
+npm test                          # 依存レンジと説明文抽出のテスト
+npm run icons                     # ブランド素材 -> site/assets/
 npm run collect                   # GitHub + npm  -> data/dashboard.json
 npm run thumbnails                # スクリーンショット -> site/thumbs/
 npm run render                    # ダッシュボード  -> site/index.html
@@ -93,7 +99,7 @@ GitHub Pages にデプロイします。生成物はコミットしません。`
 
 ## ブランド素材
 
-[`scripts/icons.mjs`](scripts/icons.mjs) がマーク・ファビコン・OG 画像の唯一の
+[`scripts/icons.ts`](scripts/icons.ts) がマーク・ファビコン・OG 画像の唯一の
 生成元です。マークは「ハットブロック（Scratch 系エディタでスクリプトの先頭に
 置くブロックの形）＋ ＋」で、そこで描き起こしています。TurboWarp のロゴや
 Scratch キャットから字形・配色・図案を取っていません。

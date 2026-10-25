@@ -70,10 +70,17 @@ which is intentional — that is a status worth seeing.
 
 ## Running it locally
 
+Use Node.js 22 or later. The update scripts are written in TypeScript and run
+through the `tsx` loader in the npm commands; no JavaScript compilation step is
+needed.
+
 ```bash
 npm install
 npx playwright install chromium   # only needed for thumbnails and icon PNGs
 
+npm run typecheck                 # strict type checking for scripts and tests
+npm test                          # dependency range and summary extraction tests
+npm run icons                     # brand assets  -> site/assets/
 npm run collect                   # GitHub + npm  -> data/dashboard.json
 npm run thumbnails                # screenshots   -> site/thumbs/
 npm run render                    # dashboard     -> site/index.html
@@ -102,7 +109,7 @@ deploys `site/` to GitHub Pages. Nothing generated is committed: `data/`,
 
 ## Brand assets
 
-[`scripts/icons.mjs`](scripts/icons.mjs) is the single source for the mark, the
+[`scripts/icons.ts`](scripts/icons.ts) is the single source for the mark, the
 favicons and the social card. The mark is a hat block — the shape every
 Scratch-family editor uses for the block that starts a script — carrying a plus.
 It is drawn there, and takes no letterform, colour or artwork from the TurboWarp
