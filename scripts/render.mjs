@@ -159,6 +159,7 @@ td.name .pkg { font-weight: 600; }
 td.name .desc { color: var(--muted); font-size: 12.5px; margin-top: 2px; max-width: 42ch; }
 td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 td.deps { min-width: 280px; }
+td.npm { min-width: 150px; }
 
 .tag {
   display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
@@ -342,7 +343,7 @@ function npmCell(pkg) {
   if (npm.matchesTag === false) {
     const tag = esc(pkg.revision?.tag?.name ?? '');
     parts.push(
-      `<span class="sub">⚠️ ${t(`tag ${tag} ≠ npm`, `タグ ${tag} と npm が不一致`)}</span>`,
+      `<span class="sub">⚠️ ${t(`tag ${tag} ≠ npm`, `タグ ${tag} ≠ npm`)}</span>`,
     );
   } else {
     parts.push(`<span class="sub">${relativeDate(npm.lastPublishedAt)}</span>`);
@@ -424,7 +425,7 @@ function row(pkg, thumb) {
   <td class="num">${pullsCell(pkg)}</td>
   <td>${revisionCell(pkg)}</td>
   <td>${pagesCell(pkg, thumb)}</td>
-  <td>${npmCell(pkg)}</td>
+  <td class="npm">${npmCell(pkg)}</td>
   <td class="deps">${depsCell(pkg)}</td>
 </tr>`;
 }
