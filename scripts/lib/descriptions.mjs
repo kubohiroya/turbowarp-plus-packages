@@ -12,6 +12,17 @@
  * dashboard follows on the next build.
  */
 
+/**
+ * Whether a summary is written in Japanese.
+ *
+ * Kana settles it: Japanese prose of any length contains some. A string of
+ * bare kanji with no kana would not be caught, but no summary here looks like
+ * that, and guessing wrong is worse than leaving the text where it is.
+ */
+export function looksJapanese(text) {
+  return typeof text === 'string' && /[\u3040-\u309f\u30a0-\u30ff]/.test(text);
+}
+
 /** Noise that sits between the heading and the summary. */
 const BEFORE_PARAGRAPH = [
   /^!?\[!\[/, // badge rows

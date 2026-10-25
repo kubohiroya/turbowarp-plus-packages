@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { describeFromReadme, stripSelfReference } from '../scripts/lib/descriptions.mjs';
+import { describeFromReadme, looksJapanese, stripSelfReference } from '../scripts/lib/descriptions.mjs';
 
 const NAMES = ['@kubohiroya/turbowarp-app-shell', 'turbowarp-app-shell'];
 
@@ -102,4 +102,12 @@ First paragraph.
 Second paragraph.
 `;
   assert.equal(describeFromReadme(md), 'First paragraph.');
+});
+
+test('recognises Japanese by its kana', () => {
+  assert.equal(looksJapanese('TurboWarp 向けの拡張です。'), true);
+  assert.equal(looksJapanese('カタカナだけ'), true);
+  assert.equal(looksJapanese('A Vite plugin for TurboWarp extensions.'), false);
+  assert.equal(looksJapanese(''), false);
+  assert.equal(looksJapanese(undefined), false);
 });

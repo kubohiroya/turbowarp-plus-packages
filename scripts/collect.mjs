@@ -18,7 +18,7 @@ import { loadCatalog } from './lib/catalog.mjs';
 import { graphql, rest, pool } from './lib/github.mjs';
 import { packageStatus, allVersions } from './lib/npm.mjs';
 import { declaredDependencies, evaluateRange } from './lib/dependencies.mjs';
-import { describeFromReadme } from './lib/descriptions.mjs';
+import { describeFromReadme, looksJapanese } from './lib/descriptions.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'data', 'dashboard.json');
@@ -60,30 +60,43 @@ const REPO_FIELDS = `
 /**
  * The summary in each language, and where it came from.
  *
- * English prefers the repository description: it is the curated one-liner and
- * GitHub shows it everywhere. Japanese has no such field, so it comes from the
- * first paragraph of README.ja.md. A catalog entry overrides either one.
+ * Which file a summary lives in does not decide its language: some repositories
+ * describe themselves in Japanese in README.md, and some carry a Japanese
+ * repository description on GitHub. So every candidate is sorted by the script
+ * it is actually written in, and the first one of each language wins.
  */
 function describe(node, entry) {
   const names = [entry.npm, entry.repo].filter(Boolean);
 
-  const fromReadmeJa = describeFromReadme(node.readmeJa?.text, { names });
-  const fromReadmeEn = describeFromReadme(node.readmeEn?.text, { names });
+  // Most specific first: a file named .ja is the strongest claim to Japanese,
+  // then the curated one-liner, then the main README.
+  let manifestDescription = null;
+  try {
+    manifestDescription = JSON.parse(node.packageJson?.text ?? '{}').description ?? null;
+  } catch {
+    // A manifest we cannot parse is reported elsewhere; here it just has no summary.
+  }
 
-  const en = entry.description ?? node.description ?? fromReadmeEn ?? null;
-  const ja = entry.descriptionJa ?? fromReadmeJa ?? null;
+  const candidates = [
+    ['readme-ja', describeFromReadme(node.readmeJa?.text, { names })],
+    ['github', node.description ?? null],
+    ['package.json', manifestDescription],
+    ['readme', describeFromReadme(node.readmeEn?.text, { names })],
+  ].filter(([, text]) => Boolean(text));
+
+  const japanese = candidates.find(([, text]) => looksJapanese(text));
+  const english = candidates.find(([, text]) => !looksJapanese(text));
+
+  const ja = entry.descriptionJa ?? japanese?.[1] ?? null;
+  // With nothing in English, the Japanese text stands in: showing the summary
+  // that exists beats showing an empty cell.
+  const en = entry.description ?? english?.[1] ?? ja;
 
   return {
     en,
     ja,
-    enSource: entry.description
-      ? 'catalog'
-      : node.description
-        ? 'github'
-        : fromReadmeEn
-          ? 'readme'
-          : null,
-    jaSource: entry.descriptionJa ? 'catalog' : fromReadmeJa ? 'readme' : null,
+    enSource: entry.description ? 'catalog' : (english?.[0] ?? (ja ? 'japanese-fallback' : null)),
+    jaSource: entry.descriptionJa ? 'catalog' : (japanese?.[0] ?? null),
   };
 }
 
