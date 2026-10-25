@@ -96,8 +96,9 @@ categories:
       - turbowarp-title-menu
 
   # Includes: contracts that packages in several categories implement or
-  #   consume (named data, named functions, runtime expressions), and adapters
-  #   to external UI and state frameworks (React, Jotai).
+  #   consume (named data, named functions, runtime expressions, structured
+  #   diagnostics that any DSL host or app reports and the stage displays),
+  #   and adapters to external UI and state frameworks (React, Jotai).
   # Excludes: a contract used only within one family, or a package that mainly
   #   provides blocks for one kind of data, device or service (-> that domain's
   #   category); anything built into the editor (-> foundation).
@@ -111,6 +112,7 @@ categories:
       - turbowarp-named-functions
       - turbowarp-jotai-adapter
       - turbowarp-react-islands
+      - turbowarp-diagnostic-overlay
 
   # Includes: values held and transformed inside the project: structured and
   #   binary data, text, HTML and Markdown built as values, and key-value
@@ -134,19 +136,19 @@ categories:
       - turbowarp-kvs
 
   # Includes: what the player sees or hears in 2D: text rendering, bubbles,
-  #   overlays, notifications shown by the project, and the loading, caching
-  #   and playback of image and audio assets.
+  #   notifications shown by the project, and the loading, caching and
+  #   playback of image and audio assets.
   # Excludes: 3D and AR scenes (-> spatial), camera images used as input
-  #   (-> sensing), dialogs that guard extension loading (-> foundation), and
-  #   the title and application menu around a packaged app (-> shell).
+  #   (-> sensing), dialogs that guard extension loading (-> foundation), the
+  #   title and application menu around a packaged app (-> shell), and the
+  #   shared diagnostics overlay, defined by its input format (-> contracts).
   - id: media
     title: Stage & Presentation
     titleJa: ステージ・表示
-    description: Text, bubbles, overlays and asset handling on the stage.
+    description: Text, bubbles, notifications and asset handling on the stage.
     packages:
       - turbowarp-svg-text
       - turbowarp-bubble
-      - turbowarp-diagnostic-overlay
       - turbowarp-asset-cache
       - turbowarp-asset-manager
       - turbowarp-extended-notification
