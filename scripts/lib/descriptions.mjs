@@ -44,6 +44,24 @@ const HEADING = /^#{1,6}\s/;
 
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/**
+ * Characters that do not take a space at a line break. A Markdown paragraph
+ * wrapped across source lines joins with a space in English, but Japanese
+ * wraps anywhere and a space there is a visible defect.
+ */
+const NO_SPACE_AT_WRAP =
+  /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uff00-\uffef]/;
+
+/** Joins the lines of one paragraph the way each script expects. */
+export function joinWrappedLines(lines) {
+  return lines.reduce((joined, line) => {
+    if (!joined) return line;
+    const glue =
+      NO_SPACE_AT_WRAP.test(joined.at(-1)) && NO_SPACE_AT_WRAP.test(line[0]) ? '' : ' ';
+    return joined + glue + line;
+  }, '');
+}
+
 /** Removes inline links, emphasis and inline code, keeping the words. */
 function stripInlineMarkup(line) {
   return line
@@ -110,6 +128,6 @@ export function describeFromReadme(markdown, { names = [], minLength = 8 } = {})
 
   if (!paragraph.length) return null;
 
-  const text = stripSelfReference(paragraph.join(' ').replace(/\s+/g, ' ').trim(), names);
+  const text = stripSelfReference(joinWrappedLines(paragraph).trim(), names);
   return text.length >= minLength ? text : null;
 }

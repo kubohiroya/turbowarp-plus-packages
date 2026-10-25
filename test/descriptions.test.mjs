@@ -111,3 +111,33 @@ test('recognises Japanese by its kana', () => {
   assert.equal(looksJapanese(''), false);
   assert.equal(looksJapanese(undefined), false);
 });
+
+test('a Japanese paragraph wrapped across lines joins without a space', () => {
+  const md = `# x
+
+TurboWarp Temporary Variables向けに、非同期の入力を扱う
+拡張機能です。
+`;
+  assert.equal(describeFromReadme(md), 'TurboWarp Temporary Variables向けに、非同期の入力を扱う拡張機能です。');
+});
+
+test('an English paragraph wrapped across lines still joins with a space', () => {
+  const md = `# x
+
+A target-scoped asynchronous keyboard input extension for
+TurboWarp Temporary Variables.
+`;
+  assert.equal(
+    describeFromReadme(md),
+    'A target-scoped asynchronous keyboard input extension for TurboWarp Temporary Variables.',
+  );
+});
+
+test('a wrap between Japanese and English keeps the space', () => {
+  const md = `# x
+
+日本語の行と
+TurboWarp English text.
+`;
+  assert.equal(describeFromReadme(md), '日本語の行と TurboWarp English text.');
+});
