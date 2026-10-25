@@ -51,7 +51,33 @@ export function faviconUrls(html: string, pageUrl: string): string[] {
   return [...new Set(urls)];
 }
 
-async function findSvgFavicon(html: string, pageUrl: string): Promise<string | null> {
+/** Check PNG structure and chunk checksums before using optional artwork. */
+function isPng(body: Buffer): boolean {
+  if (!body.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return false;
+  let hasData = false;
+  for (let offset = 8; offset + 12 <= body.length;) {
+    const length = body.readUInt32BE(offset);
+    const end = offset + length + 12;
+    if (end > body.length) return false;
+    const type = body.toString('ascii', offset + 4, offset + 8);
+    let crc = 0xffffffff;
+    for (let i = offset + 4; i < end - 4; i++) {
+      crc ^= body[i];
+      for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+    }
+    if (((crc ^ 0xffffffff) >>> 0) !== body.readUInt32BE(end - 4)) return false;
+    if (offset === 8) {
+      if (type !== 'IHDR' || length !== 13 || !body.readUInt32BE(offset + 8) || !body.readUInt32BE(offset + 12)) return false;
+    } else if (type === 'IHDR') return false;
+    if (type === 'IDAT' && length > 0) hasData = true;
+    if (type === 'IEND') return length === 0 && hasData && end === body.length;
+    offset = end;
+  }
+  return false;
+}
+
+async function findFavicon(html: string, pageUrl: string): Promise<Pick<PagesStatus, 'svgFaviconUrl' | 'faviconUrl'>> {
+  let pngUrl: string | null = null;
   for (const url of faviconUrls(html, pageUrl)) {
     try {
       const response = await fetch(url, {
@@ -59,19 +85,21 @@ async function findSvgFavicon(html: string, pageUrl: string): Promise<string | n
         signal: AbortSignal.timeout(TIMEOUT_MS),
         headers: { 'user-agent': 'turbowarp-plus-packages' },
       });
-      const body = await response.text();
+      const body = Buffer.from(await response.arrayBuffer());
       // An HTML fallback at a missing .svg URL is not a usable favicon.
-      if (response.ok && /^\s*(?:<\?xml[\s\S]*?\?>\s*|<!--[\s\S]*?-->\s*|<!DOCTYPE\s+svg\b[^>]*>\s*)*<svg(?:\s|>)/i.test(body)) {
-        return response.url || url;
+      if (response.ok && /^\s*(?:<\?xml[\s\S]*?\?>\s*|<!--[\s\S]*?-->\s*|<!DOCTYPE\s+svg\b[^>]*>\s*)*<svg(?:\s|>)/i.test(body.toString('utf8'))) {
+        const svgUrl = response.url || url;
+        return { svgFaviconUrl: svgUrl, faviconUrl: svgUrl };
       }
+      if (response.ok && !pngUrl && isPng(body)) pngUrl = response.url || url;
     } catch { /* Optional artwork must not change the Pages health result. */ }
   }
-  return null;
+  return { svgFaviconUrl: null, faviconUrl: pngUrl };
 }
 
-/** Probe Pages once; only apps need their HTML inspected for an SVG favicon. */
-export async function checkLive(url: string, discoverSvgFavicon = false): Promise<
-  Pick<PagesStatus, 'live' | 'httpStatus' | 'svgFaviconUrl'>
+/** Probe Pages once; apps prefer SVG favicons, with declared PNGs as a fallback. */
+export async function checkLive(url: string, discoverFavicon = false): Promise<
+  Pick<PagesStatus, 'live' | 'httpStatus' | 'svgFaviconUrl' | 'faviconUrl'>
 > {
   try {
     const response = await fetch(url, {
@@ -80,9 +108,9 @@ export async function checkLive(url: string, discoverSvgFavicon = false): Promis
       headers: { 'user-agent': 'turbowarp-plus-packages' },
     });
     const result = { live: response.ok, httpStatus: response.status };
-    if (response.ok && discoverSvgFavicon) {
+    if (response.ok && discoverFavicon) {
       const html = await response.text().catch(() => '');
-      return { ...result, svgFaviconUrl: await findSvgFavicon(html, response.url || url) };
+      return { ...result, ...await findFavicon(html, response.url || url) };
     }
     // Drain the body so the socket can be reused.
     await response.arrayBuffer().catch(() => {});
