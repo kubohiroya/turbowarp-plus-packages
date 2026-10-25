@@ -160,7 +160,6 @@ categories:
       - turbowarp-svg-text
       - turbowarp-bubble
       - turbowarp-asset-cache
-      - turbowarp-asset-manager
       - turbowarp-extended-notification
 
   # Includes: scene graphs and 3D scene descriptions, A-Frame and AR rendering,
@@ -304,5 +303,3 @@ overrides:
     npm: false
   turbowarp-webrtc-qrcode-pairing-app:
     npm: false
-  turbowarp-asset-manager:
-    note: Deprecated. Use turbowarp-asset-cache and turbowarp-named-data instead.
