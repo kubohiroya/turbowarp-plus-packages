@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S npx tsx
 /** Serves site/ for a local look at the dashboard. */
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 const SITE = join(dirname(fileURLToPath(import.meta.url)), '..', 'site');
 const PORT = Number(process.env.PORT ?? 4180);
 
-const TYPES = {
+const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
@@ -20,7 +20,7 @@ const TYPES = {
 };
 
 createServer(async (request, response) => {
-  const url = new URL(request.url, 'http://localhost');
+  const url = new URL(request.url ?? '/', 'http://localhost');
   const relative = normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, '');
   let file = join(SITE, relative);
 

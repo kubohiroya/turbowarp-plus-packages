@@ -30,24 +30,26 @@ jobs:
 
       - run: npm ci
 
+      - run: npm run typecheck
+
       - run: npm test
 
       - name: Install the browser used for icons and thumbnails
         run: npx playwright install --with-deps chromium
 
       - name: Generate brand assets
-        run: node scripts/icons.mjs
+        run: npm run icons
 
       - name: Collect package data
-        run: node scripts/collect.mjs
+        run: npm run collect
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Screenshot the published sites
-        run: node scripts/thumbnails.mjs
+        run: npm run thumbnails
 
       - name: Render the dashboard
-        run: node scripts/render.mjs
+        run: npm run render
 
       - uses: actions/upload-artifact@v7
         with:

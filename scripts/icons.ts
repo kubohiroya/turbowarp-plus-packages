@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S npx tsx
 /**
  * Generates the brand assets from one source of truth.
  *
@@ -78,7 +78,7 @@ ${MARK}
 </svg>
 `;
 
-const card = ({ title, tagline, url }) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+const card = ({ title, tagline, url }: { title: string; tagline: string; url: string }) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
   <defs>
     <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="${COLORS.cardFrom}"/>
@@ -100,7 +100,7 @@ ${MARK}
 
 
 /** Rasterise an SVG with the browser playwright already installs. */
-async function rasterise(svg, out, width, height) {
+async function rasterise(svg: string, out: string, width: number, height: number) {
   const { chromium } = await import('playwright');
   const browser = await chromium.launch();
   try {
@@ -138,7 +138,7 @@ async function main() {
     ['apple-touch-icon.png', 180],
     ['icon-192.png', 192],
     ['icon-512.png', 512],
-  ]) {
+  ] as const) {
     await rasterise(iconSvg, join(ASSETS, name), size, size);
     console.log(`wrote ${name}`);
   }

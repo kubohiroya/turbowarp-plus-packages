@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S npx tsx
 /**
  * Renders data/dashboard.json into site/index.html.
  *
@@ -15,6 +15,12 @@ import { access, readFile, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { DashboardPackage, DashboardReport, GitHubSummary, NpmStatus } from './lib/types.ts';
+
+interface Thumbnail {
+  light: string | null;
+  dark: string | null;
+}
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DATA = join(ROOT, 'data', 'dashboard.json');
@@ -29,7 +35,7 @@ const OUT = join(SITE, 'index.html');
 const DEFAULT_HEADER_SCRIPT =
   'https://kubohiroya.github.io/turbowarp-plus-site-header/dist/auto.js';
 
-const esc = (value) =>
+const esc = (value: unknown) =>
   String(value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -37,15 +43,15 @@ const esc = (value) =>
     .replace(/"/g, '&quot;');
 
 /** One phrase in both languages; the stylesheet shows the active one. */
-const t = (en, ja) => `<span lang="en">${en}</span><span lang="ja">${ja}</span>`;
+const t = (en: string, ja: string) => `<span lang="en">${en}</span><span lang="ja">${ja}</span>`;
 
-const exists = (path) =>
+const exists = (path: string) =>
   access(path, constants.R_OK).then(
     () => true,
     () => false,
   );
 
-function relativeDate(iso) {
+function relativeDate(iso: string | null | undefined) {
   if (!iso) return '';
   const days = Math.round((Date.now() - new Date(iso).getTime()) / 86_400_000);
   if (days < 1) return t('today', '今日');
@@ -267,19 +273,19 @@ document.addEventListener('turbowarp-plus:language', (event) => {
 setLang(document.documentElement.lang === 'ja' ? 'ja' : 'en');
 `;
 
-function issuesCell(pkg) {
+function issuesCell(pkg: DashboardPackage) {
   const count = pkg.github?.openIssues ?? 0;
   if (!count) return '<span class="muted">0</span>';
   return `<a class="tag warn" href="${esc(`${pkg.github?.url}/issues`)}">${count}</a>`;
 }
 
-function pullsCell(pkg) {
+function pullsCell(pkg: DashboardPackage) {
   const count = pkg.github?.openPullRequests ?? 0;
   if (!count) return '<span class="muted">0</span>';
   return `<a class="tag warn" href="${esc(`${pkg.github?.url}/pulls`)}">${count}</a>`;
 }
 
-function revisionCell(pkg) {
+function revisionCell(pkg: DashboardPackage) {
   const rev = pkg.revision;
   if (!rev || rev.state === 'empty') return '<span class="muted">—</span>';
 
@@ -300,7 +306,7 @@ function revisionCell(pkg) {
   return `<span class="tag warn">${ahead}</span><span class="sub">${t(`since ${tag}`, `${tag} 以降`)} · ${when}</span>`;
 }
 
-const PAGES_LABEL = {
+const PAGES_LABEL: Record<string, [string, string]> = {
   live: ['live', '公開中'],
   built: ['built', 'ビルド済'],
   building: ['building', 'ビルド中'],
@@ -309,7 +315,7 @@ const PAGES_LABEL = {
   unknown: ['unknown', '不明'],
 };
 
-function pagesCell(pkg, thumb) {
+function pagesCell(pkg: DashboardPackage, thumb: Thumbnail | undefined) {
   const pages = pkg.pages;
   if (!pages?.enabled) return '<span class="muted">—</span>';
 
@@ -342,8 +348,8 @@ function pagesCell(pkg, thumb) {
   return `<a href="${esc(url)}"><picture>${darkSource}<img class="thumb" loading="lazy" src="${esc(thumb.light)}" alt="${esc(alt)}"></picture></a>${badge}`;
 }
 
-function npmCell(pkg) {
-  const npm = pkg.npm ?? {};
+function npmCell(pkg: DashboardPackage) {
+  const npm: Partial<NpmStatus> = pkg.npm ?? {};
   if (npm.notAPackage) {
     return `<span class="muted">—<span class="sub">${t('not an npm package', 'npm 対象外')}</span></span>`;
   }
@@ -366,7 +372,7 @@ function npmCell(pkg) {
   return parts.join(' ');
 }
 
-function depsCell(pkg) {
+function depsCell(pkg: DashboardPackage) {
   const deps = pkg.dependencies ?? [];
   if (!deps.length) return '<span class="muted">—</span>';
 
@@ -407,7 +413,7 @@ function depsCell(pkg) {
   return `<div class="chips">${chips.join('')}</div>`;
 }
 
-function flagsFor(pkg) {
+function flagsFor(pkg: DashboardPackage) {
   const flags = [];
   if ((pkg.github?.openIssues ?? 0) > 0) flags.push('issues');
   if ((pkg.github?.openPullRequests ?? 0) > 0) flags.push('prs');
@@ -420,8 +426,8 @@ function flagsFor(pkg) {
   return flags;
 }
 
-function row(pkg, thumb) {
-  const gh = pkg.github ?? {};
+function row(pkg: DashboardPackage, thumb: Thumbnail | undefined) {
+  const gh: Partial<GitHubSummary> = pkg.github ?? {};
   const { en = '', ja = '' } = pkg.descriptions ?? {};
 
   // Both languages are searchable whichever one is on screen.
@@ -486,13 +492,13 @@ const FILTERS = [
 ];
 
 async function main() {
-  const report = JSON.parse(await readFile(DATA, 'utf8'));
+  const report = JSON.parse(await readFile(DATA, 'utf8')) as DashboardReport;
 
-  // A site without dark mode produces two identical shots, so thumbnails.mjs
+  // A site without dark mode produces two identical shots, so thumbnails.ts
   // keeps only the light one and `dark` stays null here.
   const thumbs = new Map(
     await Promise.all(
-      report.packages.map(async (pkg) => {
+      report.packages.map(async (pkg): Promise<[string, Thumbnail]> => {
         const light = `thumbs/${pkg.repo}.light.png`;
         const dark = `thumbs/${pkg.repo}.dark.png`;
         return [
@@ -506,7 +512,7 @@ async function main() {
     ),
   );
 
-  const byCategory = new Map(report.categories.map((c) => [c.id, []]));
+  const byCategory = new Map<string, DashboardPackage[]>(report.categories.map((c) => [c.id, []]));
   for (const pkg of report.packages) {
     byCategory.get(pkg.category)?.push(pkg);
   }

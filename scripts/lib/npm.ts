@@ -1,3 +1,11 @@
+import type { NpmStatus } from './types.ts';
+
+interface Packument {
+  'dist-tags'?: Record<string, string>;
+  versions?: Record<string, { deprecated?: string }>;
+  modified?: string;
+}
+
 const REGISTRY = process.env.NPM_REGISTRY ?? 'https://registry.npmjs.org';
 
 /**
@@ -7,14 +15,14 @@ const REGISTRY = process.env.NPM_REGISTRY ?? 'https://registry.npmjs.org';
  */
 const ABBREVIATED = 'application/vnd.npm.install-v1+json';
 
-const cache = new Map();
+const cache = new Map<string, Promise<Packument | null>>();
 
-export function packument(name) {
+export function packument(name: string): Promise<Packument | null> {
   if (!cache.has(name)) cache.set(name, fetchPackument(name));
-  return cache.get(name);
+  return cache.get(name)!;
 }
 
-async function fetchPackument(name, retries = 2) {
+async function fetchPackument(name: string, retries = 2): Promise<Packument | null> {
   const url = `${REGISTRY}/${name.replace('/', '%2f')}`;
   for (let attempt = 0; ; attempt++) {
     let response;
@@ -43,7 +51,7 @@ async function fetchPackument(name, retries = 2) {
 }
 
 /** The published state of one of our own packages. */
-export async function packageStatus(name) {
+export async function packageStatus(name: string): Promise<NpmStatus> {
   const doc = await packument(name);
   if (!doc) return { name, published: false };
 
@@ -64,13 +72,13 @@ export async function packageStatus(name) {
 }
 
 /** Just the latest version, for resolving a dependency range. */
-export async function latestVersion(name) {
+export async function latestVersion(name: string): Promise<string | null> {
   const doc = await packument(name);
   return doc?.['dist-tags']?.latest ?? null;
 }
 
 /** Every published version, for working out what a range actually resolves to. */
-export async function allVersions(name) {
+export async function allVersions(name: string): Promise<string[] | null> {
   const doc = await packument(name);
   return doc ? Object.keys(doc.versions ?? {}) : null;
 }

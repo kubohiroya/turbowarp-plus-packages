@@ -4,14 +4,14 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 const API = 'https://api.github.com';
 
-let cachedToken;
+let cachedToken: string | undefined;
 
 /**
  * A token is required: unauthenticated GitHub API access is capped at 60
  * requests per hour, which is not enough for even one package. In CI this is
  * the workflow's GITHUB_TOKEN; locally it falls back to the gh CLI.
  */
-export async function getToken() {
+export async function getToken(): Promise<string> {
   if (cachedToken !== undefined) return cachedToken;
 
   const fromEnv = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
@@ -27,7 +27,7 @@ export async function getToken() {
   }
 }
 
-async function request(url, init = {}, { retries = 3 } = {}) {
+async function request(url: string, init: RequestInit = {}, { retries = 3 } = {}) {
   const token = await getToken();
   for (let attempt = 0; ; attempt++) {
     const response = await fetch(url, {
@@ -62,7 +62,13 @@ async function request(url, init = {}, { retries = 3 } = {}) {
 }
 
 /** Runs one GraphQL document. Partial `errors` are returned, not thrown. */
-export async function graphql(query, variables = {}) {
+export async function graphql<T extends Record<string, unknown>>(
+  query: string,
+  variables: Record<string, unknown> = {},
+): Promise<{
+  data: Partial<T>;
+  errors: { message: string }[];
+}> {
   const response = await request(`${API}/graphql`, {
     method: 'POST',
     body: JSON.stringify({ query, variables }),
@@ -72,12 +78,12 @@ export async function graphql(query, variables = {}) {
     throw new Error(`GitHub GraphQL ${response.status}: ${await response.text()}`);
   }
 
-  const body = await response.json();
+  const body = await response.json() as { data?: Partial<T>; errors?: { message: string }[] };
   return { data: body.data ?? {}, errors: body.errors ?? [] };
 }
 
 /** REST GET. Returns null for 404 so "not configured" is not an error. */
-export async function rest(path) {
+export async function rest<T>(path: string): Promise<T | null> {
   const response = await request(`${API}${path}`);
   if (response.status === 404) return null;
   if (!response.ok) {
@@ -87,8 +93,12 @@ export async function rest(path) {
 }
 
 /** Runs `worker` over `items`, at most `limit` at a time, preserving order. */
-export async function pool(items, limit, worker) {
-  const results = new Array(items.length);
+export async function pool<T, R>(
+  items: readonly T[],
+  limit: number,
+  worker: (item: T, index: number) => R | Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
   let next = 0;
   const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
     while (true) {

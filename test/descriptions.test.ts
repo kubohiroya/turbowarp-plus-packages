@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { describeFromReadme, looksJapanese, stripSelfReference } from '../scripts/lib/descriptions.mjs';
+import { describeFromReadme, looksJapanese, stripSelfReference } from '../scripts/lib/descriptions.ts';
 
 const NAMES = ['@kubohiroya/turbowarp-app-shell', 'turbowarp-app-shell'];
 

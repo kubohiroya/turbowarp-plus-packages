@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S npx tsx
 /**
  * Collects everything the dashboard shows into data/dashboard.json.
  *
@@ -13,12 +13,30 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import semver from 'semver';
+import { errorMessage } from './lib/errors.ts';
+import type {
+  Catalog, CatalogEntry, DashboardPackage, DashboardReport, DeclaredDependency,
+  Dependency, PackageManifest, PagesStatus, RepositoryNode, RevisionStatus, TagNode,
+} from './lib/types.ts';
+import { loadCatalog } from './lib/catalog.ts';
+import { graphql, rest, pool } from './lib/github.ts';
+import { packageStatus, allVersions } from './lib/npm.ts';
+import { declaredDependencies, evaluateRange } from './lib/dependencies.ts';
+import { describeFromReadme, looksJapanese } from './lib/descriptions.ts';
 
-import { loadCatalog } from './lib/catalog.mjs';
-import { graphql, rest, pool } from './lib/github.mjs';
-import { packageStatus, allVersions } from './lib/npm.mjs';
-import { declaredDependencies, evaluateRange } from './lib/dependencies.mjs';
-import { describeFromReadme, looksJapanese } from './lib/descriptions.mjs';
+interface PagesResponse {
+  html_url?: string;
+  status?: string;
+  build_type?: string;
+  cname?: string;
+}
+
+type DependencyOptions = Pick<Catalog, 'npmToRepo' | 'localProtocols'>;
+interface DependencyAnalysis {
+  manifest: DashboardPackage['manifest'];
+  dependencies: Dependency[];
+  error?: string;
+}
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'data', 'dashboard.json');
@@ -66,7 +84,7 @@ const REPO_FIELDS = `
  * refused rather than sanitised: an icon that cannot be shown safely is better
  * left out than quietly rewritten.
  */
-function blockIcon(node) {
+function blockIcon(node: RepositoryNode) {
   const svg = node.blockIcon?.text?.trim();
   if (!svg || !svg.startsWith('<svg')) return null;
   if (/<script|<foreignObject|\son\w+\s*=|javascript:/i.test(svg)) return null;
@@ -81,24 +99,25 @@ function blockIcon(node) {
  * repository description on GitHub. So every candidate is sorted by the script
  * it is actually written in, and the first one of each language wins.
  */
-function describe(node, entry) {
+function describe(node: RepositoryNode, entry: CatalogEntry) {
   const names = [entry.npm, entry.repo].filter(Boolean);
 
   // Most specific first: a file named .ja is the strongest claim to Japanese,
   // then the curated one-liner, then the main README.
   let manifestDescription = null;
   try {
-    manifestDescription = JSON.parse(node.packageJson?.text ?? '{}').description ?? null;
+    const manifest = JSON.parse(node.packageJson?.text ?? '{}') as PackageManifest;
+    manifestDescription = manifest.description ?? null;
   } catch {
     // A manifest we cannot parse is reported elsewhere; here it just has no summary.
   }
 
-  const candidates = [
+  const candidates = ([
     ['readme-ja', describeFromReadme(node.readmeJa?.text, { names })],
     ['github', node.description ?? null],
     ['package.json', manifestDescription],
     ['readme', describeFromReadme(node.readmeEn?.text, { names })],
-  ].filter(([, text]) => Boolean(text));
+  ] satisfies [string, string | null][]).filter(([, text]) => Boolean(text));
 
   const japanese = candidates.find(([, text]) => looksJapanese(text));
   const english = candidates.find(([, text]) => !looksJapanese(text));
@@ -116,8 +135,8 @@ function describe(node, entry) {
   };
 }
 
-async function fetchRepositories(owner, repoNames) {
-  const results = new Map();
+async function fetchRepositories(owner: string, repoNames: string[]) {
+  const results = new Map<string, RepositoryNode | null>();
 
   for (let i = 0; i < repoNames.length; i += BATCH_SIZE) {
     const batch = repoNames.slice(i, i + BATCH_SIZE);
@@ -127,7 +146,7 @@ async function fetchRepositories(owner, repoNames) {
         .join('\n')}
     }`;
 
-    const { data, errors } = await graphql(query, { owner });
+    const { data, errors } = await graphql<Record<string, RepositoryNode | null>>(query, { owner });
     for (const error of errors) {
       // A missing repository comes back as a null field plus an error entry;
       // the other repositories in the batch are still usable.
@@ -142,7 +161,7 @@ async function fetchRepositories(owner, repoNames) {
 }
 
 /** The tag's commit, following annotated tags through to their target. */
-function tagCommit(tagNode) {
+function tagCommit(tagNode: TagNode | null) {
   if (!tagNode) return null;
   const target = tagNode.target ?? {};
   const commit = target.target ?? target;
@@ -153,7 +172,7 @@ function tagCommit(tagNode) {
   };
 }
 
-async function revisionStatus(owner, repo, node) {
+async function revisionStatus(owner: string, repo: string, node: RepositoryNode): Promise<RevisionStatus> {
   const head = node.defaultBranchRef?.target ?? null;
   const tag = tagCommit(node.tags?.nodes?.[0] ?? null);
 
@@ -180,12 +199,12 @@ async function revisionStatus(owner, repo, node) {
   // Only ask how far ahead the branch is once we know it is ahead at all.
   let aheadBy = null;
   try {
-    const comparison = await rest(
+    const comparison = await rest<{ ahead_by?: number }>(
       `/repos/${owner}/${repo}/compare/${encodeURIComponent(tag.name)}...${head.oid}`,
     );
     aheadBy = comparison?.ahead_by ?? null;
   } catch (error) {
-    console.warn(`compare failed for ${repo}: ${error.message}`);
+    console.warn(`compare failed for ${repo}: ${errorMessage(error)}`);
   }
 
   return { ...base, state: 'unreleased', aheadBy };
@@ -196,7 +215,7 @@ async function revisionStatus(owner, repo, node) {
  * deployed by a workflow report null. So we also ask the site itself whether
  * it is serving, which is the thing the dashboard actually claims.
  */
-async function checkLive(url) {
+async function checkLive(url: string) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15_000);
   try {
@@ -215,13 +234,13 @@ async function checkLive(url) {
   }
 }
 
-async function pagesStatus(owner, repo) {
+async function pagesStatus(owner: string, repo: string): Promise<PagesStatus> {
   let pages = null;
   try {
-    pages = await rest(`/repos/${owner}/${repo}/pages`);
+    pages = await rest<PagesResponse>(`/repos/${owner}/${repo}/pages`);
   } catch (error) {
-    console.warn(`pages failed for ${repo}: ${error.message}`);
-    return { enabled: false, error: error.message };
+    console.warn(`pages failed for ${repo}: ${errorMessage(error)}`);
+    return { enabled: false, error: errorMessage(error) };
   }
 
   if (!pages) return { enabled: false };
@@ -240,27 +259,32 @@ async function pagesStatus(owner, repo) {
 }
 
 /** Works out what to say about one declared dependency. */
-async function analyseDependency({ name, range, kind, family, localProtocols }) {
+async function analyseDependency(
+  { name, range, kind, family, localProtocols }: DeclaredDependency & Pick<Catalog, 'localProtocols'>,
+): Promise<Dependency> {
   let versions = null;
   let error = null;
   try {
     versions = await allVersions(name);
   } catch (cause) {
-    error = cause.message;
+    error = errorMessage(cause);
   }
 
   const verdict = evaluateRange({ range, versions, localProtocols });
   return { name, range, kind, family, ...verdict, ...(error ? { error } : {}) };
 }
 
-async function analyseDependencies(packageJsonText, { npmToRepo, localProtocols }) {
+async function analyseDependencies(
+  packageJsonText: string | null,
+  { npmToRepo, localProtocols }: DependencyOptions,
+): Promise<DependencyAnalysis> {
   if (!packageJsonText) return { manifest: null, dependencies: [] };
 
-  let manifest;
+  let manifest: PackageManifest;
   try {
     manifest = JSON.parse(packageJsonText);
   } catch (error) {
-    return { manifest: null, dependencies: [], error: `package.json: ${error.message}` };
+    return { manifest: null, dependencies: [], error: `package.json: ${errorMessage(error)}` };
   }
 
   const declared = declaredDependencies(manifest, (name) => npmToRepo.has(name));
@@ -289,7 +313,7 @@ async function main() {
 
   const packages = await pool(catalog.entries, 6, async (entry) => {
     const node = repositories.get(entry.repo);
-    const record = {
+    const record: DashboardPackage = {
       repo: entry.repo,
       label: entry.label,
       category: entry.category,
@@ -323,7 +347,7 @@ async function main() {
 
     const [revision, pages, deps] = await Promise.all([
       revisionStatus(owner, entry.repo, node).catch((error) => {
-        record.errors.push(`revision: ${error.message}`);
+        record.errors.push(`revision: ${errorMessage(error)}`);
         return null;
       }),
       pagesStatus(owner, entry.repo),
@@ -340,8 +364,8 @@ async function main() {
       try {
         record.npm = await packageStatus(entry.npm);
       } catch (error) {
-        record.npm = { name: entry.npm, published: false, error: error.message };
-        record.errors.push(`npm: ${error.message}`);
+        record.npm = { name: entry.npm, published: false, error: errorMessage(error) };
+        record.errors.push(`npm: ${errorMessage(error)}`);
       }
     } else {
       record.npm = { name: null, published: false, notAPackage: true };
@@ -358,7 +382,7 @@ async function main() {
     return record;
   });
 
-  const report = {
+  const report: DashboardReport = {
     generatedAt: new Date().toISOString(),
     owner,
     scope: catalog.scope,
