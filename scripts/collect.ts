@@ -23,6 +23,7 @@ import { graphql, rest, pool } from './lib/github.ts';
 import { packageStatus, allVersions } from './lib/npm.ts';
 import { declaredDependencies, evaluateRange } from './lib/dependencies.ts';
 import { describeFromReadme, looksJapanese } from './lib/descriptions.ts';
+import { checkLive } from './lib/pages.ts';
 
 interface PagesResponse {
   html_url?: string;
@@ -215,26 +216,7 @@ async function revisionStatus(owner: string, repo: string, node: RepositoryNode)
  * deployed by a workflow report null. So we also ask the site itself whether
  * it is serving, which is the thing the dashboard actually claims.
  */
-async function checkLive(url: string) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15_000);
-  try {
-    const response = await fetch(url, {
-      redirect: 'follow',
-      signal: controller.signal,
-      headers: { 'user-agent': 'turbowarp-plus-packages' },
-    });
-    // Drain the body so the socket can be reused.
-    await response.arrayBuffer().catch(() => {});
-    return { live: response.ok, httpStatus: response.status };
-  } catch {
-    return { live: false, httpStatus: null };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function pagesStatus(owner: string, repo: string): Promise<PagesStatus> {
+async function pagesStatus(owner: string, repo: string, discoverSvgFavicon = false): Promise<PagesStatus> {
   let pages = null;
   try {
     pages = await rest<PagesResponse>(`/repos/${owner}/${repo}/pages`);
@@ -254,7 +236,7 @@ async function pagesStatus(owner: string, repo: string): Promise<PagesStatus> {
     cname: pages.cname ?? null,
   };
 
-  if (url) Object.assign(result, await checkLive(url));
+  if (url) Object.assign(result, await checkLive(url, discoverSvgFavicon));
   return result;
 }
 
@@ -350,7 +332,7 @@ async function main() {
         record.errors.push(`revision: ${errorMessage(error)}`);
         return null;
       }),
-      pagesStatus(owner, entry.repo),
+      pagesStatus(owner, entry.repo, entry.category === 'apps'),
       analyseDependencies(node.packageJson?.text ?? null, { npmToRepo, localProtocols }),
     ]);
 
