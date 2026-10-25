@@ -114,17 +114,6 @@ header.hero p { margin: 6px 0 0; color: var(--muted); max-width: 70ch; }
   background: var(--idle-bg); color: var(--idle-fg); font-size: 13px; max-width: 80ch;
 }
 
-.langswitch {
-  margin-left: auto; flex: none; align-self: flex-start;
-  display: inline-flex; border: 1px solid var(--border); border-radius: 999px;
-  overflow: hidden; background: var(--panel);
-}
-.langswitch button {
-  font: inherit; font-size: 13px; padding: 6px 14px;
-  border: 0; background: transparent; color: var(--muted); cursor: pointer;
-}
-.langswitch button[aria-pressed="true"] { background: var(--accent); color: #fff; }
-
 .stats { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 8px; }
 .stat {
   background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
@@ -221,7 +210,8 @@ const SCRIPT = `
 const search = document.getElementById('q');
 const filters = [...document.querySelectorAll('[data-filter]')];
 const showExternal = document.getElementById('external');
-const langButtons = [...document.querySelectorAll('[data-lang]')];
+// The language switch lives in the shared header, which reports presses.
+const header = document.querySelector('turbowarp-plus-header');
 
 const PLACEHOLDER = {
   en: 'Filter by name or description…',
@@ -231,9 +221,7 @@ const PLACEHOLDER = {
 function setLang(lang) {
   document.documentElement.lang = lang;
   search.placeholder = PLACEHOLDER[lang];
-  for (const button of langButtons) {
-    button.setAttribute('aria-pressed', String(button.dataset.lang === lang));
-  }
+  if (header) header.setAttribute('site-lang', lang);
   try { localStorage.setItem('lang', lang); } catch (e) {}
 }
 
@@ -266,9 +254,9 @@ showExternal.addEventListener('change', () => {
 });
 search.addEventListener('input', apply);
 for (const f of filters) f.addEventListener('change', apply);
-for (const button of langButtons) {
-  button.addEventListener('click', () => setLang(button.dataset.lang));
-}
+document.addEventListener('turbowarp-plus:language', (event) => {
+  setLang(event.detail.lang);
+});
 
 setLang(document.documentElement.lang === 'ja' ? 'ja' : 'en');
 `;
@@ -587,7 +575,7 @@ ${rows}
      It is placed here rather than left to the script so that it does not
      become sticky: on this page the filter toolbar is what should stay in
      view. npm="none" because this repository is the index, not a package. -->
-<turbowarp-plus-header repo="turbowarp-plus-packages" npm="none"></turbowarp-plus-header>
+<turbowarp-plus-header repo="turbowarp-plus-packages" npm="none" lang-switch="buttons"></turbowarp-plus-header>
 <div class="wrap">
 <header class="hero">
   <img class="mark" src="assets/icon.svg" alt="">
@@ -599,10 +587,6 @@ ${rows}
         ? `<div class="disclaimer">${t(esc(site.disclaimer), esc(site.disclaimerJa ?? site.disclaimer))}</div>`
         : ''
     }
-  </div>
-  <div class="langswitch" role="group" aria-label="Language / 言語">
-    <button type="button" data-lang="en" aria-pressed="true">English</button>
-    <button type="button" data-lang="ja" aria-pressed="false">日本語</button>
   </div>
 </header>
 
