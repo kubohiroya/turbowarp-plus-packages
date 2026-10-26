@@ -45,6 +45,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Restore thumbnail snapshots
+        uses: actions/cache@v4
+        with:
+          path: site/thumbs
+          key: thumbnails-v1-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            thumbnails-v1-${{ github.ref_name }}-
+
       - name: Screenshot the published sites
         run: npm run thumbnails
 

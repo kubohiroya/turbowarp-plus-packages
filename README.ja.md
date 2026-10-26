@@ -86,6 +86,12 @@ npm run serve                     # http://localhost:4180/
 `npm run build` は collect → thumbnails → render を順に実行します。
 `npm run build:no-thumbnails` は時間のかかる部分を飛ばします。
 
+サムネイルは前回の画像と版情報を `site/thumbs/` に保存し、package.jsonの版・Gitタグ・
+npm配布タグが変わったサイトだけ再撮影します。版情報がないサイトはHEADのSHAで判定します。
+初回、URL変更、画像欠落時も撮影し、失敗した更新は前の画像を保持して次回再試行します。
+GitHub Actionsではこのディレクトリをキャッシュして再利用します。
+キャッシュがない場合や旧形式からの初回移行時は全対象を撮影します。
+
 収集には GitHub トークンが必要です。`GITHUB_TOKEN` を読み、なければ
 `gh auth token` にフォールバックします。未認証は 1 時間あたり 60 リクエストに
 制限され、1 パッケージ分にも足りません。
