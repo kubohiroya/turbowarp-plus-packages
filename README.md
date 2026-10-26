@@ -96,6 +96,11 @@ the light one — only the sites that actually change get a second file.
 `npm run build` does collect, thumbnails and render in order.
 `npm run build:no-thumbnails` skips the slow part.
 
+Thumbnails reuse snapshots in `site/thumbs/` until package versions, Git tags, or npm dist-tags change.
+Sites without version metadata use HEAD instead. New sites, changed URLs, or missing images are captured;
+failed refreshes keep the previous image and retry next time. GitHub Actions caches the snapshots between runs.
+A missing or legacy cache triggers a full capture.
+
 The collector needs a GitHub token: it reads `GITHUB_TOKEN`, and otherwise falls
 back to `gh auth token`. Unauthenticated access is capped at 60 requests an
 hour, which is not enough for a single package.

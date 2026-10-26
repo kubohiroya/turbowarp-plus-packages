@@ -1,6 +1,6 @@
 #!/usr/bin/env -S npx tsx
 /**
- * Screenshots the home page of every published GitHub Pages site into
+ * Screenshots new or version-changed GitHub Pages sites into
  * site/thumbs/<repo>.<scheme>.png.
  *
  * Each site is shot twice, once with `prefers-color-scheme: light` and once
@@ -15,17 +15,17 @@
  * must not cost us the whole set.
  */
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { BrowserContext } from 'playwright';
 import { errorMessage } from './lib/errors.ts';
 import type { DashboardPackage, DashboardReport, PagesStatus } from './lib/types.ts';
 
 type ColorScheme = 'light' | 'dark';
-type Target = DashboardPackage & { pages: PagesStatus & { url: string } };
+export type Target = DashboardPackage & { pages: PagesStatus & { url: string } };
 type Shot = { ok: true; bytes: Buffer } | { ok: false; reason: string };
-type CaptureResult =
+export type CaptureResult =
   | { repo: string; ok: true; dark: boolean }
   | { repo: string; ok: false; scheme: ColorScheme; reason: string };
 
@@ -67,7 +67,7 @@ async function shoot(context: BrowserContext, pkg: Target, scheme: ColorScheme):
 }
 
 /** Both schemes for one site, keeping the dark copy only when it differs. */
-async function capture(context: BrowserContext, pkg: Target): Promise<CaptureResult> {
+async function capture(context: BrowserContext, pkg: Target, directory: string): Promise<CaptureResult> {
   const shots = {} as Record<ColorScheme, Buffer>;
   for (const scheme of SCHEMES) {
     const shot = await shoot(context, pkg, scheme);
@@ -75,10 +75,10 @@ async function capture(context: BrowserContext, pkg: Target): Promise<CaptureRes
     shots[scheme] = shot.bytes;
   }
 
-  await writeFile(join(THUMBS, `${pkg.repo}.light.png`), shots.light);
+  await writeFile(join(directory, `${pkg.repo}.light.png`), shots.light);
 
   const darkDiffers = digest(shots.light) !== digest(shots.dark);
-  const darkPath = join(THUMBS, `${pkg.repo}.dark.png`);
+  const darkPath = join(directory, `${pkg.repo}.dark.png`);
   if (darkDiffers) {
     await writeFile(darkPath, shots.dark);
   } else {
@@ -90,67 +90,114 @@ async function capture(context: BrowserContext, pkg: Target): Promise<CaptureRes
   return { repo: pkg.repo, ok: true, dark: darkDiffers };
 }
 
+interface Snapshot {
+  key: string;
+  dark: boolean;
+}
+
+/** Commit-only changes do not invalidate sites that expose release versions. */
+export function thumbnailKey(pkg: Target): string {
+  const versions = {
+    manifest: pkg.manifest?.version ?? null,
+    tag: pkg.revision?.tag?.name ?? null,
+    npm: Object.fromEntries(Object.entries(
+      pkg.npm?.distTags ?? {latest: pkg.npm?.latest ?? null},
+    ).sort(([a], [b]) => a.localeCompare(b))),
+  };
+  const hasVersion = versions.manifest || versions.tag ||
+    Object.values(versions.npm).some(Boolean);
+  return JSON.stringify({
+    schema: 1,
+    url: pkg.pages.url,
+    ...versions,
+    head: hasVersion ? null : pkg.revision?.head?.oid ?? null,
+  });
+}
+
+async function imageExists(filename: string): Promise<boolean> {
+  try {
+    const info = await stat(filename);
+    return info.isFile() && info.size > 0;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+/** Keep successful snapshots across runs; failed refreshes remain retryable. */
+export async function generateThumbnails(
+  targets: Target[],
+  directory: string,
+  captureTargets: (packages: Target[]) => Promise<CaptureResult[]>,
+) {
+  await mkdir(directory, {recursive: true});
+  let previous: Record<string, Snapshot> = {};
+  try {
+    previous = JSON.parse(await readFile(join(directory, 'index.json'), 'utf8')).snapshots ?? {};
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  const snapshots: Record<string, Snapshot> = {};
+  const pending: Target[] = [];
+  const reused: string[] = [];
+  for (const pkg of targets) {
+    const old = previous[pkg.repo];
+    const complete = old && await imageExists(join(directory, `${pkg.repo}.light.png`)) &&
+      (!old.dark || await imageExists(join(directory, `${pkg.repo}.dark.png`)));
+    if (complete) snapshots[pkg.repo] = old;
+    if (complete && old.key === thumbnailKey(pkg)) reused.push(pkg.repo);
+    else pending.push(pkg);
+  }
+  const results = pending.length ? await captureTargets(pending) : [];
+  for (const result of results) {
+    if (result.ok) {
+      const pkg = pending.find((pkg) => pkg.repo === result.repo)!;
+      snapshots[result.repo] = {key: thumbnailKey(pkg), dark: result.dark};
+    }
+  }
+  const captured = results.filter((result) => result.ok);
+  const failed = results.filter((result) => !result.ok);
+  await writeFile(join(directory, 'index.json'), `${JSON.stringify({
+    capturedAt: new Date().toISOString(),
+    captured: Object.keys(snapshots).sort(),
+    refreshed: captured.map((result) => result.repo).sort(),
+    reused: reused.sort(),
+    withDarkVariant: Object.keys(snapshots).filter((repo) => snapshots[repo].dark).sort(),
+    failed,
+    snapshots,
+  }, null, 2)}\n`);
+  return {captured: captured.length, reused: reused.length, failed};
+}
+
 async function main() {
   const report = JSON.parse(await readFile(DATA, 'utf8')) as DashboardReport;
   const targets = report.packages.filter(
     (pkg): pkg is Target => Boolean(pkg.pages?.enabled && pkg.pages.url && pkg.pages.live !== false),
   );
-
-  if (!targets.length) {
-    console.log('no live Pages sites to shoot');
-    return;
-  }
-
-  await mkdir(THUMBS, { recursive: true });
-
-  const { chromium } = await import('playwright');
-  // The full Chromium build, not the headless shell: it renders these pages
-  // the way a visitor's browser does, which is the point of a thumbnail.
-  const browser = await chromium.launch({ channel: 'chromium' });
-  const context = await browser.newContext({
-    viewport: VIEWPORT,
-    deviceScaleFactor: 0.5,
-    reducedMotion: 'reduce',
+  const result = await generateThumbnails(targets, THUMBS, async (pending) => {
+    // Unchanged snapshots never require launching or installing a browser.
+    const {chromium} = await import('playwright');
+    const browser = await chromium.launch({channel: 'chromium'});
+    try {
+      const context = await browser.newContext({
+        viewport: VIEWPORT,
+        deviceScaleFactor: 0.5,
+        reducedMotion: 'reduce',
+      });
+      const results: CaptureResult[] = [];
+      let next = 0;
+      await Promise.all(Array.from({length: Math.min(CONCURRENCY, pending.length)}, async () => {
+        while (next < pending.length) results.push(await capture(context, pending[next++], THUMBS));
+      }));
+      return results;
+    } finally {
+      await browser.close();
+    }
   });
-
-  const results: CaptureResult[] = [];
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(CONCURRENCY, targets.length) }, async () => {
-      while (next < targets.length) {
-        results.push(await capture(context, targets[next++]));
-      }
-    }),
-  );
-
-  await context.close();
-  await browser.close();
-
-  const captured = results.filter((r) => r.ok);
-  const failed = results.filter((r) => !r.ok);
-  const withDark = captured.filter((r) => r.dark);
-
-  await writeFile(
-    join(THUMBS, 'index.json'),
-    `${JSON.stringify(
-      {
-        capturedAt: new Date().toISOString(),
-        captured: captured.map((r) => r.repo).sort(),
-        withDarkVariant: withDark.map((r) => r.repo).sort(),
-        failed,
-      },
-      null,
-      2,
-    )}\n`,
-  );
-
-  console.log(
-    `captured ${captured.length}/${targets.length} thumbnails, ` +
-      `${withDark.length} with a distinct dark variant`,
-  );
-  for (const failure of failed) {
+  console.log(`captured ${result.captured}/${targets.length} thumbnails, reused ${result.reused}`);
+  for (const failure of result.failed) {
     console.warn(`  ${failure.repo} (${failure.scheme}): ${failure.reason}`);
   }
 }
 
-await main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();
