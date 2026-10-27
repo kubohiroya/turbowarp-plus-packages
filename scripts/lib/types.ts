@@ -103,6 +103,8 @@ export interface RepositoryNode {
   readmeJa?: { text?: string } | null;
   blockIcon?: { text?: string } | null;
   samplesManifest?: { text?: string } | null;
+  extensionConfig?: { text?: string } | null;
+  viteConfig?: { text?: string } | null;
 }
 
 export interface RevisionStatus {
@@ -191,6 +193,7 @@ export interface DashboardPackage {
     jaSource: string | null;
   };
   icon?: string | null;
+  unsandboxed?: UnsandboxedRequirement;
   demo?: DemoProject | null;
   revision?: RevisionStatus | null;
   pages?: PagesStatus;
@@ -208,6 +211,8 @@ export interface DemoProject {
   projectUrl: string;
   title: string;
 }
+
+export type UnsandboxedRequirement = 'required' | 'optional' | 'not-needed' | 'unknown';
 
 export interface DashboardReport {
   generatedAt: string;
