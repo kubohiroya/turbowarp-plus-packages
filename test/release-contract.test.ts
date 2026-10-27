@@ -62,6 +62,50 @@ test('missing, ambiguous, token, fixed version and non-OIDC workflows stop befor
   assert.deepEqual(privateProfile.verify, [['corepack', 'pnpm', 'run', 'release:verify']]);
 });
 
+test('workflow selection rejects other publishing jobs that can run in the same event', () => {
+  const sibling = (condition = '', permissions = 'id-token: write') => workflow + `
+  historical:
+    ${condition ? `if: ${condition}` : ''}
+    permissions: { ${permissions} }
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm publish ./other-package-1.0.0.tgz --provenance
+`;
+  // A package-level job hint must not hide another job in the dispatched workflow.
+  for (const invalid of [sibling(), sibling("github.event_name == 'workflow_dispatch'"), sibling('', 'contents: read')]) {
+    assert.throws(() => profileFromContract(manifest(), invalid), /他の公開job/u);
+  }
+  for (const unsupported of [
+    "github.event_name == 'push' || always()",
+    "!(github.event_name == 'workflow_dispatch')",
+    "github.event_name != 'workflow_dispatch'",
+    "github.event_name == 'push' && !cancelled()",
+    "contains('push', github.event_name)",
+  ]) assert.throws(() => profileFromContract(manifest(), sibling(unsupported)), /他の公開job/u);
+});
+
+test('other publishing jobs are permitted only with provable event exclusion', () => {
+  for (const mode of ['tag-workflow', 'dispatch-workflow'] as const) {
+    const event = mode === 'tag-workflow' ? 'push' : 'workflow_dispatch';
+    const other = event === 'push' ? 'workflow_dispatch' : 'push';
+    const metadata = JSON.parse(manifest());
+    metadata.turbowarpRelease.publish.mode = mode;
+    const separated = workflow
+      .replace('  workflow_dispatch:', "  push:\n    tags: ['v*']\n  workflow_dispatch:")
+      .replace('  publish:\n', `  publish:\n    if: github.event_name == '${event}'\n`) + `
+  historical:
+    if: \${{ github.event_name == '${other}' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm publish ./other-package-1.0.0.tgz
+`;
+    assert.equal(profileFromContract(JSON.stringify(metadata), separated).publish.mode, mode);
+    assert.equal(profileFromContract(JSON.stringify(metadata), separated.replace(
+      `\${{ github.event_name == '${other}' && github.ref == 'refs/heads/main' }}`, 'false',
+    )).publish.mode, mode);
+  }
+});
+
 test('existing GitHub workflows need no new declarations; private apps need no publishing workflow', async () => {
   const examples = JSON.parse(await readFile('test/fixtures/release-existing-workflows.json', 'utf8'));
   for (const example of examples) {

@@ -28,6 +28,9 @@ pnpm release --plan /tmp/release-plan.json --workspace /tmp/family-release \
 `release-preview.json`には全実効設定、package.json/workflowの参照SHAとSHA256、操作順、確認digestが入ります。
 `--resolved`はその内容を再利用し、repoから再解決しません。planか設定が変わればdigest検証が失敗します。
 
+`--reconcile`はGitHub/npmの公開基点が一致しない場合も新しい版を計画し、依存元へ版を伝播します。
+既存タグを推測して復元する操作ではありません。通常版はminorを上げ、RC版は同じRC系列を維持するため、実行前に計画の対象と番号を確認してください。
+
 ## 既存手順の解決
 
 - 準備は既存の`release:prepare` / `prepare:release`があれば使用し、なければ既存の`docs` / `build`を使用します。これらの名前を新設する要求はありません。
@@ -67,6 +70,7 @@ pnpm release --plan /tmp/release-plan.json --workspace /tmp/family-release \
 - 準備スクリプトには`RELEASE_VERSION`と`RELEASE_PLAN_SHA`を渡します。版定数・文書・生成runtime・SB3のpin/凍結をrepo側で管理します。中断後に再実行でき、凍結済み成果物を勝手に再生成しない実装が必要です。
 - Git差分を使う生成物検証は、更新候補に対する検証としてrepo側で実装します。通常の開発用checkが古いHEADとの比較を要求する場合、そのままrelease:verifyへ流用しないでください。
 - 推定または任意の`publish.job`が指すjobには直接の`npm publish`または`pnpm publish`、`id-token: write`が必要です。固定の過去版、dry-run専用、長期npm tokenを使うjobを除外します。workflow名が存在するだけでは対応済みとみなしません。
+- workflowはjob単位ではなく全体が起動します。他の公開jobが選択イベントで必ずスキップされると確認できない場合は停止します。固定版jobを候補から除外しただけでは、そのworkflowを実行可能とは扱いません。
 - dispatchの必須inputは契約で全て指定します。`{version}`、`{tag}`、`{shasum}`を実際の公開版・タグ・検証済みtarball SHA1へ置換します。
 - タグ起動も`mode: tag-workflow`、`workflow: release.yml`、対象`job`で宣言できます。`v*`のpushタグ起動と汎用のnpm公開jobが必要です。
 - private repoは既存の準備・検証手順だけを使用します。`update-only`ではタグ・Release・npm公開をしません。
@@ -109,6 +113,10 @@ peer/Git/RC変更は従来どおり明示レビューが必要です。レビュ
 全対象のmain SHA、契約、npm、Node engine、workflowをpreflightします。
 依存先の検証・PR/CI/Squash Merge・タグ/Release・公開・provenance/ハッシュ/latest/next照合が完了するまで依存元へ進みません。
 private更新はPR/CI/mergeまでです。既存タグや公開版を推測・上書きしません。
+
+既存タグがある未公開版の補完は、このexecutorでは未対応です。公開開始前に停止するため、repo側の既存workflowで検証済み成果物の公開を完了してから再計画してください。自身の実行記録に保存したタグからの再開は、この制限には含みません。
+
+準備後は専用checkout内で候補commitを固定し、その内容に対して検証します。生成物とGit差分を比較する既存checkも候補を基準に実行し、検証成功とcleanを確認してからpushします。マージ後のmain CIも確認してからタグ・公開・完了へ進みます。
 
 workspaceのstate.jsonにはdigest、実効設定、phase、commit、PR、merge、成果物、workflow run、エラーを保存します。
 途中失敗後も同じplan、preview、workspace、digestで再開します。完了済み上流を再照合し、同じworkflowを再dispatchしません。
