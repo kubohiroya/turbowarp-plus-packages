@@ -2,6 +2,8 @@
 
 Release execution: [dry-run, dependency-ordered updates and publication](docs/release-executor.md).
 
+Runnable samples: [distribution standard and demo plans for all extensions (Japanese)](docs/sample-projects/plan.ja.md).
+
 [**Dashboard → kubohiroya.github.io/turbowarp-plus-packages**](https://kubohiroya.github.io/turbowarp-plus-packages/)
 
 An index of the TurboWarp Plus family: extensions, toolchains, applications and
