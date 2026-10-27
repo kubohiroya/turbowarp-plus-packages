@@ -25,7 +25,7 @@ import { declaredDependencies, evaluateRange } from './lib/dependencies.ts';
 import { describeFromReadme, looksJapanese } from './lib/descriptions.ts';
 import { checkLive } from './lib/pages.ts';
 import { publishedDemo } from './lib/demos.ts';
-import { extensionUnsandboxed } from './lib/sandbox.ts';
+import { inheritedUnsandboxedRequirements, extensionUnsandboxed } from './lib/sandbox.ts';
 
 interface PagesResponse {
   html_url?: string;
@@ -366,6 +366,12 @@ async function main() {
 
     return record;
   });
+
+  const inheritedRequirements = inheritedUnsandboxedRequirements(packages, npmToRepo);
+  for (const pkg of packages) {
+    const requiredBy = inheritedRequirements.get(pkg.repo);
+    if (requiredBy) pkg.unsandboxedRequiredBy = requiredBy;
+  }
 
   const report: DashboardReport = {
     generatedAt: new Date().toISOString(),

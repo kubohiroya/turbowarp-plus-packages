@@ -462,15 +462,19 @@ function flagsFor(pkg: DashboardPackage) {
 }
 
 function sandboxBadge(pkg: DashboardPackage) {
-  if (!pkg.unsandboxed) return '';
+  const inherited = pkg.unsandboxedRequiredBy?.length
+    ? pkg.unsandboxedRequiredBy : undefined;
+  const requirement = inherited ? 'required' : pkg.unsandboxed;
+  if (!requirement) return '';
   const labels = {
     required: ['warn', '🔓', 'Without sandbox: required', 'サンドボックスなし：必須'],
     optional: ['idle', '◐', 'Without sandbox: optional', 'サンドボックスなし：任意'],
     'not-needed': ['ok', '🛡', 'Without sandbox: not needed', 'サンドボックスなし：不要'],
     unknown: ['idle', '?', 'Without sandbox: unknown', 'サンドボックスなし：不明'],
   } as const;
-  const [style, icon, en, ja] = labels[pkg.unsandboxed] ?? labels.unknown;
-  return `<div class="sandbox-status"><span class="tag ${style}"><span aria-hidden="true">${icon}</span>${t(en, ja)}</span></div>`;
+  const [style, icon, en, ja] = labels[requirement] ?? labels.unknown;
+  const title = inherited ? ` title="${esc(inherited.join(', '))}"` : '';
+  return `<div class="sandbox-status"><span class="tag ${style}"${title}><span aria-hidden="true">${icon}</span>${t(en, ja)}</span></div>`;
 }
 
 function row(pkg: DashboardPackage, thumb: Thumbnail | undefined, editorUrl: string) {

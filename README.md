@@ -36,8 +36,17 @@ otherwise the collector reads `src/config.ts`'s `extensionConfig.unsandboxed`.
 `required` / `true` means required, `optional` means optional, and
 `not-needed` / `false` means not needed. Missing or dynamic declarations in an
 identified extension are unknown. These are declarations, not runtime compatibility
-test results. Packages without an identifiable extension declaration and older JSON
-snapshots without this field have no badge. Changes appear on the next collection.
+test results. Applications and extensions show required if any direct or transitive
+catalog dependency declares it, even if their own declaration is optional,
+not needed or unknown. All family dependency kinds of apps, including development
+dependencies, are traversed because apps can bundle those extensions into SB3s.
+For intermediate packages outside the apps category, only production, peer and
+optional dependencies are followed; their development dependencies are not shipped.
+The declaring repositories appear in the badge's tooltip and the collected
+`unsandboxedRequiredBy` field. The extension's own declaration stays unchanged;
+absence of an inherited requirement does not imply that an app needs no permissions.
+Packages without a declaration or inherited requirement and older JSON snapshots
+without these fields have no badge. Changes appear on the next collection.
 The collector parses TypeScript syntax without executing repository code.
 
 Each package's summary follows the page language. English comes from the

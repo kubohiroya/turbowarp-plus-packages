@@ -194,6 +194,8 @@ export interface DashboardPackage {
   };
   icon?: string | null;
   unsandboxed?: UnsandboxedRequirement;
+  /** Repositories whose required declarations are inherited by this app or extension. */
+  unsandboxedRequiredBy?: string[];
   demo?: DemoProject | null;
   revision?: RevisionStatus | null;
   pages?: PagesStatus;

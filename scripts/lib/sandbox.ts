@@ -1,5 +1,5 @@
 import ts from 'typescript';
-import type { UnsandboxedRequirement } from './types.ts';
+import type { DashboardPackage, UnsandboxedRequirement } from './types.ts';
 
 function unwrap(node: ts.Expression): ts.Expression {
   while (ts.isAsExpression(node) || ts.isSatisfiesExpression(node) || ts.isParenthesizedExpression(node)) {
@@ -72,4 +72,35 @@ export function extensionUnsandboxed(
   }
   const declared = config && property(config, 'unsandboxed');
   return requirement(declared?.value);
+}
+
+/** Find required extensions reachable through each app or extension's catalog dependencies. */
+export function inheritedUnsandboxedRequirements(
+  packages: readonly DashboardPackage[],
+  npmToRepo: ReadonlyMap<string, string>,
+): Map<string, string[]> {
+  const byRepo = new Map(packages.map(pkg => [pkg.repo, pkg]));
+  const result = new Map<string, string[]>();
+  for (const pkg of packages) {
+    if (pkg.category !== 'apps' && pkg.unsandboxed === undefined) continue;
+    const visited = new Set([pkg.repo]);
+    const required = new Set<string>();
+    const pending = [pkg];
+    while (pending.length) {
+      const current = pending.pop()!;
+      for (const dependency of current.dependencies ?? []) {
+        if (!dependency.family) continue;
+        // An app's build dependencies can be bundled extensions; a library's are not shipped.
+        if (dependency.kind === 'dev' && current.category !== 'apps') continue;
+        const repo = npmToRepo.get(dependency.name);
+        const target = repo && byRepo.get(repo);
+        if (!target || visited.has(target.repo)) continue;
+        visited.add(target.repo);
+        if (target.unsandboxed === 'required') required.add(target.repo);
+        pending.push(target);
+      }
+    }
+    if (required.size) result.set(pkg.repo, [...required].sort());
+  }
+  return result;
 }

@@ -12,10 +12,15 @@ test('renders distinct bilingual sandbox requirements and supports older snapsho
   const states: (UnsandboxedRequirement | undefined)[] = ['required', 'optional', 'not-needed', 'unknown', undefined];
   const report: DashboardReport = {
     generatedAt: '2026-10-28T00:00:00Z', owner: 'test', scope: '@test', site: {},
-    categories: [{ id: 'data', title: 'Data' }],
-    packages: states.map((unsandboxed, i) => ({
+    categories: [{ id: 'data', title: 'Data' }, { id: 'apps', title: 'Applications' }],
+    packages: [...states.map((unsandboxed, i) => ({
       repo: `extension-${i}`, label: `Extension ${i}`, category: 'data', note: null, errors: [], unsandboxed,
     })),
+    { repo: 'extension-inherited', label: 'extension-inherited', category: 'data', note: null, errors: [], unsandboxed: 'not-needed', unsandboxedRequiredBy: ['extension-"<required>'] },
+    { repo: 'app-inherited', label: 'app-inherited', category: 'apps', note: null, errors: [], unsandboxedRequiredBy: ['extension-"<required>'] },
+    { repo: 'app-override', label: 'app-override', category: 'apps', note: null, errors: [], unsandboxed: 'not-needed', unsandboxedRequiredBy: ['extension-0'] },
+    { repo: 'app-no-requirement', label: 'app-no-requirement', category: 'apps', note: null, errors: [] },
+    ],
   };
   try {
     for (const dir of ['scripts', 'data', 'site']) await mkdir(join(root, dir));
@@ -37,6 +42,13 @@ test('renders distinct bilingual sandbox requirements and supports older snapsho
       assert.ok(rows[i].includes(`<span lang="ja">サンドボックスなし：${ja}</span>`));
     }
     assert.doesNotMatch(rows[4], /sandbox-status|Without sandbox|サンドボックスなし/);
+    assert.match(rows[5], /title="extension-&quot;&lt;required&gt;"/);
+    for (const row of [rows[5], rows[6], rows[7]]) {
+      assert.match(row, /Without sandbox: required/);
+      assert.match(row, /サンドボックスなし：必須/);
+      assert.doesNotMatch(row, /サンドボックスなし：不要/);
+    }
+    assert.doesNotMatch(rows[8], /sandbox-status|Without sandbox|サンドボックスなし/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
