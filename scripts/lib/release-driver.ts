@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 import semver from 'semver';
@@ -129,6 +129,13 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     if (step.action === 'publish' && published) {
       assert(entry.shasum && entry.shasum === published.dist.shasum, `${step.repo}: 予定版はすでに公開済みです。上書きせず再計画してください。`);
     }
+    if (step.action === 'publish') {
+      const tagged = await this.tagSha(step);
+      if (tagged) {
+        assert(entry.mergeCommit, `${step.repo}: 既存タグの未公開版補完はexecutorでは未対応です。repo側の既存workflowで検証済み公開後に再計画してください。`);
+        assert.equal(tagged, entry.mergeCommit, '既存タグが再開記録と異なります。移動・上書きしません。');
+      }
+    }
     if (step.action === 'none') {
       assert(published, `${step.repo}: 公開済み版を取得できません。`);
       const sha = await this.tagSha(step);
@@ -174,7 +181,19 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
       if (step.action === 'publish') assert(!manifest.private, 'private packageはnpm公開しません。');
       assert([step.currentVersion, versionOf(step)].includes(manifest.version), 'ローカル版が計画と一致しません。');
       if (manifest.engines?.node) assert(semver.satisfies(process.version, manifest.engines.node), `${step.repo}: Node ${manifest.engines.node}が必要です。`);
-      if (entry.commit && entry.phase !== 'complete') assert.equal(await this.git(step, 'rev-parse', 'HEAD'), entry.commit, 'checkoutに未記録のcommitがあります。');
+      if (entry.commit) {
+        const head = await this.git(step, 'rev-parse', 'HEAD');
+        if (head !== entry.commit) {
+          assert(['published', 'complete'].includes(entry.phase) && entry.mergeCommit === head, 'checkoutに未記録のcommitがあります。');
+          const pr = await this.api<PullRequest>(`repos/${step.repository}/pulls/${entry.pr}`);
+          assert(pr.merged && pr.merge_commit_sha === head && pr.head.sha === entry.commit && pr.base.ref === entry.base, 'cleanup再開のPR記録が一致しません。');
+          await this.git(step, 'diff', '--exit-code', entry.commit, head);
+          assert.equal(await this.git(step, 'symbolic-ref', '-q', 'HEAD').catch(error => {
+            if (error instanceof CommandFailure && error.status === 1) return '';
+            throw error;
+          }), '', 'cleanup再開checkoutがdetached HEADではありません。');
+        }
+      }
       else if (entry.phase === 'pending') assert.equal(await this.git(step, 'rev-parse', 'HEAD'), step.headSha, 'checkoutのHEADが変わりました。');
       if (entry.phase !== 'pending') assert.equal(await this.git(step, 'status', '--porcelain'), '', '再開checkoutに未コミット変更があります。');
       if (entry.artifact) {
@@ -198,16 +217,40 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
       manifest.version = versionOf(step);
       const newline = before.includes('\r\n') ? '\r\n' : '\n';
       await writeFile(path, JSON.stringify(manifest, null, /\n([\t ]+)\S/u.exec(before)?.[1] ?? 2).replace(/\n/gu, newline) + newline);
-      for (const command of [...profile.install, ...(profile.prepare ?? []), ...profile.verify]) {
+      for (const command of [...profile.install, ...(profile.prepare ?? [])]) {
         await this.run(command, { cwd, interactive: true, env: { RELEASE_VERSION: versionOf(step), RELEASE_PLAN_SHA: this.state.digest } });
       }
+      // Freeze generated outputs before checks that require a clean Git tree.
+      await this.git(step, 'add', '--all');
+      await this.git(step, 'commit', '-m', `chore(release): prepare ${step.name} ${versionOf(step)}`);
+      entry.commit = await this.git(step, 'rev-parse', 'HEAD');
+      await this.save();
     }
+    // A saved candidate is not evidence that verification finished before interruption.
+    for (const command of profile.verify) {
+      await this.run(command, { cwd, interactive: true, env: { RELEASE_VERSION: versionOf(step), RELEASE_PLAN_SHA: this.state.digest } });
+    }
+    assert.equal(await this.git(step, 'rev-parse', 'HEAD'), entry.commit, '検証コマンドが候補commitを変更しました。');
+    assert.equal(await this.git(step, 'status', '--porcelain'), '', '検証後に未コミット変更があります。');
     if (step.action === 'publish') {
       await mkdir(this.artifacts(step), { recursive: true });
-      const result = parsePackResult(await this.npm(profile, ['pack', '--ignore-scripts', '--json', '--pack-destination', this.artifacts(step)], cwd), step.name!, versionOf(step));
-      entry.artifact = join(this.artifacts(step), result.filename);
-      entry.shasum = hash(await readFile(entry.artifact));
-      assert.equal(entry.shasum, result.shasum);
+      const temporary = await mkdtemp(join(this.artifacts(step), '.pack-'));
+      try {
+        const result = parsePackResult(await this.npm(profile, ['pack', '--ignore-scripts', '--json', '--pack-destination', temporary], cwd), step.name!, versionOf(step));
+        const bytes = await readFile(join(temporary, result.filename));
+        const packedHash = hash(bytes);
+        assert.equal(packedHash, result.shasum);
+        assert(!entry.shasum || entry.shasum === packedHash, '再開時のtarballが検証済み成果物と異なります。');
+        const artifact = join(this.artifacts(step), result.filename);
+        assert(!entry.artifact || entry.artifact === artifact, '再開時のtarball保存先が実行記録と異なります。');
+        try { await writeFile(artifact, bytes, { flag: 'wx' }); }
+        catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+          assert.equal(hash(await readFile(artifact)), packedHash, '保存済みtarballが異なります。上書きしません。');
+        }
+        entry.artifact = artifact;
+        entry.shasum = packedHash;
+      } finally { await rm(temporary, { recursive: true, force: true }); }
       if (!entry.extraArtifacts) {
         const extraArtifacts: NonNullable<ExecutionEntry['extraArtifacts']> = [];
         for (const file of profile.artifacts ?? []) {
@@ -227,12 +270,6 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     const after = JSON.parse(await readFile(join(cwd, 'package.json'), 'utf8'));
     assert(after.name === step.name && after.version === versionOf(step), '検証コマンドがname/versionを変更しました。');
     for (const change of step.dependencyUpdates) assert.equal(after[change.field]?.[change.name], change.to);
-    if (!entry.commit) {
-      await this.git(step, 'add', '--all');
-      await this.git(step, 'commit', '-m', `chore(release): prepare ${step.name} ${versionOf(step)}`);
-      entry.commit = await this.git(step, 'rev-parse', 'HEAD');
-      await this.save();
-    }
     assert.equal(await this.git(step, 'status', '--porcelain'), '', '検証後に未コミット変更があります。');
   }
 
@@ -272,6 +309,18 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     throw new Error(`${description}: timeout。再開時も公開済み版は再公開しません。`);
   }
 
+  private async waitForCommitChecks(step: PackagePlan, sha: string, description: string): Promise<void> {
+    await this.wait(async () => {
+      const checks = await this.api<{ check_runs: { status: string; conclusion: string | null }[]; total_count: number }>(`repos/${step.repository}/commits/${sha}/check-runs?per_page=100`);
+      assert(checks.total_count <= 100, 'CI checksが100件を超えるため自動判定できません。');
+      const status = await this.api<{ statuses: { state: string }[] }>(`repos/${step.repository}/commits/${sha}/status`);
+      if (!checks.check_runs.length && !status.statuses.length) return null;
+      for (const check of checks.check_runs) if (check.status === 'completed') assert(['success', 'neutral', 'skipped'].includes(check.conclusion ?? ''), `${description}が失敗しました。`);
+      for (const item of status.statuses) assert(!['failure', 'error'].includes(item.state), `${description}のcommit statusが失敗しました。`);
+      return checks.check_runs.every(check => check.status === 'completed') && status.statuses.every(item => item.state === 'success') ? true : null;
+    }, description);
+  }
+
   async merged(step: PackagePlan, _profile: ReleaseProfile, entry: ExecutionEntry): Promise<void> {
     if (step.action === 'none') return;
     const get = () => this.api<PullRequest>(`repos/${step.repository}/pulls/${entry.pr}`);
@@ -280,15 +329,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     assert.equal(pr.base.ref, entry.base);
     if (!pr.merged) {
       assert.equal(pr.state, 'open', 'PRがmergeされずcloseされています。');
-      await this.wait(async () => {
-        const checks = await this.api<{ check_runs: { status: string; conclusion: string | null }[]; total_count: number }>(`repos/${step.repository}/commits/${entry.commit}/check-runs?per_page=100`);
-        assert(checks.total_count <= 100, 'CI checksが100件を超えるため自動判定できません。');
-        const status = await this.api<{ statuses: { state: string }[] }>(`repos/${step.repository}/commits/${entry.commit}/status`);
-        if (!checks.check_runs.length && !status.statuses.length) return null;
-        for (const check of checks.check_runs) if (check.status === 'completed') assert(['success', 'neutral', 'skipped'].includes(check.conclusion ?? ''), 'CIが失敗しました。');
-        for (const item of status.statuses) assert(!['failure', 'error'].includes(item.state), 'commit statusが失敗しました。');
-        return checks.check_runs.every(check => check.status === 'completed') && status.statuses.every(item => item.state === 'success') ? true : null;
-      }, 'PR CI');
+      await this.waitForCommitChecks(step, entry.commit!, 'PR CI');
       const base = await this.api<{ object: { sha: string } }>(`repos/${step.repository}/git/ref/heads/${encodeURIComponent(entry.base!)}`);
       assert.equal(base.object.sha, step.headSha, '検証中にbaseが変わりました。mergeせず再計画してください。');
       await this.run(['gh', 'pr', 'merge', String(entry.pr), '--repo', step.repository, '--squash', '--match-head-commit', entry.commit!]);
@@ -300,6 +341,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     await this.git(step, 'fetch', 'origin', entry.base!);
     await this.git(step, 'diff', '--exit-code', entry.commit!, entry.mergeCommit);
     await this.sourceVersion(step, entry.mergeCommit);
+    await this.waitForCommitChecks(step, entry.mergeCommit, 'main CI');
   }
 
   async tagged(step: PackagePlan, _profile: ReleaseProfile, entry: ExecutionEntry): Promise<void> {

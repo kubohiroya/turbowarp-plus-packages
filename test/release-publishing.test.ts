@@ -1,4 +1,8 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { CommandFailure, GithubNpmReleaseDriver } from '../scripts/lib/release-driver.ts';
 import type { Runner } from '../scripts/lib/release-driver.ts';
@@ -116,4 +120,42 @@ test('completing an older release never downgrades a newer next tag', async () =
     return JSON.stringify({ object: { type: 'commit', sha } });
   }, entry);
   await assert.rejects(execute.complete(unchanged, profile, entry), /下げず/u);
+});
+
+for (const mode of ['dirty-verification', 'changed-pack', 'same-pack']) test(`a saved candidate preserves its frozen archive (${mode})`, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'release-candidate-'));
+  try {
+    const cwd = join(root, 'checkouts', step.repo);
+    await mkdir(cwd, { recursive: true });
+    await writeFile(join(cwd, 'package.json'), JSON.stringify({ name: step.name, version: '1.1.0' }));
+    const originalHash = createHash('sha1').update('original archive').digest('hex');
+    const artifactDirectory = join(root, 'artifacts', step.repo);
+    const artifact = join(artifactDirectory, 'family-tool-1.1.0.tgz');
+    await mkdir(artifactDirectory, { recursive: true });
+    await writeFile(artifact, 'original archive');
+    const entry: ExecutionEntry = { phase: 'pending', commit: sha, artifact, shasum: originalHash };
+    const state: ExecutionState = { schemaVersion: 1, digest: 'c'.repeat(64), entries: { tool: entry } };
+    let verified = 0, packed = 0;
+    const run: Runner = async command => {
+      if (command[0] === 'fixture-verify') { verified++; return ''; }
+      if (command[0] === 'git' && command[1] === 'rev-parse') return sha;
+      if (command[0] === 'git' && command[1] === 'status') return mode === 'dirty-verification' ? ' M generated.js' : '';
+      assert.equal(command[1], 'pack', 'resume must not rerun preparation, push, or publish');
+      packed++;
+      const directory = command[command.indexOf('--pack-destination') + 1];
+      assert.notEqual(directory, artifactDirectory, 'packing must never overwrite a frozen archive');
+      const filename = 'family-tool-1.1.0.tgz';
+      const bytes = mode === 'same-pack' ? 'original archive' : 'changed archive';
+      await writeFile(join(directory, filename), bytes);
+      return JSON.stringify([{ name: step.name, version: '1.1.0', filename, shasum: createHash('sha1').update(bytes).digest('hex') }]);
+    };
+    const execute = new GithubNpmReleaseDriver(root, { schemaVersion: 1, repositories: {} }, state, async () => {}, run);
+    if (mode === 'same-pack') await execute.prepared(step, profile, entry);
+    else await assert.rejects(execute.prepared(step, profile, entry), mode === 'dirty-verification' ? /未コミット/ : /tarball/);
+    assert.equal(verified, 1);
+    assert.equal(packed, mode === 'dirty-verification' ? 0 : 1);
+    assert.equal(entry.shasum, originalHash, 'a failed retry must preserve the approved archive hash');
+    assert.equal(await readFile(artifact, 'utf8'), 'original archive');
+    assert.deepEqual(await readdir(artifactDirectory), ['family-tool-1.1.0.tgz'], 'temporary pack directories must be removed');
+  } finally { await rm(root, { recursive: true, force: true }); }
 });

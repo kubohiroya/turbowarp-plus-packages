@@ -18,6 +18,22 @@ export interface ContractOverrides {
   workflowTimeoutSeconds?: number;
 }
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
+/** Prove event exclusion only for a small conjunction grammar, never by substring matching. */
+function constrainedEvents(condition: unknown): Set<string> | undefined {
+  if (condition === false) return new Set();
+  if (typeof condition !== 'string') return undefined;
+  let expression = condition.trim();
+  if (expression.startsWith('${{') && expression.endsWith('}}')) expression = expression.slice(3, -2).trim();
+  let events: Set<string> | undefined;
+  for (const clause of expression.split('&&')) {
+    const match = /^github\.(event_name|ref)\s*==\s*(['"])([A-Za-z0-9_./:-]+)\2$/u.exec(clause.trim());
+    if (!match) return undefined;
+    if (match[1] === 'event_name') {
+      events = events === undefined ? new Set([match[3]]) : new Set([...events].filter(event => event === match[3]));
+    }
+  }
+  return events;
+}
 const object = (value: unknown): Record<string, any> => {
   assert(value && typeof value === 'object' && !Array.isArray(value), 'リリース契約にobjectが必要です。');
   return value as Record<string, any>;
@@ -80,11 +96,13 @@ export function profileFromContract(manifestText: string, workflowText: string, 
   }
   const jobs = Object.entries(object(workflow.jobs));
   const candidates: { job: string; mode: 'tag-workflow' | 'dispatch-workflow' }[] = [];
+  const publishingJobs: { name: string; condition: unknown }[] = [];
   const problems: string[] = [];
   for (const [name, raw] of jobs) {
     const job = object(raw);
-    if (contract.publish?.job && contract.publish.job !== name) continue;
     if (!Array.isArray(job.steps) || !job.steps.some((step: any) => typeof step.run === 'string' && /(?:^|\n)\s*(?:npm|pnpm) publish(?:\s|$)/u.test(step.run))) continue;
+    publishingJobs.push({ name, condition: job.if });
+    if (contract.publish?.job && contract.publish.job !== name) continue;
     const run = job.steps.filter((step: any) => typeof step.run === 'string').map((step: any) => step.run).join('\n');
     const condition = String(job.if ?? '');
     if (/\d+\.\d+\.\d+/u.test(condition) || /(?:npm|pnpm) publish[^\n]*(?:\d+\.\d+\.\d+|--dry-run)/u.test(run) || /gh release download\s+['"]?v\d+\.\d+\.\d+/u.test(run)) {
@@ -92,15 +110,23 @@ export function profileFromContract(manifestText: string, workflowText: string, 
     }
     if ((job.permissions ?? workflow.permissions)?.['id-token'] !== 'write') { problems.push(`${name}: id-token: writeがない`); continue; }
     if (/(?:NODE_AUTH_TOKEN|NPM_TOKEN)/u.test(JSON.stringify([workflow.env, job]))) { problems.push(`${name}: 長期npm tokenを使用`); continue; }
-    const pushOnly = /github\.event_name\s*==\s*['"]push['"]/u.test(condition);
-    const dispatchOnly = /github\.event_name\s*==\s*['"]workflow_dispatch['"]/u.test(condition);
-    const tag = Array.isArray(events.push?.tags) && events.push.tags.includes('v*') && !dispatchOnly && !condition.includes('refs/heads/');
-    const dispatch = Object.hasOwn(events, 'workflow_dispatch') && !pushOnly && !condition.includes('refs/tags/');
+    const eventConstraint = constrainedEvents(job.if);
+    const tag = Array.isArray(events.push?.tags) && events.push.tags.includes('v*') &&
+      (!eventConstraint || eventConstraint.has('push')) && !condition.includes('refs/heads/');
+    const dispatch = Object.hasOwn(events, 'workflow_dispatch') &&
+      (!eventConstraint || eventConstraint.has('workflow_dispatch')) && !condition.includes('refs/tags/');
     if (hint?.mode === 'tag-workflow' ? tag : !hint && tag) candidates.push({ job: name, mode: 'tag-workflow' });
     else if (dispatch && (!hint || hint.mode === 'dispatch-workflow')) candidates.push({ job: name, mode: 'dispatch-workflow' });
   }
   assert(candidates.length === 1, `汎用OIDC公開jobを一意に特定できません。${problems.join(' / ')}`);
   const selected = candidates[0];
+  const selectedEvent = selected.mode === 'tag-workflow' ? 'push' : 'workflow_dispatch';
+  for (const job of publishingJobs) {
+    if (job.name === selected.job) continue;
+    const eventConstraint = constrainedEvents(job.condition);
+    assert(eventConstraint && !eventConstraint.has(selectedEvent),
+      `${job.name}: 他の公開jobが${selectedEvent}で停止すると証明できません。workflow全体の公開を許可しません。`);
+  }
   let inputs: Record<string, string> | undefined = hint?.inputs;
   if (selected.mode === 'dispatch-workflow') {
     const declared = events.workflow_dispatch?.inputs ?? {};
