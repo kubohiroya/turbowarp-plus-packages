@@ -1,0 +1,78 @@
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Verified release version (without v)
+        required: true
+        type: string
+      shasum:
+        description: SHA1 of the verified Release tarball
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - run: npm install --global npm@11.21.0 semver@7.7.2
+      - name: Download verified artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          SHASUM: ${{ inputs.shasum }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          node -e 'if (!/^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/.test(process.env.VERSION) || !/^[a-f0-9]{40}$/.test(process.env.SHASUM)) throw Error("Invalid release inputs")'
+          mkdir artifact
+          gh release download "v$VERSION" --repo "$REPOSITORY" --pattern '*.tgz' --dir artifact
+          test "$(find artifact -maxdepth 1 -name '*.tgz' | wc -l)" -eq 1
+          artifact="$(find artifact -maxdepth 1 -name '*.tgz')"
+          echo "$SHASUM  $artifact" | sha1sum --check
+          tar -xOf "$artifact" package/package.json > package-metadata.json
+          node -e 'const p=require("./package-metadata.json");if(p.version!==process.env.VERSION || p.private || !p.name.startsWith("@kubohiroya/")) throw Error("Unexpected package identity")'
+          # Fetch the tagged metadata independently before publishing anything.
+          gh api "repos/$REPOSITORY/contents/package.json?ref=v$VERSION" --jq .content | base64 --decode > tagged-package.json
+          node -e 'const a=require("./package-metadata.json"),b=require("./tagged-package.json");if(a.name!==b.name || a.version!==b.version) throw Error("Tag/package mismatch")'
+          echo "TARBALL=$artifact" >> "$GITHUB_ENV"
+      - name: Publish verified tarball and synchronize channels
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          export SEMVER_PATH="$(npm root -g)/semver"
+          node <<'NODE'
+          const {execFileSync}=require('node:child_process');
+          const semver=require(process.env.SEMVER_PATH);
+          const name=require('./package-metadata.json').name;
+          const version=process.env.VERSION;
+          const read=()=>JSON.parse(execFileSync('npm',['view',name,'dist-tags','--json','--prefer-online'],{encoding:'utf8'}));
+          const before=read();
+          for (const tag of ['latest','next']) {
+            if (semver.valid(before[tag]) && semver.gt(before[tag],version)) throw Error(`Refusing to downgrade ${tag}`);
+          }
+          require('node:fs').writeFileSync('before-tags.json', JSON.stringify(before));
+          NODE
+          npm publish "$TARBALL" --access public --tag next --provenance
+          node <<'NODE'
+          const {execFileSync}=require('node:child_process');
+          const name=require('./package-metadata.json').name;
+          const version=process.env.VERSION;
+          const before=require('./before-tags.json');
+          const read=()=>JSON.parse(execFileSync('npm',['view',name,'dist-tags','--json','--prefer-online'],{encoding:'utf8'}));
+          for (const tag of ['latest','next']) {
+            const current=read();
+            if (![before[tag],version].includes(current[tag])) throw Error(`Concurrent change to ${tag}`);
+            if (current[tag]!==version) execFileSync('npm',['dist-tag','add',`${name}@${version}`,tag],{stdio:'inherit'});
+          }
+          NODE

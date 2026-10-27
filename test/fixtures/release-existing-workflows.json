@@ -1,0 +1,172 @@
+[
+  {
+    "repo": "sb3-toolchain",
+    "manifest": {
+      "name": "@kubohiroya/sb3-toolchain",
+      "version": "0.17.0",
+      "packageManager": "pnpm@11.28.8",
+      "scripts": {
+        "build": "vite build",
+        "lint": "eslint .",
+        "typecheck": "tsc --project tsconfig.json",
+        "test": "vitest run",
+        "check": "pnpm run lint && pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run repo:check && pnpm run pack:check"
+      }
+    },
+    "workflow": "name: Release\n\n# The family's standard release: a pushed v<version> tag is checked, packed, attached to the\n# GitHub Release and published to npm through trusted publishing (OIDC). No npm token is stored.\n#\n# npmjs.com side (package Settings -> Trusted publisher) must name:\n#   Organization or user  kubohiroya\n#   Repository            sb3-toolchain\n#   Workflow filename     release.yml   <- the filename alone\n#   Environment           (empty)\non:\n  push:\n    tags:\n      - 'v*'\n\npermissions:\n  contents: write\n  id-token: write\n\nconcurrency:\n  group: release-${{ github.ref }}\n  cancel-in-progress: false\n\njobs:\n  release:\n    runs-on: ubuntu-latest\n    timeout-minutes: 30\n    steps:\n      - uses: actions/checkout@v6\n      - uses: pnpm/action-setup@v6\n      - uses: actions/setup-node@v6\n        with:\n          node-version-file: .nvmrc\n          cache: pnpm\n        # No registry-url: it writes an .npmrc with a placeholder token, and npm sends a configured\n        # token instead of exchanging the workflow identity, so publishing fails with\n        # \"OIDC permission denied\".\n      - run: pnpm install --frozen-lockfile\n      - run: pnpm run check\n      - name: Check the tag names the package version\n        run: |\n          version=\"$(node -p \"require('./package.json').version\")\"\n          if [ \"${GITHUB_REF_NAME#v}\" != \"$version\" ]; then\n            echo \"::error::Tag $GITHUB_REF_NAME does not name package.json version $version.\"\n            exit 1\n          fi\n      - name: Pack the npm archive\n        id: pack\n        run: |\n          mkdir -p \"$RUNNER_TEMP/npm\"\n          npm pack --ignore-scripts --json --pack-destination \"$RUNNER_TEMP/npm\" > \"$RUNNER_TEMP/pack.json\"\n          file=\"$(node -p \"const r = require(process.env.RUNNER_TEMP + '/pack.json'); (Array.isArray(r) ? r[0] : Object.values(r)[0]).filename\")\"\n          echo \"file=$RUNNER_TEMP/npm/$file\" >> \"$GITHUB_OUTPUT\"\n      - name: Attach to the GitHub Release\n        # An attachment that already exists must be byte-identical: a release driver may have\n        # uploaded its locally verified archive first, and a differing CI build stops here,\n        # before anything reaches npm.\n        env:\n          GH_TOKEN: ${{ github.token }}\n          NPM_ARCHIVE: ${{ steps.pack.outputs.file }}\n        run: |\n          set -euo pipefail\n          tag=\"$GITHUB_REF_NAME\"\n          name=\"$(node -p \"require('./package.json').name\")\"\n          version=\"$(node -p \"require('./package.json').version\")\"\n          if ! gh release view \"$tag\" > /dev/null 2>&1; then\n            prerelease=()\n            case \"$version\" in *-*) prerelease=(--prerelease) ;; esac\n            gh release create \"$tag\" --verify-tag --title \"$name $version\" --generate-notes \"${prerelease[@]}\" ||\n              gh release view \"$tag\" > /dev/null\n          fi\n          existing=\"$(gh api \"repos/$GITHUB_REPOSITORY/releases/tags/$tag\" --jq '.assets[] | \"\\(.name)\\t\\(.digest)\"')\"\n          shopt -s nullglob\n          for file in \"$NPM_ARCHIVE\"; do\n            want=\"sha256:$(sha256sum \"$file\" | cut -d' ' -f1)\"\n            have=\"$(printf '%s\\n' \"$existing\" | awk -F'\\t' -v n=\"$(basename \"$file\")\" '$1 == n { print $2 }')\"\n            if [ -z \"$have\" ]; then\n              gh release upload \"$tag\" \"$file\"\n            elif [ \"$have\" != \"$want\" ]; then\n              echo \"::error::$(basename \"$file\") is already attached with different content.\"\n              exit 1\n            fi\n          done\n      - name: Use an npm that supports trusted publishing\n        run: npm install --global npm@11.21.0\n      - name: Publish to npm\n        # Last step: a failed check or mismatched tag stops the release before the registry,\n        # where a version cannot be replaced.\n        env:\n          NPM_ARCHIVE: ${{ steps.pack.outputs.file }}\n        run: |\n          set -euo pipefail\n          name=\"$(node -p \"require('./package.json').name\")\"\n          version=\"$(node -p \"require('./package.json').version\")\"\n          want=\"$(sha1sum \"$NPM_ARCHIVE\" | cut -d' ' -f1)\"\n          have=\"$(npm view \"$name@$version\" dist.shasum --prefer-online 2> /dev/null || true)\"\n          if [ -n \"$have\" ]; then\n            if [ \"$have\" != \"$want\" ]; then\n              echo \"::error::$name@$version is already published with different content.\"\n              exit 1\n            fi\n            echo \"$name@$version is already published with this archive.\"\n          else\n            dist_tag=\"$(node -p \"require('./package.json').publishConfig?.tag ?? ''\")\"\n            if [ -z \"$dist_tag\" ]; then\n              case \"$version\" in *-*) dist_tag=next ;; *) dist_tag=latest ;; esac\n            fi\n            npm publish \"$NPM_ARCHIVE\" --access public --provenance --tag \"$dist_tag\"\n          fi\n          # Accepting a publish and serving it differ; wait for the registry itself.\n          for attempt in $(seq 1 60); do\n            have=\"$(npm view \"$name@$version\" dist.shasum --prefer-online 2> /dev/null || true)\"\n            [ -n \"$have\" ] && break\n            sleep 10\n          done\n          if [ \"$have\" != \"$want\" ]; then\n            echo \"::error::The registry does not serve $name@$version with the packed archive.\"\n            exit 1\n          fi\n      - name: Point latest and next at this release\n        # The family keeps both dist-tags on the newest verified release\n        # (kubohiroya/turbowarp-plus-packages#16).\n        run: |\n          set -euo pipefail\n          name=\"$(node -p \"require('./package.json').name\")\"\n          version=\"$(node -p \"require('./package.json').version\")\"\n          for tag in latest next; do\n            if [ \"$(npm view \"$name\" \"dist-tags.$tag\" --prefer-online 2> /dev/null || true)\" != \"$version\" ]; then\n              npm dist-tag add \"$name@$version\" \"$tag\"\n            fi\n          done\n"
+  },
+  {
+    "repo": "turbowarp-app-template",
+    "manifest": {
+      "name": "@kubohiroya/turbowarp-app-template",
+      "version": "0.2.0",
+      "private": true,
+      "packageManager": "pnpm@11.28.8",
+      "scripts": {
+        "build": "pnpm run build:sb3 && vite build",
+        "lint": "eslint src scripts config tests vite.config.ts",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run",
+        "check": "pnpm run lint && pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build"
+      }
+    },
+    "workflow": ""
+  },
+  {
+    "repo": "turbowarp-camera-calibration-app",
+    "manifest": {
+      "name": "@kubohiroya/turbowarp-camera-calibration-app",
+      "version": "0.2.0",
+      "private": true,
+      "packageManager": "pnpm@11.11.0",
+      "scripts": {
+        "build": "pnpm run build:sb3 && vite build",
+        "lint": "eslint src scripts config tests vite.config.ts",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run",
+        "check": "pnpm run lint && pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build"
+      }
+    },
+    "workflow": ""
+  },
+  {
+    "repo": "turbowarp-kamishibai-app",
+    "manifest": {
+      "name": "@kubohiroya/turbowarp-kamishibai-app",
+      "version": "4.0.0-rc.58",
+      "private": false,
+      "packageManager": "pnpm@11.18.0",
+      "scripts": {
+        "build": "pnpm run build:site",
+        "lint": "eslint .",
+        "typecheck": "node scripts/tsc.ts --project tsconfig.json",
+        "test": "pnpm test:full",
+        "verify:full": "pnpm sb3:check && pnpm lint && pnpm format && pnpm typecheck && pnpm test:full && pnpm e2e && pnpm build && pnpm pack:smoke",
+        "verify:release": "pnpm verify:full"
+      }
+    },
+    "workflow": "name: Release\n\non:\n  workflow_dispatch:\n  push:\n    tags:\n      - 'v*'\n\npermissions:\n  contents: read\n\njobs:\n  release:\n    if: github.event_name == 'push'\n    permissions:\n      contents: read\n      id-token: write\n    runs-on: ubuntu-latest\n    # `pnpm verify:release` is `verify:full`: checks, tests, e2e, build and the pack smoke test.\n    timeout-minutes: 60\n    steps:\n      - uses: actions/checkout@v7\n      - run: corepack enable\n      - uses: actions/setup-node@v7\n        with:\n          node-version: '24'\n          cache: pnpm\n        # No registry-url. It writes an .npmrc whose auth token is the literal placeholder\n        # XXXXX-XXXXX-XXXXX-XXXXX when no token is supplied, and a configured credential -- even a\n        # bogus one -- is what npm sends instead of exchanging the workflow identity, so the\n        # publish is refused as \"OIDC permission denied\". package.json already names the registry\n        # in publishConfig, so nothing else needed this.\n      - run: pnpm install --frozen-lockfile\n      # The same verification a release is cut against, run here against the tagged tree.\n      - run: pnpm verify:release\n      - name: Check the tag names the version being released\n        # The registry will not accept a replacement for a version already published, so a tag\n        # that does not match package.json either publishes something nobody asked for or fails\n        # after the release is already cut.\n        run: |\n          tag=\"${GITHUB_REF_NAME#v}\"\n          version=\"$(node -p \"require('./package.json').version\")\"\n          if [ \"$tag\" != \"$version\" ]; then\n            echo \"Tag $GITHUB_REF_NAME does not name package.json version $version.\" >&2\n            exit 1\n          fi\n      - name: Use an npm that can publish without a stored token\n        # Trusted publishing needs npm 11.5.1 or newer. The pinned Node already ships one, so this\n        # only keeps the requirement from depending on which npm happens to come with a future\n        # bump.\n        run: npm install -g npm@11.21.0\n      - name: Publish to npm\n        # No token in this repository. npm checks this workflow's identity against the package's\n        # trusted publisher on npmjs.com, and the credential it issues lives for the length of the\n        # job. Provenance is attached without asking.\n        #\n        # No --tag: publishConfig.tag in package.json is already `next`, which is what the 4.0.0-rc\n        # series publishes under. A --tag here would only be another place to keep in step with it.\n        #\n        # The half of the setting that is not in this file is on npmjs.com, under the package's\n        # Settings -> Trusted publisher. Four fields have to match, and one mismatch is a 403\n        # \"OIDC permission denied\":\n        #\n        #   Organization or user  kubohiroya\n        #   Repository            turbowarp-kamishibai-app\n        #   Workflow filename     release.yml   <- the filename alone; the path\n        #                                         .github/workflows/release.yml does not match\n        #   Environment           (empty)       <- this workflow declares no `environment:`, so a\n        #                                         name here does not match\n        #\n        # The trusted publisher must permit direct npm publish, not only npm stage publish.\n        # Trusted publishing does not require weakening the package's two-factor policy.\n        #\n        # Accepting a publish and serving it are different things -- in the sibling repository a\n        # version took about 80 seconds to appear in the registry after a successful job, so\n        # `release:dsl4:record-publication` and any downstream update have to wait for the registry\n        # itself.\n        #\n        # Publication follows validation, so a failed check or mismatched tag stops the release before anything\n        # reaches the registry, where it cannot be taken back.\n        run: npm publish\n      - name: Complete release and verify latest and next\n        run: node scripts/finalize-release-tags.ts \"$(node -p 'require(\"./package.json\").name')\" \"$(node -p 'require(\"./package.json\").version')\"\n\n  publish-existing:\n    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'\n    runs-on: ubuntu-latest\n    timeout-minutes: 15\n    permissions:\n      contents: read\n      id-token: write\n    steps:\n      - uses: actions/checkout@v7\n      - uses: actions/setup-node@v7\n        with:\n          node-version: '24'\n      - name: Install OIDC-capable npm\n        run: npm install --global npm@11.21.0\n      - name: Download verified rc.58 release artifact\n        env:\n          GH_TOKEN: ${{ github.token }}\n        run: |\n          gh release download v4.0.0-rc.58 --repo kubohiroya/turbowarp-kamishibai-app --pattern kubohiroya-turbowarp-kamishibai-app-4.0.0-rc.58.tgz\n          echo 'aa693ab4c8d5d08275985abc7c7da923eccd4619  kubohiroya-turbowarp-kamishibai-app-4.0.0-rc.58.tgz' | sha1sum --check\n          tar -xOf kubohiroya-turbowarp-kamishibai-app-4.0.0-rc.58.tgz package/package.json > package-metadata.json\n          node --input-type=module -e \"import fs from 'node:fs'; const p = JSON.parse(fs.readFileSync('package-metadata.json')); if (p.name !== '@kubohiroya/turbowarp-kamishibai-app' || p.version !== '4.0.0-rc.58' || p.publishConfig?.tag !== 'next') throw new Error('Unexpected package');\"\n      - name: Publish verified tarball with provenance to next\n        run: |\n          test \"$(node -p 'require(\"./package.json\").version')\" = '4.0.0-rc.58'\n          if npm view @kubohiroya/turbowarp-kamishibai-app@4.0.0-rc.58 version --json --prefer-online > published-version.json; then\n            test \"$(npm view @kubohiroya/turbowarp-kamishibai-app@4.0.0-rc.58 dist.shasum --prefer-online)\" = 'aa693ab4c8d5d08275985abc7c7da923eccd4619'\n          else\n            node --input-type=module -e \"import fs from 'node:fs'; const p=JSON.parse(fs.readFileSync('published-version.json')); if (p.error?.code !== 'E404') throw Error('Cannot confirm unpublished version');\"\n            npm publish ./kubohiroya-turbowarp-kamishibai-app-4.0.0-rc.58.tgz --access public --tag next --provenance\n          fi\n      - name: Complete release and verify latest and next\n        run: node scripts/finalize-release-tags.ts @kubohiroya/turbowarp-kamishibai-app 4.0.0-rc.58\n"
+  },
+  {
+    "repo": "turbowarp-kamishibai-samples",
+    "manifest": {
+      "name": "turbowarp-kamishibai-samples",
+      "version": "1.2.0",
+      "private": true,
+      "packageManager": "pnpm@11.18.0",
+      "scripts": {
+        "build": "node scripts/build-site.ts",
+        "check": "pnpm typecheck && pnpm test && pnpm build && pnpm test:web && pnpm verify && pnpm run repo:check",
+        "test": "vitest run",
+        "verify": "node scripts/build-site-navigation.ts --check && node scripts/turbowarp-extensions.ts && node scripts/verify-site.ts && node scripts/verify-tutorial-dsl4.ts && node scripts/verify-dsl4-block-source-round-trip.ts && node scripts/verify-app-release.ts",
+        "typecheck": "tsc --noEmit"
+      }
+    },
+    "workflow": ""
+  },
+  {
+    "repo": "turbowarp-photogrammetry-app",
+    "manifest": {
+      "name": "@kubohiroya/turbowarp-photogrammetry-app",
+      "version": "0.2.0",
+      "private": true,
+      "packageManager": "pnpm@11.11.0",
+      "scripts": {
+        "build": "pnpm run build:sb3 && vite build",
+        "lint": "eslint src scripts config tests vite.config.ts",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run",
+        "check": "pnpm run lint && pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build"
+      }
+    },
+    "workflow": ""
+  },
+  {
+    "repo": "turbowarp-realtime-motion-capture-app",
+    "manifest": {
+      "name": "@kubohiroya/turbowarp-realtime-motion-capture-app",
+      "version": "0.2.1",
+      "private": false,
+      "packageManager": "pnpm@11.11.0",
+      "scripts": {
+        "build": "pnpm run build:sb3 && vite build",
+        "lint": "eslint config scripts src tests vite.config.ts vitest.config.ts",
+        "typecheck": "tsc --project tsconfig.json && node --experimental-strip-types scripts/check-script-syntax.ts && pnpm --filter \"./packages/*\" --if-present run typecheck",
+        "test": "vitest run",
+        "check": "pnpm run lint && pnpm run format && pnpm run typecheck && pnpm run test && pnpm run check:repository && pnpm run check:text && pnpm run check:packages && pnpm run check:scripts && pnpm run check:pins && pnpm run check:extensions && pnpm run check:apps && pnpm run check:bundle-order && pnpm run check:release && pnpm run build"
+      }
+    },
+    "workflow": "name: Release\n\non:\n  workflow_dispatch:\n\npermissions:\n  contents: read\n\njobs:\n  publish-existing:\n    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'\n    runs-on: ubuntu-latest\n    timeout-minutes: 15\n    permissions:\n      contents: read\n      id-token: write\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 24\n          registry-url: https://registry.npmjs.org\n      - name: Install OIDC-capable npm\n        run: npm install --global npm@11.21.0\n      - name: Verify release artifact\n        env:\n          GH_TOKEN: ${{ github.token }}\n        run: |\n          set -eu\n          node --input-type=module -e \"import fs from 'node:fs'; const p = JSON.parse(fs.readFileSync('package.json')); if (p.name !== '@kubohiroya/turbowarp-realtime-motion-capture-app' || p.version !== '0.2.1') throw new Error('Main has advanced');\"\n          gh release download v0.2.1 --repo kubohiroya/turbowarp-realtime-motion-capture-app --pattern kubohiroya-turbowarp-realtime-motion-capture-app-0.2.1.tgz\n          echo '099bd14bdaa086b3340b50926f1aa14c3ab3232b  kubohiroya-turbowarp-realtime-motion-capture-app-0.2.1.tgz' | sha1sum --check\n          tar -xOf kubohiroya-turbowarp-realtime-motion-capture-app-0.2.1.tgz package/package.json > package-metadata.json\n          node --input-type=module -e \"import fs from 'node:fs'; const p = JSON.parse(fs.readFileSync('package-metadata.json')); if (p.name !== '@kubohiroya/turbowarp-realtime-motion-capture-app' || p.version !== '0.2.1') throw new Error('Unexpected package');\"\n      - name: Publish once with provenance and finalize tags\n        run: |\n          set -eu\n          npm view @kubohiroya/turbowarp-realtime-motion-capture-app@0.2.1 --json --prefer-online > published.json 2> registry-error.txt || {\n            node --input-type=module -e \"import fs from 'node:fs'; const p = JSON.parse(fs.readFileSync('published.json')); if (p.error?.code !== 'E404') throw new Error('Registry lookup failed');\"\n            npm publish ./kubohiroya-turbowarp-realtime-motion-capture-app-0.2.1.tgz --access public --provenance --tag latest --ignore-scripts\n          }\n          npm view @kubohiroya/turbowarp-realtime-motion-capture-app@0.2.1 dist.shasum --json --prefer-online > visible-hash.json 2>/dev/null || true\n          node --input-type=module -e \"import fs from 'node:fs'; const t=fs.readFileSync('visible-hash.json','utf8').trim(); if(t){ const p=JSON.parse(t); if(!p.error && p!=='099bd14bdaa086b3340b50926f1aa14c3ab3232b') throw new Error('Published artifact differs'); if(p.error && p.error.code!=='E404') throw new Error('Registry lookup failed'); }\"\n          node scripts/finalize-release-tags.ts @kubohiroya/turbowarp-realtime-motion-capture-app 0.2.1\n          npm view @kubohiroya/turbowarp-realtime-motion-capture-app@0.2.1 dist.shasum --json --prefer-online > published-hash.json\n          node --input-type=module -e \"import fs from 'node:fs'; if (JSON.parse(fs.readFileSync('published-hash.json')) !== '099bd14bdaa086b3340b50926f1aa14c3ab3232b') throw new Error('Published artifact differs');\"\n"
+  },
+  {
+    "repo": "turbowarp-sesame",
+    "manifest": {
+      "name": "@kubohiroya/turbowarp-sesame",
+      "version": "0.2.0",
+      "packageManager": "pnpm@11.11.0",
+      "scripts": {
+        "typecheck": "tsc --noEmit",
+        "build": "vite build && vite build --config vite.keyholder.config.ts && vite build --config vite.keyholder-sw.config.ts && vite build --config vite.app.config.ts && node scripts/build-sb3.mjs",
+        "lint": "eslint src tests vite.config.ts vite.keyholder.config.ts vite.keyholder-sw.config.ts vite.app.config.ts",
+        "test": "vitest run",
+        "docs": "node scripts/generate-readme.mjs",
+        "check": "pnpm run typecheck && pnpm run lint && pnpm run format && pnpm run test && pnpm run docs:check && pnpm run check:dist && pnpm run repo:check && pnpm run pack:check"
+      }
+    },
+    "workflow": "name: Release\n\non:\n  workflow_dispatch:\n  push:\n    tags:\n      - \"v*\"\n\npermissions:\n  contents: write\n\njobs:\n  release:\n    if: github.event_name == 'push'\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: corepack enable\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 22\n          cache: pnpm\n      - run: pnpm install --frozen-lockfile\n      - run: pnpm run check\n      - name: Create ZIP archive\n        run: |\n          cd dist\n          zip ../turbowarp-extension.zip *.js\n      - uses: softprops/action-gh-release@v2\n        with:\n          files: |\n            dist/*.js\n            turbowarp-extension.zip\n\n  publish-existing:\n    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'\n    runs-on: ubuntu-latest\n    timeout-minutes: 15\n    permissions:\n      contents: read\n      id-token: write\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 24\n          registry-url: https://registry.npmjs.org\n      - name: Install OIDC-capable npm\n        run: npm install --global npm@11.21.0\n      - name: Verify release artifact\n        env:\n          GH_TOKEN: ${{ github.token }}\n        run: |\n          set -eu\n          node --input-type=module -e \"import fs from 'node:fs'; const p = JSON.parse(fs.readFileSync('package.json')); if (p.name !== '@kubohiroya/turbowarp-sesame' || p.version !== '0.2.0') throw new Error('Main has advanced');\"\n          gh release download v0.2.0 --repo kubohiroya/turbowarp-sesame --pattern kubohiroya-turbowarp-sesame-0.2.0.tgz\n          echo '7801ea96418f8f007f01845648edc18d34877110  kubohiroya-turbowarp-sesame-0.2.0.tgz' | sha1sum --check\n          tar -xOf kubohiroya-turbowarp-sesame-0.2.0.tgz package/package.json > package-metadata.json\n          node --input-type=module -e \"import fs from 'node:fs'; const p = JSON.parse(fs.readFileSync('package-metadata.json')); if (p.name !== '@kubohiroya/turbowarp-sesame' || p.version !== '0.2.0') throw new Error('Unexpected package');\"\n      - name: Publish once with provenance and finalize tags\n        run: |\n          set -eu\n          npm view @kubohiroya/turbowarp-sesame@0.2.0 --json --prefer-online > published.json 2> registry-error.txt || {\n            node --input-type=module -e \"import fs from 'node:fs'; const p = JSON.parse(fs.readFileSync('published.json')); if (p.error?.code !== 'E404') throw new Error('Registry lookup failed');\"\n            npm publish ./kubohiroya-turbowarp-sesame-0.2.0.tgz --access public --provenance --tag latest --ignore-scripts\n          }\n          npm view @kubohiroya/turbowarp-sesame@0.2.0 dist.shasum --json --prefer-online > visible-hash.json 2>/dev/null || true\n          node --input-type=module -e \"import fs from 'node:fs'; const t=fs.readFileSync('visible-hash.json','utf8').trim(); if(t){ const p=JSON.parse(t); if(!p.error && p!=='7801ea96418f8f007f01845648edc18d34877110') throw new Error('Published artifact differs'); if(p.error && p.error.code!=='E404') throw new Error('Registry lookup failed'); }\"\n          node scripts/finalize-release-tags.ts @kubohiroya/turbowarp-sesame 0.2.0\n          npm view @kubohiroya/turbowarp-sesame@0.2.0 dist.shasum --json --prefer-online > published-hash.json\n          node --input-type=module -e \"import fs from 'node:fs'; if (JSON.parse(fs.readFileSync('published-hash.json')) !== '7801ea96418f8f007f01845648edc18d34877110') throw new Error('Published artifact differs');\"\n"
+  },
+  {
+    "repo": "turbowarp-time-space-sync-app",
+    "manifest": {
+      "name": "@kubohiroya/turbowarp-time-space-sync-app",
+      "version": "0.2.0",
+      "private": true,
+      "packageManager": "pnpm@11.11.0",
+      "scripts": {
+        "build": "pnpm run build:sb3 && vite build",
+        "lint": "eslint src scripts config tests vite.config.ts",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run",
+        "check": "pnpm run lint && pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build"
+      }
+    },
+    "workflow": ""
+  },
+  {
+    "repo": "turbowarp-webrtc-qrcode-pairing-app",
+    "manifest": {
+      "name": "@kubohiroya/turbowarp-webrtc-qrcode-pairing-app",
+      "version": "0.2.0",
+      "private": true,
+      "packageManager": "pnpm@11.11.0",
+      "scripts": {
+        "build": "pnpm run build:sb3 && vite build",
+        "lint": "eslint src scripts config tests vite.config.ts",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run",
+        "check": "pnpm run lint && pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build"
+      }
+    },
+    "workflow": ""
+  }
+]

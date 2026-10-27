@@ -67,6 +67,21 @@ test('an unchanged closure produces no releases or bumps', () => {
   assert(plan.steps.every(step => step.action === 'none' && step.nextVersion === null));
 });
 
+test('reconciliation includes an npm/GitHub mismatch and propagates the new baseline in DFS order', () => {
+  const upstream = pkg('b');
+  upstream.revision!.tag!.name = 'v1.0.0';
+  const input = report(pkg('a', { dependencies: [dep('b', '^1.2.3')] }), upstream);
+  const normal = createReleasePlan(input, 'a');
+  assert.deepEqual(normal.publishTargets, []);
+  const reconciled = createReleasePlan(input, 'a', { reconcile: true });
+  assert.equal(reconciled.reconcile, true);
+  assert.deepEqual(reconciled.order, ['b', 'a']);
+  assert(reconciled.steps[0].reasons.includes('github-registration'));
+  assert.equal(reconciled.steps[0].sourceChanges, 'unknown', 'missing tags do not prove source changes');
+  assert.deepEqual(reconciled.publishTargets.map(target => target.version), ['1.3.0', '1.3.0']);
+  assert.equal(reconciled.steps[1].dependencyUpdates[0].to, '^1.3.0');
+});
+
 test('published upstream updates preserve exact, caret and tilde dependency styles, including dev and optional', () => {
   const input = report(pkg('a', { dependencies: [dep('b', '1.0.0'), dep('b', '^1.0.0', 'dev'),
     dep('b', '~1.0.0', 'optional')] }), pkg('b'));

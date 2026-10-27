@@ -43,6 +43,7 @@ export interface ReleasePlan {
   schemaVersion: 1;
   mode: 'plan';
   direction?: 'downstream';
+  reconcile?: true;
   snapshot: { generatedAt: string; sha256: string };
   target: string;
   ready: boolean;
@@ -114,16 +115,16 @@ function familyGitReference(range: string, owner: string, repo: string): boolean
 }
 
 /** Pure snapshot planning: no API requests, repository writes or release commands. */
-export function createReleasePlan(input: unknown, target: string): ReleasePlan {
-  return createPlan(input, target, false);
+export function createReleasePlan(input: unknown, target: string, options: { reconcile?: boolean } = {}): ReleasePlan {
+  return createPlan(input, target, false, options.reconcile ?? false);
 }
 
 /** Discover dependents first, then plan their updates in dependency order. */
-export function createDownstreamReleasePlan(input: unknown, target: string): ReleasePlan {
-  return createPlan(input, target, true);
+export function createDownstreamReleasePlan(input: unknown, target: string, options: { reconcile?: boolean } = {}): ReleasePlan {
+  return createPlan(input, target, true, options.reconcile ?? false);
 }
 
-function createPlan(input: unknown, target: string, downstream: boolean): ReleasePlan {
+function createPlan(input: unknown, target: string, downstream: boolean, reconcile: boolean): ReleasePlan {
   const report = snapshot(input);
   const repos = new Map<string, DashboardPackage>();
   const names = new Map<string, DashboardPackage>();
@@ -182,13 +183,14 @@ function createPlan(input: unknown, target: string, downstream: boolean): Releas
 
   const planned = new Map<string, PackagePlan>();
   for (const pkg of ordered) {
-    const step = planPackage(report.owner, pkg, names, planned, affected);
+    const step = planPackage(report.owner, pkg, names, planned, affected, reconcile);
     planned.set(pkg.repo, step);
   }
   const steps = [...planned.values()].filter((step) => !affected || affected.has(step.repo));
   return {
     schemaVersion: 1,
     mode: 'plan',
+    ...(reconcile ? { reconcile: true as const } : {}),
     ...(downstream ? { direction: 'downstream' as const } : {}),
     snapshot: {
       generatedAt: report.generatedAt,
@@ -213,6 +215,7 @@ function planPackage(
   names: Map<string, DashboardPackage>,
   planned: Map<string, PackagePlan>,
   affected?: ReadonlySet<string>,
+  reconcile = false,
 ): PackagePlan {
   const referenceOnly = affected !== undefined && !affected.has(pkg.repo);
   const step: PackagePlan = {
@@ -250,6 +253,8 @@ function planPackage(
     issue('publication-baseline',
       'npm公開版に対応するタグのSHAがなく、ソース変更は未判定です。既存npm版を利用し、先行コミットを根拠としたbumpは計画しません。',
       'warning');
+    // Releasing a new version establishes a verified baseline without inventing old tags.
+    if (reconcile && !referenceOnly) step.reasons.push('github-registration');
   } else if (step.headSha && tag?.oid === step.headSha) {
     step.sourceChanges = 'none';
   } else if (pkg.revision?.state === 'unreleased') {

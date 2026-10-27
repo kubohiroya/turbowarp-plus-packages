@@ -33,6 +33,15 @@ function prepared(repo: string): DashboardPackage {
   return result;
 }
 
+test('downstream reconciliation bumps an unregistered root and its consumers once', () => {
+  const root = pkg('tool');
+  root.revision!.tag!.name = 'v1.0.0';
+  const plan = createDownstreamReleasePlan(report(root, pkg('app', [dep('tool')])), 'tool', { reconcile: true });
+  assert.deepEqual(plan.order, ['tool', 'app']);
+  assert(plan.steps[0].reasons.includes('github-registration'));
+  assert.deepEqual(plan.steps.map(step => step.nextVersion), ['1.3.0', '1.3.0']);
+});
+
 test('downstream traversal orders a diamond once, propagates versions and keeps upstream mode unchanged', () => {
   const input = report(pkg('top', [dep('right'), dep('left')]), pkg('right', [dep('tool')]),
     pkg('left', [dep('tool')]), prepared('tool'), prepared('unrelated'));

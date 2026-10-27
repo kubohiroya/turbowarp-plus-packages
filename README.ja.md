@@ -1,5 +1,7 @@
 # TurboWarp Plus
 
+リリース実行: [dry-run・依存順の更新と公開](docs/release-executor.md)。
+
 [**ダッシュボード → kubohiroya.github.io/turbowarp-plus-packages**](https://kubohiroya.github.io/turbowarp-plus-packages/)
 
 [TurboWarp](https://turbowarp.org/) に機能を足す拡張・ツールチェーン・アプリケーション・
