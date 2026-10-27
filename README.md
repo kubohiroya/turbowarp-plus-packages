@@ -24,6 +24,7 @@ easy to lose track of across sixty-odd repositories.
 | Column | What it tells you |
 | --- | --- |
 | **Package** | An extension's sandbox requirement appears below its name: 🔓 without sandbox required, ◐ optional, 🛡 not needed, ? unknown. |
+| **Demo** | ▶ opens the package's published SB3 in TurboWarp Plus Editor in a new tab. A dash means no downloadable demo was found. |
 | **Issues** / **PRs** | Open issues and pull requests on GitHub. |
 | **Revision** | Whether the tip of the default branch is tagged. `released` means the newest tag is the tip; `N ahead` means that many commits have landed since the newest tag. |
 | **GitHub Pages** | Whether a Pages site is configured, whether it answered when we asked, and a screenshot of its home page in the same colour scheme as the dashboard. |
@@ -71,6 +72,13 @@ Dependencies on packages in this family are always shown. Third-party
 dependencies are hidden unless they are stale or local — turn on **show external
 deps** to see the rest. Dev dependencies appear only when they are one of ours,
 which is how the build tooling shows up as an upstream of every extension.
+
+Demo discovery reads each repository's `samples/manifest.json` (`samples` entries
+with a `name` and optional `title`) and checks `samples/<name>.sb3` on its GitHub
+Pages site. Only downloadable ZIP files with public CORS access get a play button;
+the first available sample is used. Changes appear on the next collection run.
+The Editor URL is `site.demoEditorUrl` in `catalog.yaml`, and `project_url` points
+to the published SB3. Custom extension permission prompts still apply.
 
 ## Adding or moving a package
 
