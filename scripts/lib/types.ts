@@ -7,6 +7,7 @@ export interface SiteConfig {
   disclaimerJa?: string;
   repoUrl?: string;
   headerScript?: string;
+  demoEditorUrl?: string;
 }
 
 export interface Category {
@@ -101,6 +102,7 @@ export interface RepositoryNode {
   readmeEn?: { text?: string } | null;
   readmeJa?: { text?: string } | null;
   blockIcon?: { text?: string } | null;
+  samplesManifest?: { text?: string } | null;
 }
 
 export interface RevisionStatus {
@@ -189,6 +191,7 @@ export interface DashboardPackage {
     jaSource: string | null;
   };
   icon?: string | null;
+  demo?: DemoProject | null;
   revision?: RevisionStatus | null;
   pages?: PagesStatus;
   manifest?: {
@@ -199,6 +202,11 @@ export interface DashboardPackage {
   } | null;
   dependencies?: Dependency[];
   npm?: NpmStatus;
+}
+
+export interface DemoProject {
+  projectUrl: string;
+  title: string;
 }
 
 export interface DashboardReport {
