@@ -23,11 +23,22 @@ easy to lose track of across sixty-odd repositories.
 
 | Column | What it tells you |
 | --- | --- |
+| **Package** | An extension's sandbox requirement appears below its name: 🔓 without sandbox required, ◐ optional, 🛡 not needed, ? unknown. |
 | **Issues** / **PRs** | Open issues and pull requests on GitHub. |
 | **Revision** | Whether the tip of the default branch is tagged. `released` means the newest tag is the tip; `N ahead` means that many commits have landed since the newest tag. |
 | **GitHub Pages** | Whether a Pages site is configured, whether it answered when we asked, and a screenshot of its home page in the same colour scheme as the dashboard. |
 | **npm** | The published version, how long ago it went out, and `⚠️ tag ≠ npm` when the newest git tag and the npm version disagree. |
 | **Upstream dependencies** | Every dependency the package declares on another npm package, with the declared range. 💀 marks a range that points at a local path (`file:`, `link:`, `workspace:` …); ⚠️ marks a range that no longer covers the newest published version. |
+
+Sandbox requirements are collected from the default branch. An explicit
+`unsandboxed` option in `vite.config.ts`'s `turboWarpExtension(...)` takes priority;
+otherwise the collector reads `src/config.ts`'s `extensionConfig.unsandboxed`.
+`required` / `true` means required, `optional` means optional, and
+`not-needed` / `false` means not needed. Missing or dynamic declarations in an
+identified extension are unknown. These are declarations, not runtime compatibility
+test results. Packages without an identifiable extension declaration and older JSON
+snapshots without this field have no badge. Changes appear on the next collection.
+The collector parses TypeScript syntax without executing repository code.
 
 Each package's summary follows the page language. English comes from the
 GitHub repository description, falling back to the first paragraph of

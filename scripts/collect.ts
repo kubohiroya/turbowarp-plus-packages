@@ -25,6 +25,7 @@ import { declaredDependencies, evaluateRange } from './lib/dependencies.ts';
 import { describeFromReadme, looksJapanese } from './lib/descriptions.ts';
 import { checkLive } from './lib/pages.ts';
 import { publishedDemo } from './lib/demos.ts';
+import { extensionUnsandboxed } from './lib/sandbox.ts';
 
 interface PagesResponse {
   html_url?: string;
@@ -77,6 +78,8 @@ const REPO_FIELDS = `
   readmeJa: object(expression: "HEAD:README.ja.md") { ... on Blob { text } }
   blockIcon: object(expression: "HEAD:assets/block-icon.svg") { ... on Blob { text } }
   samplesManifest: object(expression: "HEAD:samples/manifest.json") { ... on Blob { text } }
+  extensionConfig: object(expression: "HEAD:src/config.ts") { ... on Blob { text } }
+  viteConfig: object(expression: "HEAD:vite.config.ts") { ... on Blob { text } }
 `;
 
 /**
@@ -328,6 +331,7 @@ async function main() {
 
     record.descriptions = describe(node, entry);
     record.icon = blockIcon(node);
+    record.unsandboxed = extensionUnsandboxed(node.extensionConfig?.text, node.viteConfig?.text);
 
     const [revision, pages, deps] = await Promise.all([
       revisionStatus(owner, entry.repo, node).catch((error) => {

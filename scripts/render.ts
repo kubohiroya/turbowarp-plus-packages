@@ -164,6 +164,7 @@ td.name .pkg { font-weight: 600; display: flex; align-items: center; gap: 7px; }
 td.name .pkg .icon { flex: 0 0 auto; width: 20px; height: 20px; }
 td.name .pkg img.icon { object-fit: contain; }
 td.name .pkg .icon svg { width: 100%; height: 100%; display: block; }
+.sandbox-status { margin: 5px 0 0 27px; }
 td.name .desc {
   color: var(--muted); font-size: 12.5px; margin-top: 2px; max-width: 42ch;
   /* Indented to clear the icon, so the summary lines up with the name. */
@@ -460,6 +461,18 @@ function flagsFor(pkg: DashboardPackage) {
   return flags;
 }
 
+function sandboxBadge(pkg: DashboardPackage) {
+  if (!pkg.unsandboxed) return '';
+  const labels = {
+    required: ['warn', '🔓', 'Without sandbox: required', 'サンドボックスなし：必須'],
+    optional: ['idle', '◐', 'Without sandbox: optional', 'サンドボックスなし：任意'],
+    'not-needed': ['ok', '🛡', 'Without sandbox: not needed', 'サンドボックスなし：不要'],
+    unknown: ['idle', '?', 'Without sandbox: unknown', 'サンドボックスなし：不明'],
+  } as const;
+  const [style, icon, en, ja] = labels[pkg.unsandboxed] ?? labels.unknown;
+  return `<div class="sandbox-status"><span class="tag ${style}"><span aria-hidden="true">${icon}</span>${t(en, ja)}</span></div>`;
+}
+
 function row(pkg: DashboardPackage, thumb: Thumbnail | undefined, editorUrl: string) {
   const gh: Partial<GitHubSummary> = pkg.github ?? {};
   const { en = '', ja = '' } = pkg.descriptions ?? {};
@@ -485,6 +498,7 @@ function row(pkg: DashboardPackage, thumb: Thumbnail | undefined, editorUrl: str
   <td class="name">
     <div class="pkg">${icon}<a href="${esc(gh.url ?? '#')}">${esc(pkg.label)}</a>${archived}</div>
     <div class="desc">${summary}</div>
+    ${sandboxBadge(pkg)}
     ${note}
   </td>
   <td class="demo">${demoCell(pkg, editorUrl)}</td>
