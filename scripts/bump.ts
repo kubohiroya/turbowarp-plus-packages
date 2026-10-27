@@ -11,6 +11,7 @@ const HELP = `使い方: npm run bump -- <npm名またはrepo名> [--data <解�
 既定入力: data/dashboard.json
 --data   別の解析スナップショットを使用
 --json   機械可読JSONを標準出力（保存時は npm run --silent bump -- ... --json）
+--reconcile  GitHub/npm不一致も新規リリース対象にし、依存元へ版を伝播
 --help   この説明を表示
 
 ネットワークアクセス・対象repoの変更・公開操作は行いません。
@@ -19,7 +20,7 @@ const HELP = `使い方: npm run bump -- <npm名またはrepo名> [--data <解�
 try {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
-    options: { data: { type: 'string' }, json: { type: 'boolean' }, help: { type: 'boolean' } },
+    options: { data: { type: 'string' }, json: { type: 'boolean' }, help: { type: 'boolean' }, reconcile: { type: 'boolean' } },
   });
   if (values.help) {
     console.log(HELP);
@@ -32,7 +33,7 @@ try {
     } catch (error) {
       throw new Error(`解析JSONを読み込めません: ${path}。既存のdashboard.jsonを配置するか --data で指定してください。`, { cause: error });
     }
-    const plan = createReleasePlan(JSON.parse(source), positionals[0]);
+    const plan = createReleasePlan(JSON.parse(source), positionals[0], { reconcile: values.reconcile });
     console.log(values.json ? JSON.stringify(plan, null, 2) : formatReleasePlan(plan));
     if (!plan.ready) process.exitCode = 2;
   }

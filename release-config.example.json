@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "workflowTimeoutSeconds": 3600,
+  "reviewedRepositories": [],
+  "repositories": {
+    "kubohiroya/example": {
+      "verify": [["corepack", "pnpm", "run", "verify:full"]]
+    }
+  }
+}

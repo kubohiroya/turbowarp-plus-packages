@@ -1,4 +1,6 @@
 node_modules/
+.pnpm-store/
+release-config.json
 data/
 site/index.html
 site/thumbs/

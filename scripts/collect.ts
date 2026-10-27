@@ -12,7 +12,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import semver from 'semver';
+import { releaseVersionsMatch } from './lib/release-version.ts';
 import { errorMessage } from './lib/errors.ts';
 import type {
   Catalog, CatalogEntry, DashboardPackage, DashboardReport, DeclaredDependency,
@@ -355,11 +355,7 @@ async function main() {
 
     // Does what npm serves match the newest tag in the repository?
     const tagName = revision?.tag?.name ?? null;
-    const tagVersion = tagName ? semver.coerce(tagName)?.version ?? null : null;
-    record.npm.matchesTag =
-      record.npm.published && record.npm.latest && tagVersion
-        ? semver.eq(record.npm.latest, tagVersion)
-        : null;
+    record.npm.matchesTag = record.npm.published ? releaseVersionsMatch(record.npm.latest, tagName) : null;
 
     return record;
   });

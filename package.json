@@ -24,7 +24,8 @@
     "build:no-thumbnails": "npm run collect && npm run render",
     "serve": "node --import tsx scripts/serve.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test test/*.test.ts"
+    "test": "node --import tsx --test test/*.test.ts",
+    "release": "node --import tsx scripts/release.ts"
   },
   "dependencies": {
     "semver": "7.7.2",
