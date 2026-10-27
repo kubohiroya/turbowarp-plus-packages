@@ -25,6 +25,7 @@ site:
     非公式。TurboWarp プロジェクトとは提携しておらず、承認も受けていません。
     本家を置き換えるのではなく、その上に機能を足すものです。
   repoUrl: https://github.com/kubohiroya/turbowarp-plus-packages
+  demoEditorUrl: https://kubohiroya.github.io/scratch-gui/editor.html
 
 # Dependency ranges using any of these protocols are reported as local (skull).
 localProtocols: [file:, link:, workspace:, portal:, patch:]

@@ -24,6 +24,7 @@ import { packageStatus, allVersions } from './lib/npm.ts';
 import { declaredDependencies, evaluateRange } from './lib/dependencies.ts';
 import { describeFromReadme, looksJapanese } from './lib/descriptions.ts';
 import { checkLive } from './lib/pages.ts';
+import { publishedDemo } from './lib/demos.ts';
 
 interface PagesResponse {
   html_url?: string;
@@ -75,6 +76,7 @@ const REPO_FIELDS = `
   readmeEn: object(expression: "HEAD:README.md") { ... on Blob { text } }
   readmeJa: object(expression: "HEAD:README.ja.md") { ... on Blob { text } }
   blockIcon: object(expression: "HEAD:assets/block-icon.svg") { ... on Blob { text } }
+  samplesManifest: object(expression: "HEAD:samples/manifest.json") { ... on Blob { text } }
 `;
 
 /**
@@ -338,6 +340,7 @@ async function main() {
 
     record.revision = revision;
     record.pages = pages;
+    record.demo = await publishedDemo(node.samplesManifest?.text, pages);
     record.manifest = deps.manifest;
     record.dependencies = deps.dependencies;
     if (deps.error) record.errors.push(deps.error);

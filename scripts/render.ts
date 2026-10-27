@@ -34,6 +34,7 @@ const OUT = join(SITE, 'index.html');
  */
 const DEFAULT_HEADER_SCRIPT =
   'https://kubohiroya.github.io/turbowarp-plus-site-header/dist/auto.js';
+const DEFAULT_DEMO_EDITOR = 'https://kubohiroya.github.io/scratch-gui/editor.html';
 
 const esc = (value: unknown) =>
   String(value ?? '')
@@ -173,6 +174,18 @@ td.name .desc {
   overflow: hidden;
 }
 td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+td.demo { text-align: center; }
+.demo-play {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border: 1px solid var(--border); border-radius: 50%;
+  background: var(--ok-bg); color: var(--ok-fg);
+}
+.demo-play:hover { background: var(--ok-fg); color: var(--ok-bg); text-decoration: none; }
+.demo-play:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
 td.deps { min-width: 280px; }
 td.npm { min-width: 150px; }
 
@@ -272,6 +285,26 @@ document.addEventListener('turbowarp-plus:language', (event) => {
 
 setLang(document.documentElement.lang === 'ja' ? 'ja' : 'en');
 `;
+
+function demoCell(pkg: DashboardPackage, editorUrl: string) {
+  const empty = '<span class="muted">—</span>';
+  if (!pkg.demo) return empty;
+  let editor: URL;
+  try {
+    const project = new URL(pkg.demo.projectUrl);
+    editor = new URL(editorUrl);
+    if (project.protocol !== 'https:' || editor.protocol !== 'https:') return empty;
+    editor.searchParams.set('project_url', project.href);
+    editor.searchParams.set('project_title', pkg.demo.title);
+  } catch {
+    return empty;
+  }
+  const label = esc(`${pkg.label}: ${pkg.demo.title}`);
+  return `<a class="demo-play" href="${esc(editor.href)}" target="_blank" rel="noopener noreferrer" title="${label}">
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+    <span class="sr-only">${t(`Open ${label} in TurboWarp Plus Editor (new tab)`, `${label}をTurboWarp Plus Editorで開く（新しいタブ）`)}</span>
+  </a>`;
+}
 
 function issuesCell(pkg: DashboardPackage) {
   const count = pkg.github?.openIssues ?? 0;
@@ -427,7 +460,7 @@ function flagsFor(pkg: DashboardPackage) {
   return flags;
 }
 
-function row(pkg: DashboardPackage, thumb: Thumbnail | undefined) {
+function row(pkg: DashboardPackage, thumb: Thumbnail | undefined, editorUrl: string) {
   const gh: Partial<GitHubSummary> = pkg.github ?? {};
   const { en = '', ja = '' } = pkg.descriptions ?? {};
 
@@ -454,6 +487,7 @@ function row(pkg: DashboardPackage, thumb: Thumbnail | undefined) {
     <div class="desc">${summary}</div>
     ${note}
   </td>
+  <td class="demo">${demoCell(pkg, editorUrl)}</td>
   <td class="num">${issuesCell(pkg)}</td>
   <td class="num">${pullsCell(pkg)}</td>
   <td>${revisionCell(pkg)}</td>
@@ -465,6 +499,7 @@ function row(pkg: DashboardPackage, thumb: Thumbnail | undefined) {
 
 const HEADERS = [
   ['Package', 'パッケージ'],
+  ['Demo', 'Demo'],
   ['Issues', 'Issue'],
   ['PRs', 'PR'],
   ['Revision', 'リビジョン'],
@@ -529,7 +564,7 @@ async function main() {
       const packages = byCategory.get(category.id) ?? [];
       if (!packages.length) return '';
 
-      const rows = packages.map((pkg) => row(pkg, thumbs.get(pkg.repo))).join('\n');
+      const rows = packages.map((pkg) => row(pkg, thumbs.get(pkg.repo), report.site?.demoEditorUrl ?? DEFAULT_DEMO_EDITOR)).join('\n');
       const heading = t(esc(category.title), esc(category.titleJa ?? category.title));
       const lead = category.description
         ? `<p class="lead">${t(esc(category.description), esc(category.descriptionJa ?? category.description))}</p>`
