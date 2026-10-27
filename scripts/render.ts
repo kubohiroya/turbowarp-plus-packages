@@ -440,7 +440,8 @@ function depsCell(pkg: DashboardPackage) {
         .filter(Boolean)
         .join(' ');
 
-      return `<span class="${classes.join(' ')}" title="${esc(title)}">${esc(short)}@${esc(dep.range)}${mark}</span>`;
+      const href = `https://www.npmjs.com/package/${dep.name}`;
+      return `<a class="${classes.join(' ')}" href="${esc(href)}" title="${esc(title)}">${esc(short)}@${esc(dep.range)}${mark}</a>`;
     });
 
   return `<div class="chips">${chips.join('')}</div>`;
