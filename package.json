@@ -20,12 +20,13 @@
     "thumbnails": "node --import tsx scripts/thumbnails.ts",
     "render": "node --import tsx scripts/render.ts",
     "icons": "node --import tsx scripts/icons.ts",
-    "build": "npm run collect && npm run thumbnails && npm run render",
-    "build:no-thumbnails": "npm run collect && npm run render",
+    "build": "npm run collect && npm run editor:catalog && npm run thumbnails && npm run render",
+    "build:no-thumbnails": "npm run collect && npm run editor:catalog && npm run render",
     "serve": "node --import tsx scripts/serve.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
-    "release": "node --import tsx scripts/release.ts"
+    "release": "node --import tsx scripts/release.ts",
+    "editor:catalog": "node --import tsx scripts/editor-catalog.ts"
   },
   "dependencies": {
     "semver": "7.7.2",
