@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { extensionHeader, assembleEditorCatalog, publishedExtension, collectEditorCatalog, type EditorExtension } from '../scripts/lib/extension-catalog.ts';
+import { extensionHeader, extensionDocsURL, extensionAuthor, assembleEditorCatalog, publishedExtension, collectEditorCatalog, type EditorExtension } from '../scripts/lib/extension-catalog.ts';
 import type {DashboardPackage, DashboardReport} from '../scripts/lib/types.ts';
 const entry = (id: string): EditorExtension => ({id, name: id, package: `@owner/${id}`, version: '1.2.3', url: `https://cdn.test/${id}.js`, repository: 'https://github.com/owner/repo', dependencies: []});
 test('published headers preserve the parent and translations without executing source', () => {
@@ -42,11 +42,12 @@ test('published artifact discovery uses exact versions, localized README and pac
   const base = 'https://cdn.jsdelivr.net/npm/@owner/a@1.2.3';
   const calls: string[] = [];
   const responses: Record<string, unknown> = {
-    [`${base}/package.json`]: {name: '@owner/a', version: '1.2.3', jsdelivr: './dist/primary.js'},
+    [`${base}/package.json`]: {name: '@owner/a', version: '1.2.3', jsdelivr: './dist/primary.js',
+      author: {name: 'Published Author', url: 'http://author.example/'}},
     'https://data.jsdelivr.com/v1/package/npm/@owner/a@1.2.3/flat': {files: [
       {name: '/dist/a.js'}, {name: '/dist/primary.js'}, {name: '/assets/block-icon.svg'}, {name: '/README.ja.md'},
     ]},
-    [`${base}/dist/primary.js`]: '// ID: a\n// Name: A\nthrow new Error("must not execute");',
+    [`${base}/dist/primary.js`]: '// ID: a\n// Name: A\n// By: Header Author\nthrow new Error("must not execute");',
     [`${base}/README.ja.md`]: '# A\n\nこれは日本語の説明です。',
   };
   t.mock.method(globalThis, 'fetch', async (url: string) => {
@@ -55,14 +56,66 @@ test('published artifact discovery uses exact versions, localized README and pac
     const value = responses[url];
     return new Response(typeof value === 'string' ? value : JSON.stringify(value));
   });
-  const pkg = {repo: 'a', category: 'data', npm: {name: '@owner/a', latest: '1.2.3'}, github: {url: 'https://github.com/owner/a'}} as DashboardPackage;
+  const pkg = {repo: 'a', category: 'data', npm: {name: '@owner/a', latest: '1.2.3'}, github: {url: 'https://github.com/owner/a'},
+    pages: {enabled: true, url: 'https://owner.github.io/a/', live: true, httpStatus: 200}} as DashboardPackage;
   const result = await publishedExtension(pkg);
   assert.equal(result.entry.url, `${base}/dist/primary.js`);
   assert.equal(result.entry.banner, `${base}/assets/block-icon.svg`);
   assert.equal(result.entry.unsandboxed, 'unknown');
   assert.equal(result.entry.category, 'data');
+  assert.equal(result.entry.docsURL, 'https://owner.github.io/a/');
+  assert.equal(result.entry.package, '@owner/a');
+  assert.equal(result.entry.author, 'Published Author');
+  assert.equal(result.entry.authorURL, 'http://author.example/');
   assert.equal(result.entry.descriptions!.ja, 'これは日本語の説明です。');
   assert.ok(!calls.includes(`${base}/dist/a.js`));
+});
+
+test('documentation URLs use the verified Pages URL rather than an arbitrary repository homepage', () => {
+  const pkg = {github: {homepageUrl: 'https://www.npmjs.com/package/@owner/a'},
+    pages: {enabled: true, url: 'https://owner.github.io/a/', live: true, httpStatus: 200}} as DashboardPackage;
+  assert.equal(extensionDocsURL(pkg), 'https://owner.github.io/a/');
+});
+
+test('documentation URLs are omitted when Pages is unavailable, unverified or not HTTPS', () => {
+  const healthy = {enabled: true, url: 'https://owner.github.io/a/', live: true, httpStatus: 200};
+  const pagesCases = [undefined, {...healthy, enabled: false}, {...healthy, live: false}, {...healthy, live: undefined},
+    {...healthy, httpStatus: 404}, {...healthy, httpStatus: undefined}, {...healthy, url: undefined},
+    {...healthy, url: 'http://owner.github.io/a/'}, {...healthy, url: 'https://user:password@owner.github.io/a/'},
+    {...healthy, url: 'javascript:alert(1)'}, {...healthy, url: '/a/'}];
+  for (const pages of pagesCases) {
+    assert.equal(extensionDocsURL({pages, github: {homepageUrl: 'https://owner.github.io/a/'}} as DashboardPackage), undefined);
+  }
+});
+
+test('published manifest author name and URL take priority over declaration headers', () => {
+  for (const key of ['Author URL', 'Author-URL']) {
+    const metadata = extensionHeader(`// Author: Header Author\n// By: Other Author\n// ${key}: https://author.example/profile\n`);
+    assert.deepEqual(extensionAuthor(metadata, {author: {name: 'Manifest Author', url: 'https://manifest.example/'}}),
+      {author: 'Manifest Author', authorURL: 'https://manifest.example/'});
+    assert.deepEqual(extensionAuthor(metadata, {}), {author: 'Header Author'});
+  }
+});
+
+test('author names fall back to headers while links use only the manifest author object', () => {
+  const manifest = {author: {name: ' Manifest Author ', url: 'https://author.example/'}};
+  assert.deepEqual(extensionAuthor({by: 'Manifest Author'}, manifest), {author: 'Manifest Author', authorURL: 'https://author.example/'});
+  assert.deepEqual(extensionAuthor({}, manifest), {author: 'Manifest Author', authorURL: 'https://author.example/'});
+  assert.deepEqual(extensionAuthor({author: 'Someone Else'}, manifest), {author: 'Manifest Author', authorURL: 'https://author.example/'});
+  assert.deepEqual(extensionAuthor({}, {author: 'Named Person <person@example.test>'}), {author: 'Named Person'});
+  assert.deepEqual(extensionAuthor({by: 'Header Person'}, {author: {url: 'http://author.example/'}}),
+    {author: 'Header Person', authorURL: 'http://author.example/'});
+  assert.deepEqual(extensionAuthor({}, {author: 'Named Person <person@example.test> (https://author.example/)'}), {author: 'Named Person'});
+});
+
+test('missing and unsafe author URLs never produce inferred profile links', () => {
+  for (const url of ['javascript:alert(1)', 'data:text/html,author', '/profile', 'https://user:pass@author.example/']) {
+    assert.deepEqual(extensionAuthor({by: 'Person', 'author-url': url}, {}), {author: 'Person'});
+    assert.deepEqual(extensionAuthor({by: 'Person'}, {author: {name: 'Person', url}}), {author: 'Person'});
+  }
+  assert.deepEqual(extensionAuthor({by: 'Person'}, {}), {author: 'Person'});
+  assert.deepEqual(extensionAuthor({}, {author: {url: 'https://author.example/'}}), {authorURL: 'https://author.example/'});
+  assert.deepEqual(extensionAuthor({}, {}), {});
 });
 
 test('category definitions retain source order and headings without changing extensions or dependencies', () => {
@@ -158,4 +211,19 @@ test('repository artifact stays ahead of generic variants when manifest hints ar
   const pkg = {repo: 'turbowarp-example', npm: {name: '@owner/turbowarp-example', latest: '1.2.3'},
     github: {url: 'https://github.com/owner/turbowarp-example'}} as DashboardPackage;
   assert.equal((await publishedExtension(pkg)).entry.url, `${base}/dist/turbowarp-example.js`);
+});
+
+test('published license uses the extension declaration before the package manifest fallback', async t => {
+  const base = 'https://cdn.jsdelivr.net/npm/@owner/a@1.2.3';
+  let declaration = '';
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    if (url === `${base}/package.json`) return new Response(JSON.stringify({name:'@owner/a',version:'1.2.3',license:'MPL-2.0'}));
+    if (url.endsWith('/flat')) return new Response(JSON.stringify({files:[{name:'/dist/a.js'}]}));
+    assert.equal(url,`${base}/dist/a.js`);
+    return new Response(`// ID: a\n// Name: A\n${declaration}`);
+  });
+  const pkg = {repo:'a',npm:{name:'@owner/a',latest:'1.2.3'},github:{url:'https://github.com/owner/a'}} as DashboardPackage;
+  assert.equal((await publishedExtension(pkg)).entry.license,'MPL-2.0');
+  declaration = '// License: See the bundled extension notices below.\n';
+  assert.equal((await publishedExtension(pkg)).entry.license,'See the bundled extension notices below.');
 });
