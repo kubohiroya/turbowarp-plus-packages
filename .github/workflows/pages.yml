@@ -45,6 +45,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Generate the Editor extension catalog
+        run: npm run editor:catalog
+
       - name: Restore thumbnail snapshots
         uses: actions/cache@v4
         with:

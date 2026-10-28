@@ -3,6 +3,7 @@ node_modules/
 release-config.json
 data/
 site/index.html
+site/extensions-v1.json
 site/thumbs/
 # Rasterised from site/assets/*.svg by scripts/icons.ts at build time.
 site/assets/*.png

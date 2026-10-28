@@ -4,6 +4,8 @@
 
 実行できるサンプル: [配信方式と全機能拡張のデモ計画一覧](docs/sample-projects/plan.ja.md)。
 
+Editor向け: [機能拡張メタデータJSONと依存関係の契約](docs/editor-extension-catalog.md)。
+
 [**ダッシュボード → kubohiroya.github.io/turbowarp-plus-packages**](https://kubohiroya.github.io/turbowarp-plus-packages/)
 
 [TurboWarp](https://turbowarp.org/) に機能を足す拡張・ツールチェーン・アプリケーション・
@@ -102,6 +104,7 @@ npm run typecheck                 # スクリプトとテストの strict 型チ
 npm test                          # 依存レンジと説明文抽出のテスト
 npm run icons                     # ブランド素材 -> site/assets/
 npm run collect                   # GitHub + npm  -> data/dashboard.json
+npm run editor:catalog            # 公開npm成果物 -> site/extensions-v1.json
 npm run thumbnails                # スクリーンショット -> site/thumbs/
 npm run render                    # ダッシュボード  -> site/index.html
 npm run serve                     # http://localhost:4180/
@@ -112,7 +115,7 @@ npm run serve                     # http://localhost:4180/
 見えるからです。ダークに対応していないサイトは2枚が同一になるのでダーク側を捨て、
 `<picture>` がライト側にフォールバックします。実際に見た目が変わるサイトだけが2枚目を持ちます。
 
-`npm run build` は collect → thumbnails → render を順に実行します。
+`npm run build` は collect → editor:catalog → thumbnails → render を順に実行します。
 `npm run build:no-thumbnails` は時間のかかる部分を飛ばします。
 
 サムネイルは前回の画像と版情報を `site/thumbs/` に保存し、package.jsonの版・Gitタグ・

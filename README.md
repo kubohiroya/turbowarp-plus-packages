@@ -114,6 +114,7 @@ npm run typecheck                 # strict type checking for scripts and tests
 npm test                          # dependency range and summary extraction tests
 npm run icons                     # brand assets  -> site/assets/
 npm run collect                   # GitHub + npm  -> data/dashboard.json
+npm run editor:catalog            # published npm -> site/extensions-v1.json
 npm run thumbnails                # screenshots   -> site/thumbs/
 npm run render                    # dashboard     -> site/index.html
 npm run serve                     # http://localhost:4180/
@@ -125,7 +126,9 @@ reads as a hole in the table. A site that does not implement dark mode produces
 two identical images, so the dark copy is dropped and `<picture>` falls back to
 the light one — only the sites that actually change get a second file.
 
-`npm run build` does collect, thumbnails and render in order.
+`npm run build` does collect, editor:catalog, thumbnails and render in order.
+The Editor catalog contains version-pinned extension URLs and extension-ID dependencies;
+see the [JSON contract and generation rules](docs/editor-extension-catalog.md).
 `npm run build:no-thumbnails` skips the slow part.
 
 Thumbnails reuse snapshots in `site/thumbs/` until package versions, Git tags, or npm dist-tags change.
