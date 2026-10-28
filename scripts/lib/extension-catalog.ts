@@ -10,6 +10,7 @@ export interface EditorExtension {
   package: string;
   repository: string;
   url: string;
+  category?: string;
   description?: string;
   descriptions?: Record<string, string>;
   author?: string;
@@ -18,9 +19,15 @@ export interface EditorExtension {
   unsandboxed?: 'required' | 'optional' | 'not-needed' | 'unknown';
   dependencies: string[];
 }
+export interface EditorCategory {
+  id: string;
+  title: string;
+  titleJa?: string;
+}
 export interface EditorCatalog {
   schemaVersion: 1;
   generatedAt: string;
+  categories?: EditorCategory[];
   extensions: EditorExtension[];
 }
 interface PublishedManifest {
@@ -102,6 +109,7 @@ export async function publishedExtension(pkg: DashboardPackage): Promise<Publish
     if (!pkg.github?.url) throw new Error(`Missing repository URL: ${pkg.repo}`);
     return { manifest, entry: {
       id: metadata.id, name: metadata.name, package: name, version, url,
+      category: pkg.category,
       repository: secure(pkg.github.url),
       description: metadata.description,
       descriptions,
@@ -116,11 +124,27 @@ export async function publishedExtension(pkg: DashboardPackage): Promise<Publish
 }
 
 /** Dependencies are extension IDs, not npm build libraries. The published manifest is authoritative. */
-export function assembleEditorCatalog(generatedAt: string, published: PublishedExtension[], knownExtensions = new Set<string>()): EditorCatalog {
+export function assembleEditorCatalog(
+  generatedAt: string,
+  published: PublishedExtension[],
+  knownExtensions = new Set<string>(),
+  categories?: readonly EditorCategory[],
+): EditorCatalog {
+  const categoryIds = new Set<string>();
+  const catalogCategories = categories?.map(({id, title, titleJa}) => {
+    if (typeof id !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(id) || typeof title !== 'string' || !title.trim() ||
+      (titleJa !== undefined && (typeof titleJa !== 'string' || !titleJa.trim()))) throw new Error('Invalid extension category');
+    if (categoryIds.has(id)) throw new Error(`Duplicate extension category: ${id}`);
+    categoryIds.add(id);
+    return {id, title, ...(titleJa !== undefined ? {titleJa} : {})};
+  });
   const byPackage = new Map(published.map(record => [record.entry.package, record]));
   if (byPackage.size !== published.length) throw new Error('Duplicate extension package');
   const ids = new Set<string>();
   const extensions = published.map(({entry, manifest}) => {
+    if (categories !== undefined && (!entry.category || !categoryIds.has(entry.category))) {
+      throw new Error(`Unknown extension category: ${entry.package} refers to ${entry.category ?? '(missing)'}`);
+    }
     if (!/^[a-zA-Z0-9]+$/.test(entry.id)) throw new Error(`Invalid extension ID: ${entry.id}`);
     if (ids.has(entry.id)) throw new Error(`Duplicate extension ID: ${entry.id}`);
     ids.add(entry.id);
@@ -150,7 +174,7 @@ export function assembleEditorCatalog(generatedAt: string, published: PublishedE
     visited.add(id);
   };
   for (const id of byId.keys()) visit(id);
-  return { schemaVersion: 1, generatedAt, extensions };
+  return { schemaVersion: 1, generatedAt, ...(catalogCategories !== undefined ? {categories: catalogCategories} : {}), extensions };
 }
 
 export async function collectEditorCatalog(report: DashboardReport): Promise<EditorCatalog> {
@@ -160,5 +184,6 @@ export async function collectEditorCatalog(report: DashboardReport): Promise<Edi
   const published = await pool(candidates, 4, publishedExtension);
   const knownExtensions = new Set(report.packages.filter(pkg => pkg.unsandboxed !== undefined &&
     !['apps', 'toolchain'].includes(pkg.category)).flatMap(pkg => pkg.npm?.name ? [pkg.npm.name] : []));
-  return assembleEditorCatalog(report.generatedAt, published, knownExtensions);
+  const categories = report.categories.map(({id, title, titleJa}) => ({id, title, ...(titleJa != null ? {titleJa} : {})}));
+  return assembleEditorCatalog(report.generatedAt, published, knownExtensions, categories);
 }
