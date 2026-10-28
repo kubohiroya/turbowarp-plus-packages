@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { extensionHeader, assembleEditorCatalog, publishedExtension, type EditorExtension } from '../scripts/lib/extension-catalog.ts';
-import type {DashboardPackage} from '../scripts/lib/types.ts';
+import { extensionHeader, assembleEditorCatalog, publishedExtension, collectEditorCatalog, type EditorExtension } from '../scripts/lib/extension-catalog.ts';
+import type {DashboardPackage, DashboardReport} from '../scripts/lib/types.ts';
 const entry = (id: string): EditorExtension => ({id, name: id, package: `@owner/${id}`, version: '1.2.3', url: `https://cdn.test/${id}.js`, repository: 'https://github.com/owner/repo', dependencies: []});
 test('published headers preserve the parent and translations without executing source', () => {
   const result=extensionHeader('// Name: Parent\n// ID: parent\n// Description[ja]: 日本語\n// Bundled extensions:\n// ID: child\nthrow Error("never execute");');
@@ -55,13 +55,81 @@ test('published artifact discovery uses exact versions, localized README and pac
     const value = responses[url];
     return new Response(typeof value === 'string' ? value : JSON.stringify(value));
   });
-  const pkg = {repo: 'a', npm: {name: '@owner/a', latest: '1.2.3'}, github: {url: 'https://github.com/owner/a'}} as DashboardPackage;
+  const pkg = {repo: 'a', category: 'data', npm: {name: '@owner/a', latest: '1.2.3'}, github: {url: 'https://github.com/owner/a'}} as DashboardPackage;
   const result = await publishedExtension(pkg);
   assert.equal(result.entry.url, `${base}/dist/primary.js`);
   assert.equal(result.entry.banner, `${base}/assets/block-icon.svg`);
   assert.equal(result.entry.unsandboxed, 'unknown');
+  assert.equal(result.entry.category, 'data');
   assert.equal(result.entry.descriptions!.ja, 'これは日本語の説明です。');
   assert.ok(!calls.includes(`${base}/dist/a.js`));
+});
+
+test('category definitions retain source order and headings without changing extensions or dependencies', () => {
+  const categories = [
+    {id: 'second', title: 'Second', titleJa: '二つ目'},
+    {id: 'empty', title: 'Empty'},
+    {id: 'first', title: 'First', titleJa: '一つ目'},
+  ];
+  const records = [
+    {entry: {...entry('a'), category: 'first'}, manifest: {dependencies: {'@owner/b': '*'}}},
+    {entry: {...entry('b'), category: 'second'}, manifest: {}},
+  ];
+  const catalog = assembleEditorCatalog('now', records, new Set(), categories);
+  assert.deepEqual(catalog.categories, categories);
+  assert.deepEqual(catalog.extensions.map(({id, category, dependencies}) => ({id, category, dependencies})), [
+    {id: 'a', category: 'first', dependencies: ['b']}, {id: 'b', category: 'second', dependencies: []},
+  ]);
+  assert.equal(catalog.schemaVersion, 1);
+  assert.notEqual(catalog.categories, categories);
+  assert.notEqual(catalog.categories![0], categories[0]);
+});
+
+test('category-aware catalogs reject duplicate definitions, invalid headings and missing references', () => {
+  const category = {id: 'data', title: 'Data'};
+  const record = {entry: {...entry('a'), category: 'data'}, manifest: {}};
+  assert.throws(() => assembleEditorCatalog('now', [record], new Set(), [category, category]), /Duplicate extension category/);
+  assert.throws(() => assembleEditorCatalog('now', [record], new Set(), [{id: '', title: 'Data'}]), /Invalid extension category/);
+  for (const id of [' data', 'data ', '-data', '_data', 'data.name', 'データ']) {
+    assert.throws(() => assembleEditorCatalog('now', [], new Set(), [{id, title: 'Data'}]), /Invalid extension category/);
+  }
+  assert.throws(() => assembleEditorCatalog('now', [record], new Set(), [{id: 'data', title: ' '}]), /Invalid extension category/);
+  for (const titleJa of ['', '   ']) {
+    assert.throws(() => assembleEditorCatalog('now', [record], new Set(), [{id: 'data', title: 'Data', titleJa}]), /Invalid extension category/);
+  }
+  assert.throws(() => assembleEditorCatalog('now', [record], new Set(), []), /Unknown extension category/);
+  assert.throws(() => assembleEditorCatalog('now', [{entry: entry('a'), manifest: {}}], new Set(), [category]), /Unknown extension category/);
+});
+
+test('legacy assembly without category definitions preserves entries without a category', () => {
+  const catalog = assembleEditorCatalog('now', [{entry: entry('a'), manifest: {}}]);
+  assert.ok(!Object.hasOwn(catalog, 'categories'));
+  assert.ok(!Object.hasOwn(catalog.extensions[0], 'category'));
+});
+
+test('collection carries dashboard category order and localized headings into the generated JSON', async t => {
+  const base = 'https://cdn.jsdelivr.net/npm/@owner/a@1.2.3';
+  const responses: Record<string, unknown> = {
+    [`${base}/package.json`]: {name: '@owner/a', version: '1.2.3'},
+    'https://data.jsdelivr.com/v1/package/npm/@owner/a@1.2.3/flat': {files: [{name: '/dist/a.js'}]},
+    [`${base}/dist/a.js`]: '// ID: a\n// Name: A\n',
+  };
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    assert.ok(Object.hasOwn(responses, url), `Unexpected request ${url}`);
+    const value = responses[url];
+    return new Response(typeof value === 'string' ? value : JSON.stringify(value));
+  });
+  const report = {
+    generatedAt: 'now', categories: [
+      {id: 'empty', title: 'Empty', titleJa: null, description: 'Not emitted'},
+      {id: 'data', title: 'Data', titleJa: 'データ', description: 'Not emitted'},
+    ], packages: [{repo: 'a', category: 'data', unsandboxed: 'unknown',
+      npm: {name: '@owner/a', latest: '1.2.3', published: true}, github: {url: 'https://github.com/owner/a'}}],
+  } as DashboardReport;
+  const result = await collectEditorCatalog(report);
+  assert.deepEqual(result.categories, [{id: 'empty', title: 'Empty'}, {id: 'data', title: 'Data', titleJa: 'データ'}]);
+  assert.equal(result.extensions[0].category, 'data');
+  assert.deepEqual(result.extensions[0].dependencies, []);
 });
 
 test('published manifest mismatch and failed artifact requests stop generation', async t => {
