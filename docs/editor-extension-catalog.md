@@ -27,11 +27,13 @@ Pages workflowおよび `build` / `build:no-thumbnails` に組み込み、ダッ
       "version": "1.0.0",
       "package": "@owner/example",
       "repository": "https://github.com/owner/example",
+      "docsURL": "https://owner.github.io/example/",
       "url": "https://cdn.jsdelivr.net/npm/@owner/example@1.0.0/dist/example.js",
       "category": "data",
       "description": "An example extension.",
       "descriptions": {"ja": "機能拡張の例です。"},
       "author": "Example Author",
+      "authorURL": "https://author.example/",
       "license": "MPL-2.0",
       "banner": "https://cdn.jsdelivr.net/npm/@owner/example@1.0.0/assets/block-icon.svg",
       "unsandboxed": "required",
@@ -48,17 +50,28 @@ Pages workflowおよび `build` / `build:no-thumbnails` に組み込み、ダッ
 | `categories` | `catalog.yaml` 由来のカテゴリ定義。`{id, title, titleJa?}` を収集結果の順序で保持します。説明文は含めません。 |
 | `extensions` | 読み込み可能な機能拡張の配列。配列順は依存順を保証しません。 |
 | `id` / `name` | 公開JS先頭の宣言コメントのIDと表示名。IDは英数字で一意です。 |
-| `version` / `package` | npm公開版の完全固定バージョンとパッケージ名。 |
+| `version` / `package` | npm公開版の完全固定バージョンとパッケージ名。`package` はnpmのパッケージページへのリンクにも使用できます。 |
 | `repository` | 対象リポジトリのHTTPS URL。 |
+| `docsURL` | Pages APIで確認した公開ドキュメントのHTTPS URL。`pages.enabled` / `pages.live` がtrueでHTTP 200を確認できた場合だけ付与します。 |
 | `url` | 完全固定npm版の読み込み用JSのHTTPS URL。 |
 | `category` | `categories[].id` を参照するカテゴリID。新たに生成する全機能拡張に付与します。 |
 | `description` / `descriptions` | 既定の説明とロケール別説明。宣言コメントを優先し、日本語がなければ同じnpm版の `README.ja.md` の要約を使用します。 |
-| `author` / `license` | 宣言コメントの著者とライセンス。 |
+| `author` / `license` | 製作者名とライセンス。製作者名は公開manifestの `author.name`（または文字列の名前）を優先し、なければ宣言コメントを使用します。 |
+| `authorURL` | 公開manifestのオブジェクト形式 `author.url` に明示された製作者のHTTP/HTTPS URL。未指定なら省略します。 |
 | `banner` | 宣言コメントのHTTPSバナー。未指定なら同じnpm版の `assets/banner.svg`、`assets/banner.png`、`assets/block-icon.svg` の順で使用します。 |
 | `unsandboxed` | `required` / `optional` / `not-needed` / `unknown`。宣言コメントの `true` / `false` は正規化し、未宣言や未知値は `unknown` にします。 |
 | `dependencies` | 同カタログ内の機能拡張IDの配列。直接依存を列挙し、Editorが推移的にたどります。 |
 
 説明・著者・ライセンス・バナーは取得元にない場合は省略します。
+`docsURL` はPages設定・HTTPS・疎通を確認できなければ省略します。リポジトリ名からURLを
+推測したり、Pages以外のhomepageやCDN JS URLで代用したりしません。元の `url` は
+機能拡張の読み込み専用として維持します。UIは説明行のリンクに `docsURL`、GitHubアイコンに
+`repository`、npmアイコンに `package` のnpmページを使い分けられます。
+製作者リンクは同じ公開版manifestのオブジェクト形式 `author.url` だけを使用します。
+`author.name` があれば製作者名にも使い、なければJSヘッダーの `Author`、`By` の順で
+表示名を補います。ヘッダーのURL・文字列形式authorに埋め込まれたURL・GitHubプロフィール
+の推測URLは使いません。HTTP/HTTPS以外・相対URL・資格情報付きURLは出力しません。
+リンクがなければ製作者名だけを表示できます。
 要求モードが不明でもサンドボックス不要とは推定しません。読み込み時の権限確認は
 Editorが引き続き行います。
 

@@ -9,11 +9,13 @@ export interface EditorExtension {
   version: string;
   package: string;
   repository: string;
+  docsURL?: string;
   url: string;
   category?: string;
   description?: string;
   descriptions?: Record<string, string>;
   author?: string;
+  authorURL?: string;
   license?: string;
   banner?: string;
   unsandboxed?: 'required' | 'optional' | 'not-needed' | 'unknown';
@@ -35,6 +37,8 @@ interface PublishedManifest {
   version?: string;
   jsdelivr?: string;
   unpkg?: string;
+  author?: string | {name?: string; url?: string};
+  license?: string;
   dependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
@@ -60,6 +64,39 @@ const secure = (value: string, base?: string): string => {
   if (url.protocol !== 'https:' || url.username || url.password) throw new Error(`Expected HTTPS: ${value}`);
   return url.href;
 };
+
+/** Documentation links come only from a configured Pages site with a successful health check. */
+export function extensionDocsURL(pkg: DashboardPackage): string | undefined {
+  if (!pkg.pages?.enabled || pkg.pages.live !== true || pkg.pages.httpStatus !== 200 || !pkg.pages.url) return undefined;
+  try {
+    return secure(pkg.pages.url);
+  } catch {
+    return undefined;
+  }
+}
+
+/** The published manifest is the only source of author links. */
+export function extensionAuthor(metadata: Record<string, string>, manifest: PublishedManifest): Pick<EditorExtension, 'author' | 'authorURL'> {
+  let manifestName: string | undefined;
+  let manifestURL: string | undefined;
+  if (typeof manifest.author === 'string') {
+    const person = /^\s*([^<()]+?)\s*(?:<[^>]*>\s*)?(?:\(([^()]*)\)\s*)?$/.exec(manifest.author);
+    manifestName = person?.[1].trim() || undefined;
+  } else if (manifest.author && typeof manifest.author === 'object') {
+    manifestName = typeof manifest.author.name === 'string' ? manifest.author.name.trim() || undefined : undefined;
+    manifestURL = typeof manifest.author.url === 'string' ? manifest.author.url : undefined;
+  }
+  const author = manifestName ?? metadata.author ?? metadata.by;
+  let authorURL: string | undefined;
+  if (manifestURL) {
+    try {
+      const url = new URL(manifestURL);
+      if (['https:', 'http:'].includes(url.protocol) && !url.username && !url.password) authorURL = url.href;
+    } catch { /* An invalid optional author link does not prevent extension loading. */ }
+  }
+  return {...(author !== undefined ? {author} : {}), ...(authorURL ? {authorURL} : {})};
+}
+
 async function request(url: string): Promise<Response> {
   const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
   if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
@@ -107,14 +144,16 @@ export async function publishedExtension(pkg: DashboardPackage): Promise<Publish
     const unsandboxed = metadata.unsandboxed === 'true' ? 'required' : metadata.unsandboxed === 'false' ? 'not-needed' :
       ['required', 'optional', 'not-needed'].includes(metadata.unsandboxed) ? metadata.unsandboxed as EditorExtension['unsandboxed'] : 'unknown';
     if (!pkg.github?.url) throw new Error(`Missing repository URL: ${pkg.repo}`);
+    const docsURL = extensionDocsURL(pkg);
     return { manifest, entry: {
       id: metadata.id, name: metadata.name, package: name, version, url,
       category: pkg.category,
       repository: secure(pkg.github.url),
+      ...(docsURL ? {docsURL} : {}),
       description: metadata.description,
       descriptions,
-      author: metadata.author ?? metadata.by,
-      license: metadata.license,
+      ...extensionAuthor(metadata, manifest),
+      license: metadata.license ?? manifest.license,
       ...(banner ? { banner } : {}),
       unsandboxed,
       dependencies: [],
