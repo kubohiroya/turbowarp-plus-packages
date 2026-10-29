@@ -23,7 +23,7 @@ Editor向け: [機能拡張メタデータJSONと依存関係の契約](docs/edi
 | 列 | 内容 |
 | --- | --- |
 | **Package** | 拡張名の下にサンドボックスなしの要求を表示します。🔓 必須、◐ 任意、🛡 不要、? 不明。 |
-| **Demo** | ▶ を押すと、そのパッケージの公開済みSB3をTurboWarp Plus Editorの新しいタブで開きます。取得可能なデモがなければ `—` を表示します。 |
+| **Demo** | ブランドアイコン付きの「TurboWarp-Plus-Editorで編集」を押すと、そのパッケージの公開済みSB3を新しいタブで開きます。取得可能なデモがなければ `—` を表示します。 |
 | **Issues** / **PRs** | GitHub の未クローズ issue 数・PR 数。 |
 | **Revision** | 既定ブランチの先頭にタグが付いているか。`released` は最新タグ＝先頭、`N ahead` は最新タグ以降に N コミット積まれている状態。 |
 | **GitHub Pages** | Pages が設定されているか、実際にアクセスして応答したか、およびダッシュボードと同じ配色で撮ったトップページのスクリーンショット。 |
@@ -49,9 +49,11 @@ prod / peer / optionalのみを対象にし、そのパッケージの開発専�
 
 各リポジトリの `samples/manifest.json` にある `samples` の `name` と任意の `title` を読み、
 Pages上の `samples/<name>.sb3` を確認します。公開CORSとZIPの先頭シグネチャを確認できた
-最初のデモに再生ボタンを表示します。反映は次回のデータ収集時です。
+最初のデモにブランドアイコン付きの「TurboWarp-Plus-Editorで編集」ボタンを表示します。
+反映は次回のデータ収集時です。
 起動先は `catalog.yaml` の `site.demoEditorUrl`、読み込むSB3は `project_url` で渡します。
-機能拡張の読み込みに必要な権限確認はEditor側で行います。
+既定の起動先は [TurboWarp-Plus-Editor](https://kubohiroya.github.io/turbowarp-plus-editor/) です。
+機能拡張の読み込みに必要な権限確認はTurboWarp-Plus-Editor側で行います。
 
 各パッケージの説明文はページの言語に追従します。英語は GitHub のリポジトリ
 description、無ければ `README.md` の冒頭段落から取ります。日本語は各リポジトリの
