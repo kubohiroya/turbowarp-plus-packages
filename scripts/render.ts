@@ -34,7 +34,8 @@ const OUT = join(SITE, 'index.html');
  */
 const DEFAULT_HEADER_SCRIPT =
   'https://kubohiroya.github.io/turbowarp-plus-site-header/dist/auto.js';
-const DEFAULT_DEMO_EDITOR = 'https://kubohiroya.github.io/scratch-gui/editor.html';
+const DEFAULT_DEMO_EDITOR = 'https://kubohiroya.github.io/turbowarp-plus-editor/editor.html';
+const EDITOR_BRAND_ICON = 'https://kubohiroya.github.io/turbowarp-plus-editor/assets/icon.svg';
 
 const esc = (value: unknown) =>
   String(value ?? '')
@@ -178,10 +179,12 @@ td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-n
 td.demo { text-align: center; }
 .demo-play {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px; border: 1px solid var(--border); border-radius: 50%;
-  background: var(--ok-bg); color: var(--ok-fg);
+  gap: 8px; min-height: 48px; padding: 10px 14px; border: 1px solid #83bfd9; border-radius: 10px;
+  background: #ddf4ff; color: #132e42; font-size: 14px; font-weight: 600;
+  text-align: left; line-height: 1.4;
 }
-.demo-play:hover { background: var(--ok-fg); color: var(--ok-bg); text-decoration: none; }
+.demo-play img { width: 32px; height: 32px; flex: none; object-fit: contain; }
+.demo-play:hover { background: #c8edff; color: #132e42; text-decoration: none; }
 .demo-play:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
@@ -301,9 +304,10 @@ function demoCell(pkg: DashboardPackage, editorUrl: string) {
     return empty;
   }
   const label = esc(`${pkg.label}: ${pkg.demo.title}`);
-  return `<a class="demo-play" href="${esc(editor.href)}" target="_blank" rel="noopener noreferrer" title="${label}">
-    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
-    <span class="sr-only">${t(`Open ${label} in TurboWarp Plus Editor (new tab)`, `${label}をTurboWarp Plus Editorで開く（新しいタブ）`)}</span>
+  return `<a class="demo-play twpe-edit-button" href="${esc(editor.href)}" target="_blank" rel="noopener noreferrer" title="${label}">
+    <img src="${EDITOR_BRAND_ICON}" alt="" width="32" height="32">
+    <span>${t('Edit in TurboWarp-Plus-Editor', 'TurboWarp-Plus-Editorで編集')}</span>
+    <span class="sr-only">${t(`: ${label} (new tab)`, `：${label}（新しいタブ）`)}</span>
   </a>`;
 }
 
