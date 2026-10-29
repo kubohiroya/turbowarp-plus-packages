@@ -132,7 +132,8 @@ see the [JSON contract and generation rules](docs/editor-extension-catalog.md).
 `npm run build:no-thumbnails` skips the slow part.
 
 Thumbnails reuse snapshots in `site/thumbs/` until package versions, Git tags, or npm dist-tags change.
-Sites without version metadata use HEAD instead. New sites, changed URLs, or missing images are captured;
+Private packages, sites excluded from npm publication, and sites without version metadata also track HEAD,
+so Docs changes are captured even without a version bump. New sites, changed URLs, or missing images are captured;
 failed refreshes keep the previous image and retry next time. GitHub Actions caches the snapshots between runs.
 A missing or legacy cache triggers a full capture.
 

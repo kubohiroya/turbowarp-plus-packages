@@ -69,6 +69,51 @@ test('reuse skips capture; missing dark image retries; failed refresh retains ol
   }
 });
 
+test('private and non-npm sites invalidate snapshots on source changes without a version bump', () => {
+  const original = pkg('0.1.0');
+  for (const site of [
+    {...original, manifest: {...original.manifest!, private: true}},
+    {...original, npm: {name: null, published: false, notAPackage: true}},
+  ]) {
+    const changed = structuredClone(site);
+    changed.revision!.head!.oid = 'new-pages-content';
+    assert.notEqual(thumbnailKey(site), thumbnailKey(changed));
+    assert.equal(thumbnailKey(site), thumbnailKey(structuredClone(site)));
+  }
+});
+
+test('a private Docs site refreshes a legacy version-only snapshot and reuses it until HEAD changes', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'thumbnail-docs-'));
+  try {
+    const original = pkg('0.1.0');
+    const docs = {...original, repo: 'turbowarp-kamishibai-docs', category: 'docs',
+      manifest: {...original.manifest!, private: true}};
+    await writeFile(join(directory, `${docs.repo}.light.png`), 'old');
+    await writeFile(join(directory, `${docs.repo}.dark.png`), 'old-dark');
+    await writeFile(join(directory, 'index.json'), JSON.stringify({snapshots: {
+      [docs.repo]: {key: thumbnailKey(original), dark: true},
+    }}));
+    let captures = 0;
+    const capture = async (targets: Target[]) => {
+      captures++;
+      assert.deepEqual(targets.map(target => target.repo), [docs.repo]);
+      await writeFile(join(directory, `${docs.repo}.light.png`), 'current');
+      await writeFile(join(directory, `${docs.repo}.dark.png`), 'current-dark');
+      return [{repo: docs.repo, ok: true as const, dark: true}];
+    };
+    assert.equal((await generateThumbnails([docs], directory, capture)).captured, 1);
+    assert.equal(await readFile(join(directory, `${docs.repo}.dark.png`), 'utf8'), 'current-dark');
+    assert.equal((await generateThumbnails([docs], directory, capture)).reused, 1);
+    assert.equal(captures, 1);
+    const newer = structuredClone(docs);
+    newer.revision!.head!.oid = 'updated-docs';
+    assert.equal((await generateThumbnails([newer], directory, capture)).captured, 1);
+    assert.equal(captures, 2);
+  } finally {
+    await rm(directory, {recursive: true, force: true});
+  }
+});
+
 test('legacy index without version snapshots refreshes once', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'thumbnail-legacy-'));
   try {
