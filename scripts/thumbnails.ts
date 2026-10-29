@@ -95,7 +95,7 @@ interface Snapshot {
   dark: boolean;
 }
 
-/** Commit-only changes do not invalidate sites that expose release versions. */
+/** Unpublished sites track source changes even when their manifest version is fixed. */
 export function thumbnailKey(pkg: Target): string {
   const versions = {
     manifest: pkg.manifest?.version ?? null,
@@ -106,11 +106,12 @@ export function thumbnailKey(pkg: Target): string {
   };
   const hasVersion = versions.manifest || versions.tag ||
     Object.values(versions.npm).some(Boolean);
+  const trackHead = !hasVersion || pkg.manifest?.private || pkg.npm?.notAPackage;
   return JSON.stringify({
     schema: 1,
     url: pkg.pages.url,
     ...versions,
-    head: hasVersion ? null : pkg.revision?.head?.oid ?? null,
+    head: trackHead ? pkg.revision?.head?.oid ?? null : null,
   });
 }
 
