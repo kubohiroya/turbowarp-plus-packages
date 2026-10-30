@@ -37,7 +37,6 @@ const OUT = join(SITE, 'index.html');
 const DEFAULT_HEADER_SCRIPT =
   'https://kubohiroya.github.io/turbowarp-plus-site-header/dist/auto.js';
 const DEFAULT_DEMO_EDITOR = 'https://kubohiroya.github.io/turbowarp-plus-editor/editor.html';
-const EDITOR_BRAND_ICON = 'https://kubohiroya.github.io/turbowarp-plus-editor/assets/icon.svg';
 
 const esc = (value: unknown) =>
   String(value ?? '')
@@ -193,7 +192,7 @@ td.demo { text-align: center; }
   background: var(--demo-bg); color: var(--demo-fg); font-size: 14px; font-weight: 400;
   text-align: left; line-height: 1.4; white-space: nowrap;
 }
-.demo-play img { width: 24px; height: 24px; flex: none; object-fit: contain; }
+.demo-play svg { width: 24px; height: 24px; flex: none; }
 .demo-play:hover { background: var(--demo-hover); color: var(--demo-fg); text-decoration: none; }
 .demo-play:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .sr-only {
@@ -456,7 +455,7 @@ function demoCell(pkg: DashboardPackage, editorUrl: string) {
   }
   const label = esc(`${pkg.label}: ${pkg.demo.title}`);
   return `<a class="demo-play twpe-edit-button twpe-edit-button--small" href="${esc(editor.href)}" target="_blank" rel="noopener noreferrer" title="Open demo in TurboWarp-Plus-Editor">
-    <img src="${EDITOR_BRAND_ICON}" alt="" width="24" height="24">
+    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
     <span>${t('Demo', 'デモ')}</span>
     <span class="sr-only">${t(`: ${label}; open in TurboWarp-Plus-Editor (new tab)`, `：${label}、TurboWarp-Plus-Editorで開く（新しいタブ）`)}</span>
   </a>`;
