@@ -138,11 +138,24 @@ async function request(url: string): Promise<Response> {
   return response;
 }
 
+/** Stable catalogs do not promote a prerelease merely because its publisher moved latest. */
+async function publishedVersion(name: string, latest: string, allowPrerelease: boolean): Promise<string> {
+  if (!semver.valid(latest)) throw new Error(`Invalid published version: ${name}@${latest}`);
+  if (allowPrerelease || !semver.prerelease(latest)) return latest;
+  const registry = await request(`https://registry.npmjs.org/${name}`).then(r => r.json()) as {
+    versions?: Record<string, {deprecated?: string}>;
+  };
+  const candidates = Object.entries(registry.versions ?? {}).flatMap(([version, manifest]) =>
+    semver.valid(version) && !semver.prerelease(version) && semver.lt(version, latest) && !manifest.deprecated ? [version] : []);
+  const stable = semver.maxSatisfying(candidates, '*');
+  if (!stable) throw new Error(`No non-deprecated stable version before ${name}@${latest}`);
+  return stable;
+}
+
 /** Discover the primary runnable artifact in an exact npm version, never in a moving branch. */
-export async function publishedExtension(pkg: DashboardPackage): Promise<PublishedExtension> {
+export async function publishedExtension(pkg: DashboardPackage, {allowPrerelease = false} = {}): Promise<PublishedExtension> {
   const name = pkg.npm!.name!;
-  const version = pkg.npm!.latest!;
-  if (!semver.valid(version)) throw new Error(`Invalid published version: ${name}@${version}`);
+  const version = await publishedVersion(name, pkg.npm!.latest!, allowPrerelease);
   const base = `https://cdn.jsdelivr.net/npm/${name}@${version}`;
   const [manifest, tree] = await Promise.all([
     request(`${base}/package.json`).then(r => r.json()) as Promise<PublishedManifest>,
@@ -251,11 +264,11 @@ export function assembleEditorCatalog(
   return { schemaVersion: 1, generatedAt, ...(catalogCategories !== undefined ? {categories: catalogCategories} : {}), extensions };
 }
 
-export async function collectEditorCatalog(report: DashboardReport): Promise<EditorCatalog> {
+export async function collectEditorCatalog(report: DashboardReport, {allowPrerelease = false} = {}): Promise<EditorCatalog> {
   const candidates = report.packages.filter(pkg => pkg.unsandboxed !== undefined &&
     !['apps', 'toolchain'].includes(pkg.category) && pkg.npm?.published && pkg.npm.latest &&
     !pkg.npm.deprecated && !pkg.github?.isArchived);
-  const published = await pool(candidates, 4, publishedExtension);
+  const published = await pool(candidates, 4, pkg => publishedExtension(pkg, {allowPrerelease}));
   const knownExtensions = new Set(report.packages.filter(pkg => pkg.unsandboxed !== undefined &&
     !['apps', 'toolchain'].includes(pkg.category)).flatMap(pkg => pkg.npm?.name ? [pkg.npm.name] : []));
   const categories = report.categories.map(({id, title, titleJa}) => ({id, title, ...(titleJa != null ? {titleJa} : {})}));

@@ -285,3 +285,56 @@ test('published license uses the extension declaration before the package manife
   declaration = '// License: See the bundled extension notices below.\n';
   assert.equal((await publishedExtension(pkg)).entry.license,'See the bundled extension notices below.');
 });
+
+test('a prerelease latest selects the newest earlier non-deprecated stable artifact by default', async t => {
+  const name = '@owner/a';
+  const registryURL = `https://registry.npmjs.org/${name}`;
+  const base = `https://cdn.jsdelivr.net/npm/${name}@1.3.0`;
+  const responses: Record<string, unknown> = {
+    [registryURL]: {versions: {
+      '1.2.0': {}, '1.3.0': {}, '1.3.1': {deprecated: 'Withdrawn'},
+      '1.4.0-rc.0': {}, '1.4.0': {}, '2.0.0': {}, invalid: {},
+    }},
+    [`${base}/package.json`]: {name, version: '1.3.0'},
+    [`https://data.jsdelivr.com/v1/package/npm/${name}@1.3.0/flat`]: {files: [{name: '/dist/a.js'}]},
+    [`${base}/dist/a.js`]: '// ID: a\n// Name: A\n',
+  };
+  const calls: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    calls.push(url);
+    assert.ok(Object.hasOwn(responses, url), `Unexpected request ${url}`);
+    const value = responses[url];
+    return new Response(typeof value === 'string' ? value : JSON.stringify(value));
+  });
+  const pkg = {repo: 'a', category: 'data', npm: {name, latest: '1.4.0-rc.1'},
+    github: {url: 'https://github.com/owner/a'}} as DashboardPackage;
+  const result = await publishedExtension(pkg);
+  assert.equal(result.entry.version, '1.3.0');
+  assert.equal(result.entry.url, `${base}/dist/a.js`);
+  assert.equal(pkg.npm!.latest, '1.4.0-rc.1');
+  assert.ok(!calls.some(url => url.includes('@1.4.0-rc.1/')));
+});
+
+test('prerelease collection requires opt-in and still uses an immutable exact artifact', async t => {
+  const name = '@owner/a';
+  const version = '1.4.0-rc.1';
+  const base = `https://cdn.jsdelivr.net/npm/${name}@${version}`;
+  const pkg = {repo: 'a', category: 'data', npm: {name, latest: version, published: true},
+    unsandboxed: 'required', github: {url: 'https://github.com/owner/a'}} as DashboardPackage;
+  const report = {generatedAt: 'now', categories: [{id: 'data', title: 'Data'}], packages: [pkg]} as DashboardReport;
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    if (url === `https://registry.npmjs.org/${name}`) return new Response(JSON.stringify({versions: {
+      [version]: {}, '1.3.0': {deprecated: 'Withdrawn'},
+    }}));
+    if (url === `${base}/package.json`) return new Response(JSON.stringify({name, version}));
+    if (url === `https://data.jsdelivr.com/v1/package/npm/${name}@${version}/flat`) {
+      return new Response(JSON.stringify({files: [{name: '/dist/a.js'}]}));
+    }
+    assert.equal(url, `${base}/dist/a.js`);
+    return new Response('// ID: a\n// Name: A\n');
+  });
+  await assert.rejects(collectEditorCatalog(report), /No non-deprecated stable version/);
+  const result = await collectEditorCatalog(report, {allowPrerelease: true});
+  assert.equal(result.extensions[0].version, version);
+  assert.equal(result.extensions[0].url, `${base}/dist/a.js`);
+});
