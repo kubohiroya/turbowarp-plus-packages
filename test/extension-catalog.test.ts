@@ -1,8 +1,66 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { extensionHeader, extensionDocsURL, extensionAuthor, assembleEditorCatalog, publishedExtension, collectEditorCatalog, type EditorExtension } from '../scripts/lib/extension-catalog.ts';
+import { extensionHeader, extensionDocsURL, extensionAuthor, extensionDisplayName, catalogEntryPresentation, assembleEditorCatalog, publishedExtension, collectEditorCatalog, type EditorExtension } from '../scripts/lib/extension-catalog.ts';
 import type {DashboardPackage, DashboardReport} from '../scripts/lib/types.ts';
 const entry = (id: string): EditorExtension => ({id, name: id, package: `@owner/${id}`, version: '1.2.3', url: `https://cdn.test/${id}.js`, repository: 'https://github.com/owner/repo', dependencies: []});
+
+test('family display names use a single TurboWarp prefix and hyphen-separated words, retaining product spelling', () => {
+  for (const [name, expected] of [
+    ['TurboWarp Title Menu', 'TurboWarp-Title-Menu'],
+    ['Runtime Expression', 'TurboWarp-Runtime-Expression'],
+    ['Named Data', 'TurboWarp-Named-Data'],
+    ['WebUSB PaSoRi', 'TurboWarp-WebUSB-PaSoRi'],
+    ['jsQR', 'TurboWarp-jsQR'],
+    ['WebRTC Manual Pairing', 'TurboWarp-WebRTC-Manual-Pairing'],
+    ['TurboWarp YAML/JSON', 'TurboWarp-YAML-JSON'],
+    ['TurboWarp-A-Frame', 'TurboWarp-A-Frame'],
+    ['TurboWarp-Sesame', 'TurboWarp-Sesame'],
+    ['TurboWarp-WebRTC-QRCode-Pairing', 'TurboWarp-WebRTC-QRCode-Pairing'],
+    ['TurboWarp-UUID', 'TurboWarp-UUID'],
+    ['  TurboWarp  OpenAI Realtime API  ', 'TurboWarp-OpenAI-Realtime-API'],
+  ]) {
+    assert.equal(extensionDisplayName(name, '@kubohiroya/turbowarp-example'), expected);
+    assert.equal(extensionDisplayName(expected, '@kubohiroya/turbowarp-example'), expected);
+  }
+});
+
+test('display normalization does not rename third-party packages and exceptions require a recorded reason', () => {
+  assert.equal(extensionDisplayName('Third Party Name', '@someone/turbowarp-example'), 'Third Party Name');
+  assert.equal(extensionDisplayName('A Tool', '@kubohiroya/a-tool'), 'A Tool');
+  assert.equal(extensionDisplayName('TurboWarp', '@kubohiroya/turbowarp-example', {
+    '@kubohiroya/turbowarp-example': {name: 'Intentional Product Name', reason: 'Contractually fixed product spelling'},
+  }), 'Intentional Product Name');
+  assert.throws(() => extensionDisplayName('Example', '@kubohiroya/turbowarp-example', {
+    '@kubohiroya/turbowarp-example': {name: 'Other Name', reason: ' '},
+  }), /requires a name and reason/);
+  assert.throws(() => extensionDisplayName('TurboWarp', '@kubohiroya/turbowarp-example'), /Missing extension display name/);
+});
+
+test('catalog display formatting preserves executable identity, immutable source and dependency edges', () => {
+  const base = {...entry('base'), name: 'Named Data', package: '@kubohiroya/turbowarp-named-data'};
+  const parent = {...entry('parent'), name: 'Runtime Expression', package: '@kubohiroya/turbowarp-runtime-expression'};
+  const original = structuredClone([base, parent]);
+  const catalog = assembleEditorCatalog('fixed-time', [
+    {entry: base, manifest: {}},
+    {entry: parent, manifest: {dependencies: {'@kubohiroya/turbowarp-named-data': '^1.0.0'}}},
+  ]);
+  assert.deepEqual(catalog.extensions.map(e => e.name), ['TurboWarp-Named-Data', 'TurboWarp-Runtime-Expression']);
+  assert.deepEqual(catalog.extensions.map(({name, ...rest}) => rest), [
+    {...base, dependencies: []}, {...parent, dependencies: ['base']},
+  ].map(({name, ...rest}) => rest));
+  assert.deepEqual([base, parent], original);
+});
+
+test('curated display icons replace only maintained family artwork and leave pinned JavaScript intact', () => {
+  const original = {...entry('uuid'), package: '@kubohiroya/turbowarp-uuid', name: 'TurboWarp-UUID',
+    banner: 'https://cdn.test/uuid@1.2.3/assets/block-icon.svg',
+    url: 'https://cdn.test/uuid@1.2.3/dist/uuid.js'};
+  const result = catalogEntryPresentation(original);
+  assert.equal(result.banner, 'https://kubohiroya.github.io/turbowarp-plus-packages/assets/extension-icons/turbowarp-uuid.svg');
+  assert.deepEqual({...result, banner: original.banner}, original);
+  assert.deepEqual(catalogEntryPresentation({...original, package: '@other/turbowarp-uuid'}),
+    {...original, package: '@other/turbowarp-uuid'});
+});
 test('published headers preserve the parent and translations without executing source', () => {
   const result=extensionHeader('// Name: Parent\n// ID: parent\n// Description[ja]: 日本語\n// Bundled extensions:\n// ID: child\nthrow Error("never execute");');
   assert.equal(result.id,'parent');assert.equal(result['description[ja]'],'日本語');

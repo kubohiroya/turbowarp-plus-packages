@@ -1,6 +1,7 @@
 import semver from 'semver';
 import { pool } from './github.ts';
 import { describeFromReadme } from './descriptions.ts';
+import {catalogIconURL} from './extension-branding.ts';
 import type { DashboardPackage, DashboardReport } from './types.ts';
 
 export interface EditorExtension {
@@ -46,6 +47,40 @@ interface PublishedManifest {
 interface PublishedExtension {
   entry: EditorExtension;
   manifest: PublishedManifest;
+}
+
+export interface ExtensionDisplayNameException {
+  name: string;
+  reason: string;
+}
+
+// Preserve an intentional product name only when its reason is recorded here.
+export const EXTENSION_DISPLAY_NAME_EXCEPTIONS: Readonly<Record<string, ExtensionDisplayNameException>> = Object.freeze({});
+
+/** Format this family's catalog labels without changing executable package identity. */
+export function extensionDisplayName(
+  name: string,
+  packageName: string,
+  exceptions: Readonly<Record<string, ExtensionDisplayNameException>> = EXTENSION_DISPLAY_NAME_EXCEPTIONS,
+): string {
+  if (!/^@kubohiroya\/turbowarp-[a-z0-9-]+$/.test(packageName)) return name;
+  if (Object.hasOwn(exceptions, packageName)) {
+    const exception = exceptions[packageName];
+    if (!exception?.name?.trim() || !exception.reason?.trim()) {
+      throw new Error(`Display name exception requires a name and reason: ${packageName}`);
+    }
+    return exception.name.trim();
+  }
+  const suffix = name.trim().replace(/^TurboWarp(?:[\s-]+|$)/i, '')
+    .replace(/[\s/]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  if (!suffix) throw new Error(`Missing extension display name: ${packageName}`);
+  return `TurboWarp-${suffix}`;
+}
+
+/** Apply catalog-owned labels and illustrations without rewriting executable sources. */
+export function catalogEntryPresentation(entry: EditorExtension): EditorExtension {
+  const banner = catalogIconURL(entry.package);
+  return {...entry, name: extensionDisplayName(entry.name, entry.package), ...(banner ? {banner} : {})};
 }
 
 /** Only declaration comments at the start of a published bundle are metadata. */
@@ -199,7 +234,7 @@ export function assembleEditorCatalog(
       }
       return [dependency.entry.id];
     });
-    return {...entry, dependencies: [...new Set(dependencyIds)]};
+    return {...catalogEntryPresentation(entry), dependencies: [...new Set(dependencyIds)]};
   });
   const visiting = new Set<string>();
   const visited = new Set<string>();
