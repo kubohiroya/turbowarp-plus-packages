@@ -377,6 +377,7 @@ for (const button of document.querySelectorAll('[data-graph-open]')) {
     const dialog = document.getElementById(button.dataset.graphOpen);
     dialogState.set(dialog, { opener: button, x: scrollX, y: scrollY });
     dialog.showModal();
+    dialog.scrollTop = 0;
     document.documentElement.classList.add('modal-open');
     const panel = dialog.querySelector('.graph-panel');
     if (!panel.dataset.positioned) {
@@ -387,7 +388,19 @@ for (const button of document.querySelectorAll('[data-graph-open]')) {
 }
 for (const dialog of document.querySelectorAll('.relationship-dialog')) {
   dialog.querySelector('[data-graph-close]').addEventListener('click', () => dialog.close());
-  // Native showModal supplies background inertness, a focus trap and Escape.
+  dialog.addEventListener('keydown', (event) => {
+    if (event.key !== 'Tab') return;
+    const controls = [...dialog.querySelectorAll('a[href], button, summary, [tabindex]')]
+      .filter((element) => element.tabIndex >= 0 && !element.disabled && element.getClientRects().length);
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault(); last?.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault(); first?.focus();
+    }
+  });
+  // Native showModal supplies background inertness and Escape.
   // Backdrop clicks intentionally leave the graph open.
   dialog.addEventListener('close', () => {
     document.documentElement.classList.remove('modal-open');
