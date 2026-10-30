@@ -218,6 +218,8 @@ export type UnsandboxedRequirement = 'required' | 'optional' | 'not-needed' | 'u
 
 export interface DashboardReport {
   generatedAt: string;
+  collectionStartedAt?: string;
+  catalog?: { sha256: string; revision: string | null };
   owner: string;
   scope: string;
   site: SiteConfig;

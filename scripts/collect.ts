@@ -9,7 +9,10 @@
  * A failure on one package is recorded against that package and does not stop
  * the run: a dashboard that is mostly right is more useful than no dashboard.
  */
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { releaseVersionsMatch } from './lib/release-version.ts';
@@ -291,7 +294,20 @@ async function analyseDependencies(
 }
 
 async function main() {
-  const catalog = await loadCatalog(join(ROOT, 'catalog.yaml'));
+  const collectionStartedAt = new Date().toISOString();
+  const catalogPath = join(ROOT, 'catalog.yaml');
+  const catalogSource = await readFile(catalogPath, 'utf8');
+  const catalogSha256 = createHash('sha256').update(catalogSource).digest('hex');
+  const run = promisify(execFile);
+  let catalogRevision: string | null = null;
+  try {
+    const [head, committed] = await Promise.all([
+      run('git', ['rev-parse', 'HEAD'], { cwd: ROOT }),
+      run('git', ['show', 'HEAD:catalog.yaml'], { cwd: ROOT }),
+    ]);
+    if (committed.stdout === catalogSource) catalogRevision = head.stdout.trim();
+  } catch { /* A source archive has no Git revision; the content hash still identifies it. */ }
+  const catalog = await loadCatalog(catalogPath);
   const { owner, npmToRepo, localProtocols } = catalog;
   const repoNames = catalog.entries.map((entry) => entry.repo);
 
@@ -375,6 +391,8 @@ async function main() {
 
   const report: DashboardReport = {
     generatedAt: new Date().toISOString(),
+    collectionStartedAt,
+    catalog: { sha256: catalogSha256, revision: catalogRevision },
     owner,
     scope: catalog.scope,
     site: catalog.site,
@@ -382,6 +400,9 @@ async function main() {
     packages,
   };
 
+  if (await readFile(catalogPath, 'utf8') !== catalogSource) {
+    throw new Error('catalog.yaml changed during collection; no snapshot was written. Run collect again.');
+  }
   await mkdir(dirname(OUT), { recursive: true });
   await writeFile(OUT, `${JSON.stringify(report, null, 2)}\n`);
 

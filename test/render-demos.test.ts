@@ -26,6 +26,8 @@ test('Demo precedes Issues and opens only available SB3s in TurboWarp-Plus-Edito
     for (const directory of ['scripts', 'data', 'site']) await mkdir(join(root, directory));
     await writeFile(join(root, 'package.json'), '{"type":"module"}');
     await copyFile(new URL('../scripts/render.ts', import.meta.url), join(root, 'scripts/render.ts'));
+    await mkdir(join(root, 'scripts/lib'), { recursive: true });
+    await copyFile(new URL('../scripts/lib/relationships.ts', import.meta.url), join(root, 'scripts/lib/relationships.ts'));
     async function render() {
       await writeFile(join(root, 'data/dashboard.json'), JSON.stringify(report));
       const result = spawnSync(process.execPath, ['--import', 'tsx', join(root, 'scripts/render.ts')], {

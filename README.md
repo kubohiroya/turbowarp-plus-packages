@@ -18,7 +18,23 @@ English | [日本語](README.ja.md)
 
 ## What the dashboard shows
 
-One row per package, grouped by category, with a column for each thing that is
+The dashboard displays the **Package list** only, with summary cards, search,
+status filters and the third-party dependency toggle. There is no tab-style view
+switch. A graph icon immediately to the right of each category heading opens that
+category's package relationships in a modal dialog. List filters and scroll
+position remain unchanged; the graph includes the entire category regardless of
+list filters. Close with the visible button or Escape to return to the invoking
+icon. The dialog keeps keyboard focus inside it while open.
+
+Arrows point from dependent to dependency, including prod, peer, optional and dev
+declarations. Solid arrows show actual internal edges. Each connected outside
+category has one translucent representative: most distinct connections to the
+focused category, then repository name on ties. Dashed arrows connect the category
+boundary to that summary, with distinct-pair counts; they do not claim direct
+edges to the representative. Expand the details for every actual edge and kind.
+The graph scrolls horizontally on narrow screens.
+
+One row per package, grouped by category, with columns for the things that are
 easy to lose track of across sixty-odd repositories.
 
 | Column | What it tells you |
