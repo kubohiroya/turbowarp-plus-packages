@@ -67,35 +67,43 @@ function relativeDate(iso: string | null | undefined) {
   return t(`${years}y ago`, `${years}年前`);
 }
 
+const DARK_PALETTE = `
+  color-scheme: dark;
+  --bg: #0e1016;
+  --panel: #171a22;
+  --border: #272c38;
+  --text: #e7eaf2;
+  --muted: #949db8;
+  --accent: #7f93ff;
+  --ok-bg: #11301f; --ok-fg: #6fd79b;
+  --warn-bg: #352713; --warn-fg: #f0bb63;
+  --bad-bg: #38191b; --bad-fg: #f49a9a;
+  --idle-bg: #20242e; --idle-fg: #99a2bb;
+  --shadow: none;
+  --demo-bg: #173d54; --demo-fg: #d8f1ff;
+  --demo-border: #497f9e; --demo-hover: #20516f;
+`;
+
 const STYLE = `
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --bg: #f6f7fb;
   --panel: #ffffff;
   --border: #dfe3ec;
   --text: #1a1d26;
   --muted: #68718a;
   --accent: #3b55e0;
+  --demo-bg: #ddf4ff; --demo-fg: #132e42;
+  --demo-border: #83bfd9; --demo-hover: #c8edff;
   --ok-bg: #e4f6ec; --ok-fg: #16633a;
   --warn-bg: #fdf0da; --warn-fg: #8a5a09;
   --bad-bg: #fde8e8; --bad-fg: #a02121;
   --idle-bg: #eceff6; --idle-fg: #5b6480;
   --shadow: 0 1px 2px rgba(20, 25, 50, .06), 0 8px 24px rgba(20, 25, 50, .05);
 }
+:root[data-theme="dark"] { ${DARK_PALETTE} }
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0e1016;
-    --panel: #171a22;
-    --border: #272c38;
-    --text: #e7eaf2;
-    --muted: #949db8;
-    --accent: #7f93ff;
-    --ok-bg: #11301f; --ok-fg: #6fd79b;
-    --warn-bg: #352713; --warn-fg: #f0bb63;
-    --bad-bg: #38191b; --bad-fg: #f49a9a;
-    --idle-bg: #20242e; --idle-fg: #99a2bb;
-    --shadow: none;
-  }
+  :root:not([data-theme="light"]):not([data-theme="dark"]) { ${DARK_PALETTE} }
 }
 
 /* Only the phrases matching <html lang> are shown. */
@@ -179,12 +187,12 @@ td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-n
 td.demo { text-align: center; }
 .demo-play {
   display: inline-flex; align-items: center; justify-content: center;
-  gap: 8px; min-height: 48px; padding: 10px 14px; border: 1px solid #83bfd9; border-radius: 10px;
-  background: #ddf4ff; color: #132e42; font-size: 14px; font-weight: 600;
+  gap: 6px; min-height: 36px; padding: 5px 9px; border: 1px solid var(--demo-border); border-radius: 8px;
+  background: var(--demo-bg); color: var(--demo-fg); font-size: 14px; font-weight: 600;
   text-align: left; line-height: 1.4;
 }
-.demo-play img { width: 32px; height: 32px; flex: none; object-fit: contain; }
-.demo-play:hover { background: #c8edff; color: #132e42; text-decoration: none; }
+.demo-play img { width: 24px; height: 24px; flex: none; object-fit: contain; }
+.demo-play:hover { background: var(--demo-hover); color: var(--demo-fg); text-decoration: none; }
 .demo-play:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
@@ -250,6 +258,9 @@ const PLACEHOLDER = {
 function setLang(lang) {
   document.documentElement.lang = lang;
   search.placeholder = PLACEHOLDER[lang];
+  for (const button of document.querySelectorAll('.demo-play')) {
+    button.title = lang === 'ja' ? 'TurboWarp-Plus-Editorで編集' : 'Edit in TurboWarp-Plus-Editor';
+  }
   if (header) header.setAttribute('site-lang', lang);
   try { localStorage.setItem('lang', lang); } catch (e) {}
 }
@@ -304,10 +315,10 @@ function demoCell(pkg: DashboardPackage, editorUrl: string) {
     return empty;
   }
   const label = esc(`${pkg.label}: ${pkg.demo.title}`);
-  return `<a class="demo-play twpe-edit-button" href="${esc(editor.href)}" target="_blank" rel="noopener noreferrer" title="${label}">
-    <img src="${EDITOR_BRAND_ICON}" alt="" width="32" height="32">
-    <span>${t('Edit in TurboWarp-Plus-Editor', 'TurboWarp-Plus-Editorで編集')}</span>
-    <span class="sr-only">${t(`: ${label} (new tab)`, `：${label}（新しいタブ）`)}</span>
+  return `<a class="demo-play twpe-edit-button twpe-edit-button--small" href="${esc(editor.href)}" target="_blank" rel="noopener noreferrer" title="Edit in TurboWarp-Plus-Editor">
+    <img src="${EDITOR_BRAND_ICON}" alt="" width="24" height="24">
+    <span>${t('Edit', '編集')}</span>
+    <span class="sr-only">${t(` in TurboWarp-Plus-Editor: ${label} (new tab)`, `：TurboWarp-Plus-Editorで編集：${label}（新しいタブ）`)}</span>
   </a>`;
 }
 
