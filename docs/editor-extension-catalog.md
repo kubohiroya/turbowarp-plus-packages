@@ -1,7 +1,8 @@
 # Editor用機能拡張カタログ
 
 関連Issue: [#36](https://github.com/kubohiroya/turbowarp-plus-packages/issues/36)、
-カテゴリ見出しの追加: [#38](https://github.com/kubohiroya/turbowarp-plus-packages/issues/38)。
+カテゴリ見出しの追加: [#38](https://github.com/kubohiroya/turbowarp-plus-packages/issues/38)、
+一覧名・アイコンの統一: [#45](https://github.com/kubohiroya/turbowarp-plus-packages/issues/45)。
 EditorのPlus一覧は、Pagesで配信する次のJSONをHTTPSで取得します。
 
 `https://kubohiroya.github.io/turbowarp-plus-packages/extensions-v1.json`
@@ -49,7 +50,7 @@ Pages workflowおよび `build` / `build:no-thumbnails` に組み込み、ダッ
 | `generatedAt` | 元のdashboard収集日時（ISO 8601）。 |
 | `categories` | `catalog.yaml` 由来のカテゴリ定義。`{id, title, titleJa?}` を収集結果の順序で保持します。説明文は含めません。 |
 | `extensions` | 読み込み可能な機能拡張の配列。配列順は依存順を保証しません。 |
-| `id` / `name` | 公開JS先頭の宣言コメントのIDと表示名。IDは英数字で一意です。 |
+| `id` / `name` | `id` は公開JS先頭の宣言コメント由来で、英数字かつ一意です。`name` は同コメント由来の表示名を、下記のファミリー表示規則で整えます。 |
 | `version` / `package` | npm公開版の完全固定バージョンとパッケージ名。`package` はnpmのパッケージページへのリンクにも使用できます。 |
 | `repository` | 対象リポジトリのHTTPS URL。 |
 | `docsURL` | Pages APIで確認した公開ドキュメントのHTTPS URL。`pages.enabled` / `pages.live` がtrueでHTTP 200を確認できた場合だけ付与します。 |
@@ -58,7 +59,7 @@ Pages workflowおよび `build` / `build:no-thumbnails` に組み込み、ダッ
 | `description` / `descriptions` | 既定の説明とロケール別説明。宣言コメントを優先し、日本語がなければ同じnpm版の `README.ja.md` の要約を使用します。 |
 | `author` / `license` | 製作者名とライセンス。製作者名は公開manifestの `author.name`（または文字列の名前）を優先し、なければ宣言コメントを使用します。 |
 | `authorURL` | 公開manifestのオブジェクト形式 `author.url` に明示された製作者のHTTP/HTTPS URL。未指定なら省略します。 |
-| `banner` | 宣言コメントのHTTPSバナー。未指定なら同じnpm版の `assets/banner.svg`、`assets/banner.png`、`assets/block-icon.svg` の順で使用します。 |
+| `banner` | 下記の管理対象はファミリーサイト上の一覧用SVG。それ以外は宣言コメントのHTTPSバナーを使い、未指定なら同じnpm版の `assets/banner.svg`、`assets/banner.png`、`assets/block-icon.svg` の順で使用します。 |
 | `unsandboxed` | `required` / `optional` / `not-needed` / `unknown`。宣言コメントの `true` / `false` は正規化し、未宣言や未知値は `unknown` にします。 |
 | `dependencies` | 同カタログ内の機能拡張IDの配列。直接依存を列挙し、Editorが推移的にたどります。 |
 
@@ -88,6 +89,35 @@ Editorが引き続き行います。
 旧形式を組み立てるAPI呼出しはカテゴリ定義を省略できます。
 
 ## 収録と依存の規則
+
+### ファミリーの一覧表示名
+
+`@kubohiroya/turbowarp-*` の拡張だけ、一覧の表示名を `TurboWarp-*` 形式に揃えます。既存の `TurboWarp` 接頭辞を重ねず、単語間の空白と `/` をハイフンにします。大文字・小文字や製品固有の綴りは保持します。
+
+| 公開JS内の名称 | 一覧の表示名 |
+| --- | --- |
+| Runtime Expression | TurboWarp-Runtime-Expression |
+| WebUSB PaSoRi | TurboWarp-WebUSB-PaSoRi |
+| jsQR | TurboWarp-jsQR |
+| WebRTC Manual Pairing | TurboWarp-WebRTC-Manual-Pairing |
+| TurboWarp YAML/JSON | TurboWarp-YAML-JSON |
+| TurboWarp-A-Frame | TurboWarp-A-Frame |
+
+既存の `Sesame`、`Pairing`、`jsQR`、`PaSoRi`、`A-Frame`、`UUID`、`AR`、`API` の表記は変更しません。他のownerや、この命名対象に属さないパッケージへ `TurboWarp` を付けることはありません。現時点で命名規則の例外はありません。将来、固有の製品名を保持すべき理由があれば、`EXTENSION_DISPLAY_NAME_EXCEPTIONS` に表示名と具体的な理由を記録します。理由が空の例外は生成エラーです。
+
+これはカタログの表示名だけの整形です。拡張ID・npmパッケージ名・完全固定バージョン・JSの取得URL・依存関係・公開済みJSのバイト列は変更しません。
+
+### 管理された一覧用アイコン
+
+`scripts/lib/extension-branding.ts` の `CATALOG_ICON_REPOSITORIES` に列挙した拡張だけ、ファミリーサイトの `assets/extension-icons/<repository>.svg` を一覧画像として使用します。画像は各パッケージのブロックアイコンと同じSVGバイト列で管理します。対象外や他ownerのバナーは置き換えません。表示画像の更新はJSの固定版や読み込み許可を更新しません。
+
+公開前の表示確認は、記録したカタログJSONから再現できます。
+
+```sh
+node --import tsx scripts/preview-editor-catalog.ts /absolute/path/catalog-before.json
+```
+
+このコマンドはネットワークを使わず、入力の生成日時・ID・npm版・JS URL・依存関係を保持して、名前と一覧画像だけを更新した `site/extensions-v1.json` を生成します。生成物はコミットしません。
 
 `catalog.yaml` にあるパッケージのうち、収集結果に機能拡張宣言があり、npm公開済みで、
 非推奨・アーカイブ・アプリ・ビルド用パッケージでないものを候補にします。
