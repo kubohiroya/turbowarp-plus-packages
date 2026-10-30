@@ -30,6 +30,7 @@ export interface RawCatalog {
     label?: string;
     description?: string;
     descriptionJa?: string;
+    buildSource?: 'fixed-editor-gui';
   }>;
 }
 
@@ -41,6 +42,7 @@ export interface CatalogEntry {
   label: string;
   description: string | null;
   descriptionJa: string | null;
+  buildSource?: 'fixed-editor-gui';
 }
 
 export interface Catalog {
@@ -105,6 +107,9 @@ export interface RepositoryNode {
   samplesManifest?: { text?: string } | null;
   extensionConfig?: { text?: string } | null;
   viteConfig?: { text?: string } | null;
+  fixedEditorSource?: { text?: string } | null;
+  fixedEditorContract?: { text?: string } | null;
+  fixedEditorBuild?: { text?: string } | null;
 }
 
 export interface RevisionStatus {
@@ -206,7 +211,17 @@ export interface DashboardPackage {
     license: string | null;
   } | null;
   dependencies?: Dependency[];
+  buildDependencies?: BuildDependency[];
+  buildSourceError?: string;
   npm?: NpmStatus;
+}
+
+export interface BuildDependency {
+  repo: string;
+  revision: string;
+  sourceRevision: string;
+  sourcePath: 'site/source.json';
+  contractPaths: ['scripts/site/source.mjs', 'scripts/site/build.mjs'];
 }
 
 export interface DemoProject {

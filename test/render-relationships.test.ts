@@ -59,7 +59,11 @@ test('renders category graph buttons and labelled dialogs while keeping the dash
     assert.equal([...html.matchAll(/<tr data-search=/g)].length, 4);
     assert.equal([...html.matchAll(/<section data-graph-category=/g)].length, 3);
     assert.equal([...html.matchAll(/class="graph-edge aggregate"/g)].length, 2);
-    assert.equal([...html.matchAll(/class="graph-edge"/g)].length, 1);
+    assert.equal([...html.matchAll(/data-edge-source="one"/g)].length, 1);
+    assert.match(html, /class="graph-edge development"/);
+    assert.match(html, /data-graph-mode="primary"/);
+    assert.match(html, /data-graph-mode="all" hidden/);
+    assert.match(html, /data-show-dev/);
     assert.match(html, /&lt;unsafe &amp; label&gt;/);
     assert.doesNotMatch(html, /<unsafe/);
     assert.match(html, /No declared relations with other catalog categories/);

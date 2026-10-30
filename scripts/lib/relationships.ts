@@ -1,13 +1,14 @@
-import type { DashboardPackage } from './types.ts';
+import type { BuildDependency, DashboardPackage } from './types.ts';
 
 export interface PackageEdge {
   source: string;
   target: string;
   kinds: string[];
+  build?: BuildDependency;
 }
 
 /** Resolve only declared edges between known, current catalog packages. */
-export function categoryRelationships(packages: DashboardPackage[], category: string) {
+export function categoryRelationships(packages: DashboardPackage[], category: string, { includeDev = true } = {}) {
   const current = packages.filter((pkg) => !pkg.npm?.deprecated);
   const primary = current.filter((pkg) => pkg.category === category);
   const names = new Map<string, DashboardPackage>();
@@ -19,11 +20,21 @@ export function categoryRelationships(packages: DashboardPackage[], category: st
   const pairs = new Map<string, PackageEdge>();
   for (const pkg of current) {
     for (const dependency of pkg.dependencies ?? []) {
+      if (dependency.kind === 'dev' && !includeDev) continue;
       const target = names.get(dependency.name);
       if (!target || (pkg.category !== category && target.category !== category)) continue;
       const key = JSON.stringify([pkg.repo, target.repo]);
       const edge = pairs.get(key) ?? { source: pkg.repo, target: target.repo, kinds: [] };
       if (!edge.kinds.includes(dependency.kind)) edge.kinds.push(dependency.kind);
+      pairs.set(key, edge);
+    }
+    for (const dependency of pkg.buildDependencies ?? []) {
+      const target = current.find((candidate) => candidate.repo === dependency.repo);
+      if (!target || (pkg.category !== category && target.category !== category)) continue;
+      const key = JSON.stringify([pkg.repo, target.repo]);
+      const edge = pairs.get(key) ?? { source: pkg.repo, target: target.repo, kinds: [] };
+      if (!edge.kinds.includes('build')) edge.kinds.push('build');
+      edge.build = dependency;
       pairs.set(key, edge);
     }
   }

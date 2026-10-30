@@ -29,6 +29,9 @@ export async function loadCatalog(path = 'catalog.yaml'): Promise<Catalog> {
       seen.set(repo, category.id);
 
       const override = overrides[repo] ?? {};
+      if (override.buildSource && override.buildSource !== 'fixed-editor-gui') {
+        throw new Error(`${path}: unsupported buildSource for "${repo}"`);
+      }
       entries.push({
         repo,
         category: category.id,
@@ -39,6 +42,7 @@ export async function loadCatalog(path = 'catalog.yaml'): Promise<Catalog> {
         // exist for the cases where that text does not suit a table cell.
         description: override.description ?? null,
         descriptionJa: override.descriptionJa ?? null,
+        ...(override.buildSource ? { buildSource: override.buildSource } : {}),
       });
     }
   }

@@ -29,6 +29,7 @@ import { describeFromReadme, looksJapanese } from './lib/descriptions.ts';
 import { checkLive } from './lib/pages.ts';
 import { publishedDemo } from './lib/demos.ts';
 import { inheritedUnsandboxedRequirements, extensionUnsandboxed } from './lib/sandbox.ts';
+import { fixedEditorBuildDependency } from './lib/build-dependencies.ts';
 
 interface PagesResponse {
   html_url?: string;
@@ -83,6 +84,9 @@ const REPO_FIELDS = `
   samplesManifest: object(expression: "HEAD:samples/manifest.json") { ... on Blob { text } }
   extensionConfig: object(expression: "HEAD:src/config.ts") { ... on Blob { text } }
   viteConfig: object(expression: "HEAD:vite.config.ts") { ... on Blob { text } }
+  fixedEditorSource: object(expression: "HEAD:site/source.json") { ... on Blob { text } }
+  fixedEditorContract: object(expression: "HEAD:scripts/site/source.mjs") { ... on Blob { text } }
+  fixedEditorBuild: object(expression: "HEAD:scripts/site/build.mjs") { ... on Blob { text } }
 `;
 
 /**
@@ -364,6 +368,23 @@ async function main() {
     record.manifest = deps.manifest;
     record.dependencies = deps.dependencies;
     if (deps.error) record.errors.push(deps.error);
+    if (entry.buildSource) {
+      const result = fixedEditorBuildDependency({ sourceRevision: revision?.head?.oid ?? null,
+        sourceJson: node.fixedEditorSource?.text, contract: node.fixedEditorContract?.text,
+        build: node.fixedEditorBuild?.text, owner, catalogRepos: repoNames });
+      record.buildDependencies = [];
+      if (!result.error) {
+        for (const dependency of result.dependencies) {
+          const pinned = await rest<{ sha: string }>(`/repos/${owner}/${dependency.repo}/commits/${dependency.revision}`).catch(() => null);
+          if (pinned?.sha === dependency.revision) record.buildDependencies.push(dependency);
+          else result.error = 'fixed-editor-gui: pinned GUI revision could not be verified';
+        }
+      }
+      if (result.error) {
+        record.buildSourceError = result.error;
+        record.errors.push(result.error);
+      }
+    }
 
     if (entry.npm) {
       try {

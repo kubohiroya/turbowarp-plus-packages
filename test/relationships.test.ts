@@ -59,3 +59,21 @@ test('npm identity is supported when a manifest name is absent, regardless of th
   source.dependencies![0]!.family = false;
   assert.equal(categoryRelationships([source, target], 'focus').edges[0]!.target, 'target');
 });
+
+test('primary graph includes a verified build source and runtime edges; development remains optional', () => {
+  const editor = pkg('editor', 'focus', [['data', 'dev']]);
+  editor.buildDependencies = [{ repo: 'gui', revision: 'a'.repeat(40), sourceRevision: 'b'.repeat(40),
+    sourcePath: 'site/source.json', contractPaths: ['scripts/site/source.mjs', 'scripts/site/build.mjs'] }];
+  const gui = pkg('gui', 'focus', [['data', 'prod'], ['security', 'prod']]);
+  gui.revision = { head: { oid: 'c'.repeat(40), committedDate: '2026-10-30' }, state: 'untagged', tag: null, release: null, aheadBy: null };
+  const packages = [editor, gui, pkg('data', 'focus'), pkg('security', 'focus')];
+  const primary = categoryRelationships(packages, 'focus', { includeDev: false });
+  assert.deepEqual(primary.internal.map((edge) => [edge.source, edge.target, edge.kinds]), [
+    ['editor', 'gui', ['build']], ['gui', 'data', ['prod']], ['gui', 'security', ['prod']],
+  ]);
+  const build = primary.internal[0]!.build!;
+  assert.equal(build.revision, 'a'.repeat(40));
+  assert.notEqual(build.revision, gui.revision.head!.oid);
+  assert.equal(gui.revision.head!.oid, 'c'.repeat(40));
+  assert.equal(categoryRelationships(packages, 'focus', { includeDev: true }).internal.length, 4);
+});
