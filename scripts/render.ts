@@ -189,7 +189,7 @@ td.demo { text-align: center; }
   display: inline-flex; align-items: center; justify-content: center;
   gap: 6px; min-height: 36px; padding: 5px 9px; border: 1px solid var(--demo-border); border-radius: 8px;
   background: var(--demo-bg); color: var(--demo-fg); font-size: 14px; font-weight: 600;
-  text-align: left; line-height: 1.4;
+  text-align: left; line-height: 1.4; white-space: nowrap;
 }
 .demo-play img { width: 24px; height: 24px; flex: none; object-fit: contain; }
 .demo-play:hover { background: var(--demo-hover); color: var(--demo-fg); text-decoration: none; }
