@@ -48,9 +48,9 @@ test('Demo precedes Issues and opens only available SB3s in TurboWarp-Plus-Edito
     assert.equal(url.searchParams.get('project_title'), title);
     assert.match(link, /target="_blank" rel="noopener noreferrer"/);
     assert.match(rows[0], /<img src="https:\/\/kubohiroya.github.io\/turbowarp-plus-editor\/assets\/icon.svg" alt="" width="24" height="24">/);
-    assert.match(rows[0], /<span lang="en">Edit<\/span><span lang="ja">編集<\/span>/);
-    assert.match(link, /title="Edit in TurboWarp-Plus-Editor"/);
-    assert.match(rows[0], /TurboWarp-Plus-Editorで編集/);
+    assert.match(rows[0], /<span lang="en">Demo<\/span><span lang="ja">デモ<\/span>/);
+    assert.match(link, /title="Open demo in TurboWarp-Plus-Editor"/);
+    assert.match(rows[0], /TurboWarp-Plus-Editorで開く/);
     assert.match(rows[0], /Hello &quot;world&quot; &lt;demo&gt;/);
     assert.match(rows[0], /新しいタブ/);
     for (const row of rows.slice(1)) {
