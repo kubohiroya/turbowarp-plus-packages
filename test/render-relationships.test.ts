@@ -48,8 +48,8 @@ test('renders category graph buttons and labelled dialogs while keeping the dash
     assert.match(listHtml, /aria-haspopup="dialog" aria-controls="relationships-focus"/);
     assert.match(html, /id="relationships-focus" aria-labelledby="graph-heading-focus"/);
     assert.match(html, /data-graph-close autofocus/);
-    assert.match(html, /Package relationships \(Focus\)/);
-    assert.match(html, /パッケージ相関図（対象）/);
+    assert.match(html, /Package relationships <span class="dialog-category">\(Focus\)/);
+    assert.match(html, /パッケージ相関図<span class="dialog-category">（対象）/);
     const modal = html.slice(html.indexOf('<dialog class="relationship-dialog"'), html.indexOf('</dialog>'));
     assert.ok(modal.indexOf('class="panel graph-panel"') < modal.indexOf('class="graph-secondary"'));
     assert.ok(modal.indexOf('class="graph-secondary"') < modal.indexOf('class="data-as-of"'));

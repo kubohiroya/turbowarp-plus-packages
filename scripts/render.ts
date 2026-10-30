@@ -264,6 +264,7 @@ html.modal-open { overflow: hidden; scrollbar-gutter: stable; }
   justify-content: space-between; gap: 12px; padding: 12px 18px;
   background: var(--panel); border-bottom: 1px solid var(--border);
 }
+.dialog-category { display: inline-block; max-width: 100%; }
 .dialog-toolbar h2 { margin: 0; font-size: 17px; line-height: 1.4; overflow-wrap: anywhere; }
 .dialog-close { flex: none; white-space: nowrap; font: inherit; padding: 7px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); cursor: pointer; }
 .dialog-body { padding: 18px; }
@@ -952,7 +953,7 @@ ${sections}
 
 ${report.categories.filter((category) => byCategory.get(category.id)?.length).map((category) => `
 <dialog class="relationship-dialog" id="relationships-${esc(category.id)}" aria-labelledby="graph-heading-${esc(category.id)}">
-  <div class="dialog-toolbar"><h2 id="graph-heading-${esc(category.id)}">${t(`Package relationships (${esc(category.title)})`, `パッケージ相関図（${esc(category.titleJa ?? category.title)}）`)}</h2><button type="button" class="dialog-close" data-graph-close autofocus>${t('Close', '閉じる')} <span aria-hidden="true">×</span></button></div>
+  <div class="dialog-toolbar"><h2 id="graph-heading-${esc(category.id)}">${t(`Package relationships <span class="dialog-category">(${esc(category.title)})</span>`, `パッケージ相関図<span class="dialog-category">（${esc(category.titleJa ?? category.title)}）</span>`)}</h2><button type="button" class="dialog-close" data-graph-close autofocus>${t('Close', '閉じる')} <span aria-hidden="true">×</span></button></div>
   <div class="dialog-body">
     ${relationshipDiagram(report, category.id, freshness, provenance)}
   </div>
