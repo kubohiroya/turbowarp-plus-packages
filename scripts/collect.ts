@@ -370,6 +370,7 @@ async function main() {
     if (deps.error) record.errors.push(deps.error);
     if (entry.buildSource) {
       const result = fixedEditorBuildDependency({ sourceRevision: revision?.head?.oid ?? null,
+        packageJson: node.packageJson?.text,
         sourceJson: node.fixedEditorSource?.text, contract: node.fixedEditorContract?.text,
         build: node.fixedEditorBuild?.text, owner, catalogRepos: repoNames });
       record.buildDependencies = [];

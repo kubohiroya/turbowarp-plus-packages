@@ -12,11 +12,16 @@ export function fixedEditorBuildDependency(input: {
   sourceJson: string | null | undefined;
   contract: string | null | undefined;
   build: string | null | undefined;
+  packageJson: string | null | undefined;
   owner: string;
   catalogRepos: readonly string[];
 }): { dependencies: BuildDependency[]; error?: string } {
   const fail = (message: string) => ({ dependencies: [], error: `fixed-editor-gui: ${message}` });
-  if (!input.sourceJson || !input.contract || !input.build) return fail('source metadata or build contract is missing');
+  if (!input.sourceJson || !input.contract || !input.build || !input.packageJson) return fail('source metadata or build contract is missing');
+  try {
+    const manifest = JSON.parse(input.packageJson);
+    if (manifest?.scripts?.['build:pages'] !== 'node scripts/site/build.mjs') return fail('unsupported build entry point');
+  } catch { return fail('package manifest is invalid'); }
   if (!input.sourceRevision || !SHA.test(input.sourceRevision)) return fail('source revision is unverified');
   let pins: { guiRepository?: unknown; guiRevision?: unknown };
   try { pins = JSON.parse(input.sourceJson); } catch { return fail('source metadata is not valid JSON'); }
