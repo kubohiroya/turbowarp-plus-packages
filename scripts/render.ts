@@ -80,7 +80,7 @@ const DARK_PALETTE = `
   --bad-bg: #38191b; --bad-fg: #f49a9a;
   --idle-bg: #20242e; --idle-fg: #99a2bb;
   --shadow: none;
-  --demo-bg: #173d54; --demo-fg: #d8f1ff;
+  --demo-bg: #173d54; --demo-fg: #f2f2f2;
   --demo-border: #497f9e; --demo-hover: #20516f;
 `;
 
@@ -188,7 +188,7 @@ td.demo { text-align: center; }
 .demo-play {
   display: inline-flex; align-items: center; justify-content: center;
   gap: 6px; min-height: 36px; padding: 5px 9px; border: 1px solid var(--demo-border); border-radius: 8px;
-  background: var(--demo-bg); color: var(--demo-fg); font-size: 14px; font-weight: 600;
+  background: var(--demo-bg); color: var(--demo-fg); font-size: 14px; font-weight: 400;
   text-align: left; line-height: 1.4; white-space: nowrap;
 }
 .demo-play img { width: 24px; height: 24px; flex: none; object-fit: contain; }
@@ -259,7 +259,7 @@ function setLang(lang) {
   document.documentElement.lang = lang;
   search.placeholder = PLACEHOLDER[lang];
   for (const button of document.querySelectorAll('.demo-play')) {
-    button.title = lang === 'ja' ? 'TurboWarp-Plus-Editorで編集' : 'Edit in TurboWarp-Plus-Editor';
+    button.title = lang === 'ja' ? 'TurboWarp-Plus-Editorでデモを開く' : 'Open demo in TurboWarp-Plus-Editor';
   }
   if (header) header.setAttribute('site-lang', lang);
   try { localStorage.setItem('lang', lang); } catch (e) {}
@@ -315,10 +315,10 @@ function demoCell(pkg: DashboardPackage, editorUrl: string) {
     return empty;
   }
   const label = esc(`${pkg.label}: ${pkg.demo.title}`);
-  return `<a class="demo-play twpe-edit-button twpe-edit-button--small" href="${esc(editor.href)}" target="_blank" rel="noopener noreferrer" title="Edit in TurboWarp-Plus-Editor">
+  return `<a class="demo-play twpe-edit-button twpe-edit-button--small" href="${esc(editor.href)}" target="_blank" rel="noopener noreferrer" title="Open demo in TurboWarp-Plus-Editor">
     <img src="${EDITOR_BRAND_ICON}" alt="" width="24" height="24">
-    <span>${t('Edit', '編集')}</span>
-    <span class="sr-only">${t(` in TurboWarp-Plus-Editor: ${label} (new tab)`, `：TurboWarp-Plus-Editorで編集：${label}（新しいタブ）`)}</span>
+    <span>${t('Demo', 'デモ')}</span>
+    <span class="sr-only">${t(`: ${label}; open in TurboWarp-Plus-Editor (new tab)`, `：${label}、TurboWarp-Plus-Editorで開く（新しいタブ）`)}</span>
   </a>`;
 }
 
