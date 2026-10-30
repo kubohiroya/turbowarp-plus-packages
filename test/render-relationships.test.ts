@@ -16,7 +16,7 @@ test('renders category graph buttons and labelled dialogs while keeping the dash
   });
   const one = pkg('one', 'focus');
   one.label = '<unsafe & label>';
-  one.dependencies = ['two', 'outside'].map((repo) => ({ name: `@test/${repo}`, range: '*',
+  one.dependencies = ['two', 'outside', 'unlisted'].map((repo) => ({ name: `@test/${repo}`, range: '*',
     kind: 'dev', family: true, local: false, stale: false }));
   const report: DashboardReport = {
     generatedAt: '2026-10-30', owner: 'test', scope: '@test', site: {},
@@ -48,6 +48,12 @@ test('renders category graph buttons and labelled dialogs while keeping the dash
     assert.match(listHtml, /aria-haspopup="dialog" aria-controls="relationships-focus"/);
     assert.match(html, /id="relationships-focus" aria-labelledby="graph-heading-focus"/);
     assert.match(html, /data-graph-close autofocus/);
+    assert.match(html, /Package relationships \(Focus\)/);
+    assert.match(html, /パッケージ相関図（対象）/);
+    const modal = html.slice(html.indexOf('<dialog class="relationship-dialog"'), html.indexOf('</dialog>'));
+    assert.ok(modal.indexOf('class="panel graph-panel"') < modal.indexOf('class="graph-secondary"'));
+    assert.ok(modal.indexOf('class="graph-secondary"') < modal.indexOf('class="data-as-of"'));
+    assert.doesNotMatch(modal.slice(0, modal.indexOf('class="panel graph-panel"')), /class="graph-help"|class="data-as-of"|class="lead"/);
     assert.match(html, /regardless of list filters/);
     assert.match(html, /dialog.showModal\(\)/);
     assert.equal([...html.matchAll(/<tr data-search=/g)].length, 4);
@@ -57,9 +63,12 @@ test('renders category graph buttons and labelled dialogs while keeping the dash
     assert.match(html, /&lt;unsafe &amp; label&gt;/);
     assert.doesNotMatch(html, /<unsafe/);
     assert.match(html, /No declared relations with other catalog categories/);
-    assert.match(html, /Exact internal relations/);
-    assert.match(html, /outside<\/a> <span class="muted">\(dev\)/);
-    assert.match(html, /Dashed: outside-category aggregates/);
+    assert.match(html, /Exact package relationships/);
+    assert.match(html, /development/);
+    assert.match(html, /Not registered in the catalog/);
+    assert.match(html, /@test\/unlisted/);
+    assert.doesNotMatch(html, /class="graph-node[^>]*data-repo="unlisted"/);
+    assert.match(html, /Dashed arrows and their numbers/);
     assert.match(html, /aria-live="polite"/);
     assert.match(html, /data-freshness="warning"/);
     // A recent snapshot needs the exact catalog that produced it. A stale or

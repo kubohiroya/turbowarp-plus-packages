@@ -264,12 +264,14 @@ html.modal-open { overflow: hidden; scrollbar-gutter: stable; }
   justify-content: space-between; gap: 12px; padding: 12px 18px;
   background: var(--panel); border-bottom: 1px solid var(--border);
 }
-.dialog-toolbar p { margin: 0; font-weight: 650; }
-.dialog-close { font: inherit; padding: 7px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); cursor: pointer; }
+.dialog-toolbar h2 { margin: 0; font-size: 17px; line-height: 1.4; overflow-wrap: anywhere; }
+.dialog-close { flex: none; white-space: nowrap; font: inherit; padding: 7px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); cursor: pointer; }
 .dialog-body { padding: 18px; }
 .dialog-body section { margin-bottom: 0; }
 .dialog-body h3 { margin: 0 0 4px; font-size: 21px; }
-.graph-help { font-size: 13px; color: var(--muted); }
+.graph-secondary { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; }
+.graph-secondary > p { font-size: 13px; margin: 6px 0; }
+.graph-help { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .category-heading { display: flex; gap: 10px; align-items: center; margin-bottom: 4px; }
 .category-heading h3 { margin: 0; font-size: 19px; }
 .category-graph {
@@ -675,7 +677,7 @@ const FILTERS = [
   ['local', 'local upstream', 'ローカル参照'],
 ];
 
-function relationshipDiagram(report: DashboardReport, categoryId: string) {
+function relationshipDiagram(report: DashboardReport, categoryId: string, freshness = '', provenance = '') {
   const category = report.categories.find((entry) => entry.id === categoryId)!;
   const graph = categoryRelationships(report.packages, categoryId);
   if (!graph.primary.length) return '';
@@ -689,8 +691,16 @@ function relationshipDiagram(report: DashboardReport, categoryId: string) {
     const pkg = byRepo.get(repo)!;
     return `<a href="${esc(pkg.github?.url ?? `https://github.com/${report.owner}/${repo}`)}">${esc(pkg.label)}</a>`;
   };
+  const kindLabels = { prod: ['runtime', '実行時'], dev: ['development', '開発時'], peer: ['provided by host', 'ホスト側'], optional: ['optional', '任意'] } as const;
+  const knownNames = new Set(report.packages.flatMap((pkg) => [pkg.manifest?.name, pkg.npm?.name].filter(Boolean)));
+  const unlisted = graph.primary.flatMap((pkg) => (pkg.dependencies ?? [])
+    .filter((dep) => dep.name.startsWith(report.scope + '/') && !knownNames.has(dep.name))
+    .map((dep) => ({ repo: pkg.repo, ...dep })));
   const edgeList = (edges: typeof graph.edges) => `<ul>${edges.map((edge) =>
-    `<li>${link(edge.source)} → ${link(edge.target)} <span class="muted">(${esc(edge.kinds.join(', '))})</span></li>`).join('')}</ul>`;
+    `<li>${link(edge.source)} → ${link(edge.target)} <span class="muted">(${edge.kinds.map((kind) => {
+      const label = kindLabels[kind as keyof typeof kindLabels];
+      return label ? t(label[0], label[1]) : esc(kind);
+    }).join(', ')})</span></li>`).join('')}</ul>`;
   const node = (pkg: DashboardPackage, x: number, y: number, external = false, caption = '') =>
     `<g class="graph-node ${external ? 'external' : 'primary'}" data-repo="${esc(pkg.repo)}">
       <a href="${esc(pkg.github?.url ?? `https://github.com/${report.owner}/${pkg.repo}`)}">
@@ -715,7 +725,7 @@ function relationshipDiagram(report: DashboardReport, categoryId: string) {
       const outsideX = x === 14 ? x + 250 : x;
       const c = report.categories.find((entry) => entry.id === group.category);
       const categoryTitle = t(esc(c?.title ?? group.category), esc(c?.titleJa ?? c?.title ?? group.category));
-      const caption = `<small>${categoryTitle}<br/>${t(`Outside representative · ${group.packages.length} packages`, `カテゴリ外の代表 · ${group.packages.length} パッケージ`)}</small>`;
+      const caption = `<small>${categoryTitle}<br/>${t('Outside representative', '別カテゴリの代表')}</small>`;
       outsideNodes.push(node(group.representative, x, y, true, caption));
       for (const [edges, incoming] of [[group.incoming, true], [group.outgoing, false]] as const) {
         if (!edges.length) continue;
@@ -734,15 +744,9 @@ function relationshipDiagram(report: DashboardReport, categoryId: string) {
   const details = graph.external.map((group) => {
     const c = report.categories.find((entry) => entry.id === group.category);
     const heading = t(esc(c?.title ?? group.category), esc(c?.titleJa ?? c?.title ?? group.category));
-    return `<details class="relationship-details"><summary>${heading} · ${t(`${group.packages.length} outside packages / ${group.incoming.length + group.outgoing.length} relations`, `カテゴリ外 ${group.packages.length} パッケージ / ${group.incoming.length + group.outgoing.length} 関係`)}</summary>
-      <p>${t('Representative', '代表')}: ${link(group.representative.repo)}. ${t('Connected packages', '接続するパッケージ')}: ${group.packages.map((pkg) => link(pkg.repo)).join(', ')}</p>
-      ${group.incoming.length ? `<h4>${t('Incoming: outside → this category', '被依存：カテゴリ外 → このカテゴリ')}</h4>${edgeList(group.incoming)}` : ''}
-      ${group.outgoing.length ? `<h4>${t('Outgoing: this category → outside', '依存先：このカテゴリ → カテゴリ外')}</h4>${edgeList(group.outgoing)}` : ''}
-    </details>`;
+    return `<h4>${heading}</h4>${edgeList([...group.incoming, ...group.outgoing])}`;
   }).join('');
   return `<section data-graph-category="${esc(categoryId)}" aria-labelledby="graph-heading-${esc(categoryId)}">
-    <h3 id="graph-heading-${esc(categoryId)}">${title}</h3>
-    <p class="lead">${t(`${graph.primary.length} packages · ${graph.internal.length} internal relations · ${graph.external.length} connected outside categories`, `${graph.primary.length} パッケージ · カテゴリ内 ${graph.internal.length} 関係 · 接続するカテゴリ外 ${graph.external.length} カテゴリ`)}</p>
     <div class="panel graph-panel" tabindex="0" role="region" aria-labelledby="graph-heading-${esc(categoryId)}">
       <svg class="relationship-svg" viewBox="0 0 1020 ${height}" role="group" aria-labelledby="graph-title-${esc(categoryId)} graph-description-${esc(categoryId)}">
         <title id="graph-title-${esc(categoryId)}">${esc(category.title)} / ${esc(category.titleJa ?? category.title)}</title>
@@ -753,8 +757,22 @@ function relationshipDiagram(report: DashboardReport, categoryId: string) {
         ${internalEdges}${aggregateEdges.join('')}${primaryNodes}${outsideNodes.join('')}
       </svg>
     </div>
-    ${graph.internal.length ? `<details class="relationship-details"><summary>${t('Exact internal relations', 'カテゴリ内の正確な依存関係')} (${graph.internal.length})</summary>${edgeList(graph.internal)}</details>` : `<p class="relation-note">${t('No declared dependencies within this category.', 'カテゴリ内の依存宣言はありません。')}</p>`}
+    <div class="graph-secondary">
+    <p>${t('Arrows point from the package that uses another package to the package it uses.', '矢印は「使うパッケージ → 使われるパッケージ」の向きです。')}</p>
+    <p>${t('Translucent boxes represent other categories. Dashed arrows and their numbers summarize those categories’ relationships, which may involve packages other than the representative shown.', '半透明の枠は別カテゴリの代表パッケージです。破線と数字はそのカテゴリとの関係をまとめたもので、代表への直接の依存とは限りません。')}</p>
+    <details class="relationship-details"><summary>${t('Exact package relationships', 'パッケージ間の詳しい関係')}</summary>
+    <p>${t('The graph shows catalog packages and their declared dependencies, including development dependencies, regardless of list filters. Dependencies not registered in the catalog are listed separately below.', '図はカタログ登録済みパッケージを対象とし、開発時の依存も含めています。一覧の絞り込みは反映しません。カタログ未登録の依存は下に分けて記載します。')}</p>
+    ${graph.internal.length ? `<h4>${t('Within this category', 'このカテゴリ内')}</h4>${edgeList(graph.internal)}` : `<p class="relation-note">${t('No declared dependencies within this category.', 'カテゴリ内の依存宣言はありません。')}</p>`}
     ${details || `<p class="relation-note">${t('No declared relations with other catalog categories.', '他のカタログカテゴリとの依存関係はありません。')}</p>`}
+    ${unlisted.length ? `<h4>${t('Not registered in the catalog', 'カタログ未登録の依存')}</h4><ul>${unlisted.map((dep) => `<li>${link(dep.repo)} → <code>${esc(dep.name)}</code> <span class="muted">(${t(kindLabels[dep.kind][0], kindLabels[dep.kind][1])})</span><br/><code>${esc(dep.range)}</code></li>`).join('')}</ul>` : ''}
+    </details>
+    ${freshness}
+    <details class="graph-help"><summary>${t('Data sources', 'データの取得元')}</summary>
+      <p>${t('GitHub package.json files at the collected revisions and npm metadata. The representative has the most connections to this category; ties use repository name.', '収集時点のGitHubのpackage.jsonとnpmの情報を使用しています。別カテゴリの代表は接続数が最多のパッケージとし、同数ならリポジトリ名順に選びます。')}</p>
+      ${provenance}
+      <ul>${graph.primary.map((pkg) => `<li><a href="https://github.com/${esc(report.owner)}/${esc(pkg.repo)}/blob/${esc(pkg.revision?.head?.oid ?? pkg.github?.defaultBranch ?? 'HEAD')}/package.json">${esc(pkg.label)}</a></li>`).join('')}</ul>
+    </details>
+    </div>
   </section>`;
 }
 
@@ -767,11 +785,19 @@ async function main() {
   const recent = Number.isFinite(snapshotTime) && snapshotTime <= Date.now() + 60_000 && Date.now() - snapshotTime <= 86_400_000;
   const collectionErrors = report.packages.filter((pkg) => pkg.errors.length).length;
   const verified = catalogMatches && recent && collectionErrors === 0;
+  const issues: [string, string][] = [];
+  if (!catalogMatches) issues.push(report.catalog && catalogHash
+    ? ['Category changes are not reflected in this snapshot.', 'カテゴリ定義の変更がデータに未反映です。']
+    : ['The category definition used for this snapshot cannot be verified.', 'データに使用したカテゴリ定義を確認できません。']);
+  if (!recent) issues.push(['The acquisition time is invalid or more than 24 hours old.', '取得日時が不明か、取得から24時間以上が経過しています。']);
+  if (collectionErrors) issues.push([`Collection failed for ${collectionErrors} packages.`, `${collectionErrors}件のパッケージを取得できませんでした。`]);
+  const timeLabel = Number.isFinite(snapshotTime) ? new Date(snapshotTime).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' : report.generatedAt;
   const freshness = `<div class="data-as-of" data-freshness="${verified ? 'verified' : 'warning'}">
-    ${t('Data collected (UTC)', 'データ取得時点（UTC）')}: <time datetime="${esc(report.generatedAt)}">${esc(report.generatedAt)}</time>
-    ${report.catalog ? `<span> · catalog ${esc(report.catalog.sha256.slice(0, 12))}${report.catalog.revision ? ` · ${esc(report.catalog.revision.slice(0, 12))}` : ''}</span>` : ''}
-    ${!verified ? `<p class="data-warning" role="status">${t(`This snapshot is over 24 hours old, its catalog differs, its provenance is unverified, or collection has errors (${collectionErrors} packages). It does not establish the current package graph. Refresh the data before relying on it.`, `取得から24時間超・catalogの不一致・取得元未確認・または収集エラー（${collectionErrors}パッケージ）のあるスナップショットです。現在の依存関係を保証しません。データを再取得して確認してください。`)}</p>` : ''}
+    <p>${t('Data acquired', 'データ取得')}: <time datetime="${esc(report.generatedAt)}">${esc(timeLabel)}</time></p>
+    ${issues.length ? `<p class="data-warning" role="status">${issues.map(([en, ja]) => t(en, ja)).join(' ')} ${t('The view may differ from the current state.', '現在の状況と異なる可能性があります。')}</p>` : ''}
   </div>`;
+  const provenance = `<p>${t('GitHub and npm data collected from', 'GitHub・npmの収集期間')}: ${esc(report.collectionStartedAt ?? report.generatedAt)} → ${esc(report.generatedAt)}</p>
+    ${report.catalog ? `<p>catalog SHA-256: <code>${esc(report.catalog.sha256)}</code>${report.catalog.revision ? `<br/>${t('Catalog revision', 'カテゴリ定義のリビジョン')}: <code>${esc(report.catalog.revision)}</code>` : ''}</p>` : ''}`;
   // Keep collected metadata for planning, but omit deprecated rows and totals.
   report.packages = report.packages.filter((pkg) => !pkg.npm?.deprecated);
 
@@ -895,6 +921,7 @@ ${rows}
 <section id="package-list" class="main-content" aria-labelledby="list-heading">
 <h2 id="list-heading">${t('Package list', 'パッケージ一覧')}</h2>
 ${freshness}
+<details class="graph-help"><summary>${t('Data sources', 'データの取得元')}</summary>${provenance}</details>
 <div class="stats">
 ${stats}
 </div>
@@ -912,12 +939,9 @@ ${sections}
 
 ${report.categories.filter((category) => byCategory.get(category.id)?.length).map((category) => `
 <dialog class="relationship-dialog" id="relationships-${esc(category.id)}" aria-labelledby="graph-heading-${esc(category.id)}">
-  <div class="dialog-toolbar"><p>${t('Package relationships', 'パッケージ相関図')}</p><button type="button" class="dialog-close" data-graph-close autofocus>${t('Close', '閉じる')} <span aria-hidden="true">×</span></button></div>
+  <div class="dialog-toolbar"><h2 id="graph-heading-${esc(category.id)}">${t(`Package relationships (${esc(category.title)})`, `パッケージ相関図（${esc(category.titleJa ?? category.title)}）`)}</h2><button type="button" class="dialog-close" data-graph-close autofocus>${t('Close', '閉じる')} <span aria-hidden="true">×</span></button></div>
   <div class="dialog-body">
-    ${freshness}
-    <p class="graph-help">${t('Arrows: dependent → dependency. Solid: actual internal relations. Dashed: outside-category aggregates; counts are distinct package pairs, not direct links to the translucent representative. All declared prod, peer, optional and dev relations for this category are included, regardless of list filters.', '矢印：利用側 → 依存先。実線：カテゴリ内の実際の関係。破線：カテゴリ外の集約（数字はパッケージの組数で、半透明の代表への直接依存ではありません）。一覧の絞り込みにかかわらず、カテゴリ全体の prod・peer・optional・dev の宣言を表示します。')}</p>
-    <details class="graph-help"><summary>${t('Display rules', '表示のルール')}</summary><p>${t('One outside representative per connected category: most distinct connections to this category, then repository name. Exact relations and dependency kinds are listed below the graph. Scroll horizontally on narrow screens. Close with the button or Escape.', 'カテゴリ外は各カテゴリから接続数最多の代表1件を表示します。同数ならリポジトリ名順です。正確な関係と依存の種類は図の下の詳細で確認できます。狭い画面では横スクロールできます。閉じるボタンまたはEscapeで閉じます。')}</p></details>
-    ${relationshipDiagram(report, category.id)}
+    ${relationshipDiagram(report, category.id, freshness, provenance)}
   </div>
 </dialog>`).join('\n')}
 

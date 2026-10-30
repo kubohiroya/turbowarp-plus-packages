@@ -32,7 +32,11 @@ category has one translucent representative: most distinct connections to the
 focused category, then repository name on ties. Dashed arrows connect the category
 boundary to that summary, with distinct-pair counts; they do not claim direct
 edges to the representative. Expand the details for every actual edge and kind.
-The graph scrolls horizontally on narrow screens.
+The graph scrolls horizontally on narrow screens. Dependencies on family packages
+missing from the catalog are listed explicitly in the details instead of assigning
+them an invented category. The dialog puts its diagram first; exact relationships
+and source information are optional sections below it. The acquisition time stays
+visible, with a warning for old, incomplete or catalog-mismatched snapshots.
 
 One row per package, grouped by category, with columns for the things that are
 easy to lose track of across sixty-odd repositories.
