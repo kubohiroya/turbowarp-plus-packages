@@ -280,6 +280,8 @@ categories:
 # left at the default are reported as "unpublished" until they appear on npm,
 # which is intentional: that is a status worth seeing.
 overrides:
+  turbowarp-plus-editor:
+    buildSource: fixed-editor-gui
   scratch-gui:
     npm: false
     # A fork of someone else's project: its README is not ours to add a

@@ -13,9 +13,11 @@
  */
 import { access, readFile, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { DashboardPackage, DashboardReport, GitHubSummary, NpmStatus } from './lib/types.ts';
+import { categoryRelationships } from './lib/relationships.ts';
 
 interface Thumbnail {
   light: string | null;
@@ -229,8 +231,86 @@ picture { display: block; }
 .chip.local { background: var(--bad-bg); color: var(--bad-fg); }
 .chip.external[hidden] { display: none; }
 
+.graph-panel { padding: 12px; }
+.relationship-svg { display: block; width: 100%; min-width: 1000px; color: var(--text); }
+.category-boundary { fill: var(--idle-bg); stroke: var(--border); stroke-width: 2; }
+.graph-node rect { fill: var(--panel); stroke: var(--accent); stroke-width: 1.5; }
+.graph-node.external { opacity: .7; }
+.graph-node.external rect { stroke-dasharray: 5 4; }
+.node-label { font: 12px/1.3 system-ui, sans-serif; overflow-wrap: anywhere; padding: 9px 12px; color: var(--text); }
+.node-label strong { display: block; font-size: 12px; }
+.node-label small { display: block; margin-top: 5px; font-size: 10px; }
+.graph-node a:hover rect, .graph-node a:focus-visible rect { stroke-width: 3; }
+.graph-edge { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+.graph-edge.development { stroke: var(--muted); stroke-dasharray: 3 4; }
+.development-toggle { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+.graph-edge.aggregate { stroke: var(--muted); stroke-width: 2; stroke-dasharray: 6 5; }
+.graph-text { fill: var(--text); font: 12px system-ui, sans-serif; }
+.edge-count { fill: var(--panel); stroke: var(--border); }
+.relationship-details { margin: 14px 0; font-size: 13px; }
+.relationship-details summary { cursor: pointer; color: var(--accent); }
+.relationship-details ul { padding-left: 22px; overflow-wrap: anywhere; }
+.relationship-details li { margin: 5px 0; }
+.relation-note { font-size: 12px; color: var(--muted); }
+dialog.relationship-dialog {
+  width: min(1200px, 94vw); max-height: 92dvh; padding: 0;
+  overflow: auto; overscroll-behavior: contain;
+  border: 1px solid var(--border); border-radius: 16px;
+  background: var(--bg); color: var(--text); box-shadow: var(--shadow);
+}
+dialog::backdrop { background: rgba(10, 15, 30, .58); }
+html.modal-open { overflow: hidden; scrollbar-gutter: stable; }
+.dialog-toolbar {
+  position: sticky; top: 0; z-index: 10; display: flex; align-items: center;
+  justify-content: space-between; gap: 12px; padding: 12px 18px;
+  background: var(--panel); border-bottom: 1px solid var(--border);
+}
+.dialog-category { display: inline-block; max-width: 100%; }
+.dialog-toolbar h2 { margin: 0; font-size: 17px; line-height: 1.4; overflow-wrap: anywhere; }
+.dialog-close { flex: none; white-space: nowrap; font: inherit; padding: 7px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); cursor: pointer; }
+.dialog-body { padding: 18px; }
+.dialog-body section { margin-bottom: 0; }
+.dialog-body h3 { margin: 0 0 4px; font-size: 21px; }
+.graph-secondary { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; }
+.graph-secondary > p { font-size: 13px; margin: 6px 0; }
+.graph-help { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.category-heading { display: flex; gap: 10px; align-items: center; margin-bottom: 4px; }
+.category-heading h3 { margin: 0; font-size: 19px; }
+.category-graph {
+  display: inline-flex; justify-content: center; align-items: center; flex: none;
+  width: 36px; height: 36px; padding: 7px; cursor: pointer; color: var(--accent);
+  background: var(--panel); border: 1px solid var(--border); border-radius: 9px;
+}
+.category-graph:hover { background: var(--idle-bg); border-color: var(--accent); }
+.category-graph svg { width: 20px; height: 20px; }
+
 footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--border); padding-top: 18px; }
 tr[hidden], section[hidden] { display: none; }
+
+a:focus-visible, button:focus-visible, select:focus-visible, summary:focus-visible {
+  outline: 3px solid var(--accent); outline-offset: 3px;
+}
+.main-content > h2 { font-size: 25px; margin: 0 0 8px; }
+.main-content > section > h3 { font-size: 19px; margin: 0 0 2px; }
+.main-content > section > p.lead { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+.view-status { color: var(--muted); font-size: 13px; }
+.data-as-of { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.data-warning { padding: 10px 12px; border: 1px solid var(--warn-fg); border-radius: 8px; color: var(--warn-fg); background: var(--warn-bg); }
+[hidden] { display: none !important; }
+@media (max-width: 600px) {
+  .wrap { padding-left: 12px; padding-right: 12px; }
+  header.hero { padding-top: 24px; gap: 12px; }
+  header.hero h1 { font-size: 24px; }
+  .hero .mark { width: 42px; height: 42px; }
+  .toolbar { position: static; }
+  .dialog-body { padding: 12px; }
+  .dialog-toolbar { padding: 10px 12px; }
+  .toolbar input[type=search] { min-width: 0; width: 100%; }
+  .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .stat { min-width: 0; padding: 8px; }
+  .stat b { font-size: 20px; }
+  .stat span.label { font-size: 11px; }
+}
 `;
 
 /** Chooses the language before first paint, so the page never flashes. */
@@ -268,7 +348,8 @@ function apply() {
   const needle = search.value.trim().toLowerCase();
   const active = filters.filter((f) => f.checked).map((f) => f.dataset.filter);
 
-  for (const section of document.querySelectorAll('section[data-category]')) {
+  let matching = 0;
+  for (const section of document.querySelectorAll('#package-list section[data-category]')) {
     let shown = 0;
     for (const row of section.querySelectorAll('tbody tr')) {
       const haystack = row.dataset.search;
@@ -280,7 +361,64 @@ function apply() {
       if (visible) shown++;
     }
     section.hidden = shown === 0;
+    matching += shown;
   }
+  document.getElementById('view-status').textContent = document.documentElement.lang === 'ja'
+    ? matching + ' 件が一致' : matching + ' packages match';
+}
+
+const dialogState = new WeakMap();
+window.addEventListener('resize', () => {
+  const panel = document.querySelector('.relationship-dialog[open] .graph-variant:not([hidden]) .graph-panel');
+  if (panel) panel.scrollLeft = (panel.scrollWidth - panel.clientWidth) / 2;
+});
+for (const button of document.querySelectorAll('[data-graph-open]')) {
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const dialog = document.getElementById(button.dataset.graphOpen);
+    dialogState.set(dialog, { opener: button, x: scrollX, y: scrollY });
+    dialog.showModal();
+    dialog.scrollTop = 0;
+    document.documentElement.classList.add('modal-open');
+    const panel = dialog.querySelector('.graph-variant:not([hidden]) .graph-panel');
+    if (!panel.dataset.positioned) {
+      panel.scrollLeft = (panel.scrollWidth - panel.clientWidth) / 2;
+      panel.dataset.positioned = 'true';
+    }
+  });
+}
+for (const dialog of document.querySelectorAll('.relationship-dialog')) {
+  dialog.querySelector('[data-show-dev]').addEventListener('change', (event) => {
+    const mode = event.target.checked ? 'all' : 'primary';
+    for (const variant of dialog.querySelectorAll('.graph-variant')) variant.hidden = variant.dataset.graphMode !== mode;
+    const panel = dialog.querySelector('.graph-variant:not([hidden]) .graph-panel');
+    if (!panel.dataset.positioned) {
+      panel.scrollLeft = (panel.scrollWidth - panel.clientWidth) / 2;
+      panel.dataset.positioned = 'true';
+    }
+  });
+  dialog.querySelector('[data-graph-close]').addEventListener('click', () => dialog.close());
+  dialog.addEventListener('keydown', (event) => {
+    if (event.key !== 'Tab') return;
+    const controls = [...dialog.querySelectorAll('a[href], button, summary, [tabindex]')]
+      .filter((element) => element.tabIndex >= 0 && !element.disabled && element.getClientRects().length);
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault(); last?.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault(); first?.focus();
+    }
+  });
+  // Native showModal supplies background inertness and Escape.
+  // Backdrop clicks intentionally leave the graph open.
+  dialog.addEventListener('close', () => {
+    document.documentElement.classList.remove('modal-open');
+    const state = dialogState.get(dialog);
+    state?.opener.focus({ preventScroll: true });
+    if (state) window.scrollTo(state.x, state.y);
+  });
 }
 
 for (const chip of document.querySelectorAll('.chip.external')) {
@@ -295,9 +433,11 @@ search.addEventListener('input', apply);
 for (const f of filters) f.addEventListener('change', apply);
 document.addEventListener('turbowarp-plus:language', (event) => {
   setLang(event.detail.lang);
+  apply();
 });
 
 setLang(document.documentElement.lang === 'ja' ? 'ja' : 'en');
+apply();
 `;
 
 function demoCell(pkg: DashboardPackage, editorUrl: string) {
@@ -512,7 +652,7 @@ function row(pkg: DashboardPackage, thumb: Thumbnail | undefined, editorUrl: str
   // in both languages rather than leaving an empty cell.
   const summary = ja && ja !== en ? t(esc(en), esc(ja)) : esc(en);
 
-  return `<tr data-search="${esc(haystack)}" data-flags="${esc(flagsFor(pkg).join(' '))}">
+  return `<tr data-search="${esc(haystack)}" data-repo="${esc(pkg.repo)}" data-flags="${esc(flagsFor(pkg).join(' '))}">
   <td class="name">
     <div class="pkg">${icon}<a href="${esc(gh.url ?? '#')}">${esc(pkg.label)}</a>${archived}</div>
     <div class="desc">${summary}</div>
@@ -561,8 +701,139 @@ const FILTERS = [
   ['local', 'local upstream', 'ローカル参照'],
 ];
 
+function relationshipDiagram(report: DashboardReport, categoryId: string, freshness = '', provenance = '', options: { includeDev?: boolean; diagramOnly?: boolean } = {}): string {
+  const category = report.categories.find((entry) => entry.id === categoryId)!;
+  const includeDev = options.includeDev !== false;
+  const graph = categoryRelationships(report.packages, categoryId, { includeDev });
+  if (!graph.primary.length) return '';
+  const title = t(esc(category.title), esc(category.titleJa ?? category.title));
+  const left = graph.external.filter((group) => !group.outgoing.length);
+  const right = graph.external.filter((group) => group.outgoing.length);
+  const height = Math.max(graph.primary.length * 76 + 90, left.length * 108 + 90, right.length * 108 + 90, 240);
+  const variantId = `${categoryId}-${includeDev ? 'all' : 'primary'}`;
+  const marker = `arrow-${variantId}`;
+  const byRepo = new Map(report.packages.map((pkg) => [pkg.repo, pkg]));
+  const link = (repo: string) => {
+    const pkg = byRepo.get(repo)!;
+    return `<a href="${esc(pkg.github?.url ?? `https://github.com/${report.owner}/${repo}`)}">${esc(pkg.label)}</a>`;
+  };
+  const kindLabels = { build: ['fixed GUI build', '固定GUIのビルド'], prod: ['runtime', '実行時'], dev: ['development', '開発時'], peer: ['provided by host', 'ホスト側'], optional: ['optional', '任意'] } as const;
+  const knownNames = new Set(report.packages.flatMap((pkg) => [pkg.manifest?.name, pkg.npm?.name].filter(Boolean)));
+  const unlisted = graph.primary.flatMap((pkg) => (pkg.dependencies ?? [])
+    .filter((dep) => dep.name.startsWith(report.scope + '/') && !knownNames.has(dep.name))
+    .map((dep) => ({ repo: pkg.repo, ...dep })));
+  const edgeList = (edges: typeof graph.edges) => `<ul>${edges.map((edge) =>
+    `<li>${link(edge.source)} → ${link(edge.target)} <span class="muted">(${edge.kinds.map((kind) => {
+      const label = kindLabels[kind as keyof typeof kindLabels];
+      return label ? t(label[0], label[1]) : esc(kind);
+    }).join(', ')})</span>${edge.build ? `<br/><span class="muted">${t('Fixed GUI', '固定GUI')}: <a href="https://github.com/${esc(report.owner)}/${esc(edge.target)}/tree/${esc(edge.build.revision)}"><code>${esc(edge.build.revision)}</code></a><br/>${t('Collected HEAD', '収集時のHEAD')}: <code>${esc(byRepo.get(edge.target)?.revision?.head?.oid ?? '')}</code><br/>${t('Source', '根拠')}: <a href="https://github.com/${esc(report.owner)}/${esc(edge.source)}/blob/${esc(edge.build.sourceRevision)}/${edge.build.sourcePath}">site/source.json</a></span>` : ''}</li>`).join('')}</ul>`;
+  const node = (pkg: DashboardPackage, x: number, y: number, external = false, caption = '') =>
+    `<g class="graph-node ${external ? 'external' : 'primary'}" data-repo="${esc(pkg.repo)}">
+      <a href="${esc(pkg.github?.url ?? `https://github.com/${report.owner}/${pkg.repo}`)}">
+        <rect x="${x}" y="${y}" width="250" height="${external ? 94 : 60}" rx="9"/>
+        <foreignObject x="${x}" y="${y}" width="250" height="${external ? 94 : 60}"><div xmlns="http://www.w3.org/1999/xhtml" class="node-label"><strong>${esc(pkg.label)}</strong>${caption}</div></foreignObject>
+      </a>
+    </g>`;
+  const positions = new Map(graph.primary.map((pkg, i) => [pkg.repo, 64 + i * 76]));
+  const primaryNodes = graph.primary.map((pkg) => {
+    const pin = graph.edges.find((edge) => edge.target === pkg.repo && edge.build)?.build;
+    const caption = pin ? `<small>${t('Fixed GUI', '固定GUI')}: ${esc(pin.revision.slice(0, 7))}</small>` : '';
+    return node(pkg, 390, positions.get(pkg.repo)!, false, caption);
+  }).join('');
+  const internalEdges = graph.internal.map((edge, i) => {
+    const sy = positions.get(edge.source)! + 30;
+    const ty = positions.get(edge.target)! + 30;
+    const lane = 370 - i * 7;
+    return `<path class="graph-edge${edge.kinds.every((kind) => kind === 'dev') ? ' development' : ''}" data-edge-source="${esc(edge.source)}" data-edge-target="${esc(edge.target)}" data-edge-kinds="${esc(edge.kinds.join(' '))}" d="M390 ${sy} C${lane} ${sy},${lane} ${ty},390 ${ty}" marker-end="url(#${esc(marker)})"><title>${esc(edge.source)} → ${esc(edge.target)} (${esc(edge.kinds.join(', '))})</title></path>`;
+  }).join('');
+  const outsideNodes: string[] = [];
+  const aggregateEdges: string[] = [];
+  for (const [groups, x, boundary] of [[left, 14, 342], [right, 756, 688]] as const) {
+    groups.forEach((group, i) => {
+      const y = 64 + i * 108;
+      const outsideY = y + 47;
+      const outsideX = x === 14 ? x + 250 : x;
+      const c = report.categories.find((entry) => entry.id === group.category);
+      const categoryTitle = t(esc(c?.title ?? group.category), esc(c?.titleJa ?? c?.title ?? group.category));
+      const caption = `<small>${categoryTitle}<br/>${t('Outside representative', '別カテゴリの代表')}</small>`;
+      outsideNodes.push(node(group.representative, x, y, true, caption));
+      for (const [edges, incoming] of [[group.incoming, true], [group.outgoing, false]] as const) {
+        if (!edges.length) continue;
+        const offset = group.incoming.length && group.outgoing.length ? (incoming ? -14 : 14) : 0;
+        const startX = incoming ? outsideX : boundary;
+        const endX = incoming ? boundary : outsideX;
+        const startY = outsideY + offset;
+        const endY = outsideY + offset;
+        const mid = (outsideX + boundary) / 2;
+        aggregateEdges.push(`<path class="graph-edge aggregate" d="M${startX} ${startY} C${mid} ${startY},${mid} ${endY},${endX} ${endY}" marker-end="url(#${esc(marker)})"><title>${esc(group.category)}: ${incoming ? 'incoming' : 'outgoing'} · ${edges.length}</title></path>
+          <rect class="edge-count" x="${mid - 14}" y="${(startY + endY) / 2 - 10}" width="28" height="20" rx="6"/>
+          <text class="graph-text" x="${mid}" y="${(startY + endY) / 2 + 4}" text-anchor="middle">${edges.length}</text>`);
+      }
+    });
+  }
+  const details = graph.external.map((group) => {
+    const c = report.categories.find((entry) => entry.id === group.category);
+    const heading = t(esc(c?.title ?? group.category), esc(c?.titleJa ?? c?.title ?? group.category));
+    return `<h4>${heading}</h4>${edgeList([...group.incoming, ...group.outgoing])}`;
+  }).join('');
+  const picture = `    <div class="panel graph-panel" tabindex="0" role="region" aria-labelledby="graph-heading-${esc(categoryId)}">
+      <svg class="relationship-svg" viewBox="0 0 1020 ${height}" role="group" aria-labelledby="graph-title-${esc(variantId)} graph-description-${esc(variantId)}">
+        <title id="graph-title-${esc(variantId)}">${esc(category.title)} / ${esc(category.titleJa ?? category.title)}</title>
+        <desc id="graph-description-${esc(variantId)}">Dependent → dependency. Solid: actual internal edges. Dashed: category aggregate. 利用側 → 依存先。実線：カテゴリ内の実際の依存。破線：カテゴリ単位の集約。Exact edges are listed below / 正確な関係は下の詳細一覧。</desc>
+        <defs><marker id="${esc(marker)}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="context-stroke"/></marker></defs>
+        <rect class="category-boundary" x="342" y="14" width="346" height="${height - 28}" rx="16"/>
+        <foreignObject x="360" y="20" width="310" height="36"><div xmlns="http://www.w3.org/1999/xhtml" class="node-label">${title}</div></foreignObject>
+        ${internalEdges}${aggregateEdges.join('')}${primaryNodes}${outsideNodes.join('')}
+      </svg>
+    </div>
+`;
+  if (options.diagramOnly) return picture;
+  const primaryPicture = relationshipDiagram(report, categoryId, freshness, provenance, { includeDev: false, diagramOnly: true });
+  return `<section data-graph-category="${esc(categoryId)}" aria-labelledby="graph-heading-${esc(categoryId)}">
+    <div class="graph-variant" data-graph-mode="primary">${primaryPicture}</div>
+    <div class="graph-variant" data-graph-mode="all" hidden>${picture}</div>
+    <div class="graph-secondary">
+    <label class="development-toggle"><input type="checkbox" data-show-dev> ${t('Include development dependencies', '開発時の依存も表示')}</label>
+    <p>${t('Arrows point from the package that uses another package to the package it uses. Select the checkbox to add development dependencies.', '矢印は「使うパッケージ → 使われるパッケージ」の向きです。開発時の依存は、チェックを入れると追加表示します。')}</p>
+    <p>${t('Translucent boxes represent other categories. Dashed arrows and their numbers summarize those categories’ relationships, which may involve packages other than the representative shown.', '半透明の枠は別カテゴリの代表パッケージです。破線と数字はそのカテゴリとの関係をまとめたもので、代表への直接の依存とは限りません。')}</p>
+    <details class="relationship-details"><summary>${t('Exact package relationships', 'パッケージ間の詳しい関係')}</summary>
+    <p>${t('The graph shows catalog packages and their declared dependencies, including development dependencies, regardless of list filters. Dependencies not registered in the catalog are listed separately below.', '図はカタログ登録済みパッケージを対象とし、開発時の依存も含めています。一覧の絞り込みは反映しません。カタログ未登録の依存は下に分けて記載します。')}</p>
+    ${graph.internal.length ? `<h4>${t('Within this category', 'このカテゴリ内')}</h4>${edgeList(graph.internal)}` : `<p class="relation-note">${t('No declared dependencies within this category.', 'カテゴリ内の依存宣言はありません。')}</p>`}
+    ${details || `<p class="relation-note">${t('No declared relations with other catalog categories.', '他のカタログカテゴリとの依存関係はありません。')}</p>`}
+    ${unlisted.length ? `<h4>${t('Not registered in the catalog', 'カタログ未登録の依存')}</h4><ul>${unlisted.map((dep) => `<li>${link(dep.repo)} → <code>${esc(dep.name)}</code> <span class="muted">(${t(kindLabels[dep.kind][0], kindLabels[dep.kind][1])})</span><br/><code>${esc(dep.range)}</code></li>`).join('')}</ul>` : ''}
+    </details>
+    ${freshness}
+    <details class="graph-help"><summary>${t('Data sources', 'データの取得元')}</summary>
+      <p>${t('Sources are package.json and verified build-source pins at the collected revision. A GUI pin and its collected HEAD are separate revisions. Representatives are selected from the visible dependency kinds by connection count, then repository name.', '収集時点のpackage.jsonと、ビルド処理を照合した固定GUI情報を使用します。固定GUIと収集時のHEADは別のリビジョンです。別カテゴリの代表は表示中の関係の接続数が最多のものとし、同数ならリポジトリ名順に選びます。')}</p>
+      ${provenance}
+      <ul>${graph.primary.map((pkg) => `<li><a href="https://github.com/${esc(report.owner)}/${esc(pkg.repo)}/blob/${esc(pkg.revision?.head?.oid ?? pkg.github?.defaultBranch ?? 'HEAD')}/package.json">${esc(pkg.label)}</a></li>`).join('')}</ul>
+    </details>
+    </div>
+  </section>`;
+}
+
 async function main() {
   const report = JSON.parse(await readFile(DATA, 'utf8')) as DashboardReport;
+  const catalogSource = await readFile(join(ROOT, 'catalog.yaml'), 'utf8').catch(() => null);
+  const catalogHash = catalogSource === null ? null : createHash('sha256').update(catalogSource).digest('hex');
+  const catalogMatches = Boolean(catalogHash && report.catalog?.sha256 === catalogHash);
+  const snapshotTime = Date.parse(report.generatedAt);
+  const recent = Number.isFinite(snapshotTime) && snapshotTime <= Date.now() + 60_000 && Date.now() - snapshotTime <= 86_400_000;
+  const collectionErrors = report.packages.filter((pkg) => pkg.errors.length).length;
+  const verified = catalogMatches && recent && collectionErrors === 0;
+  const issues: [string, string][] = [];
+  if (!catalogMatches) issues.push(report.catalog && catalogHash
+    ? ['Category changes are not reflected in this snapshot.', 'カテゴリ定義の変更がデータに未反映です。']
+    : ['The category definition used for this snapshot cannot be verified.', 'データに使用したカテゴリ定義を確認できません。']);
+  if (!recent) issues.push(['The acquisition time is invalid or more than 24 hours old.', '取得日時が不明か、取得から24時間以上が経過しています。']);
+  if (collectionErrors) issues.push([`Collection failed for ${collectionErrors} packages.`, `${collectionErrors}件のパッケージを取得できませんでした。`]);
+  const timeLabel = Number.isFinite(snapshotTime) ? new Date(snapshotTime).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' : report.generatedAt;
+  const freshness = `<div class="data-as-of" data-freshness="${verified ? 'verified' : 'warning'}">
+    <p>${t('Data acquired', 'データ取得')}: <time datetime="${esc(report.generatedAt)}">${esc(timeLabel)}</time></p>
+    ${issues.length ? `<p class="data-warning" role="status">${issues.map(([en, ja]) => t(en, ja)).join(' ')} ${t('The view may differ from the current state.', '現在の状況と異なる可能性があります。')}</p>` : ''}
+  </div>`;
+  const provenance = `<p>${t('GitHub and npm data collected from', 'GitHub・npmの収集期間')}: ${esc(report.collectionStartedAt ?? report.generatedAt)} → ${esc(report.generatedAt)}</p>
+    ${report.catalog ? `<p>catalog SHA-256: <code>${esc(report.catalog.sha256)}</code>${report.catalog.revision ? `<br/>${t('Catalog revision', 'カテゴリ定義のリビジョン')}: <code>${esc(report.catalog.revision)}</code>` : ''}</p>` : ''}`;
   // Keep collected metadata for planning, but omit deprecated rows and totals.
   report.packages = report.packages.filter((pkg) => !pkg.npm?.deprecated);
 
@@ -603,7 +874,12 @@ async function main() {
         : '';
 
       return `<section data-category="${esc(category.id)}">
-  <h2>${heading}</h2>
+  <div class="category-heading"><h3>${heading}</h3>
+    <button type="button" class="category-graph" data-graph-open="relationships-${esc(category.id)}" aria-haspopup="dialog" aria-controls="relationships-${esc(category.id)}" title="${esc(category.title)} / ${esc(category.titleJa ?? category.title)}: Package relationships / パッケージ相関図">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 7L16 7M7 9L11 17M17 9L13 17"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="19" r="3"/></svg>
+      <span class="sr-only">${t(`View relationships: ${esc(category.title)}`, `パッケージ相関図を表示：${esc(category.titleJa ?? category.title)}`)}</span>
+    </button>
+  </div>
   ${lead}
   <div class="panel"><table>
     <thead><tr>${head}</tr></thead>
@@ -677,18 +953,34 @@ ${rows}
   </div>
 </header>
 
+<main>
+<section id="package-list" class="main-content" aria-labelledby="list-heading">
+<h2 id="list-heading">${t('Package list', 'パッケージ一覧')}</h2>
+${freshness}
+<details class="graph-help"><summary>${t('Data sources', 'データの取得元')}</summary>${provenance}</details>
 <div class="stats">
 ${stats}
 </div>
-
 <div class="toolbar">
-  <input id="q" type="search" placeholder="Filter by name or description…" autocomplete="off">
+  <label class="sr-only" for="q">${t('Filter by name or description', '名前や説明で絞り込み')}</label>
+  <input id="q" type="search" placeholder="Filter by name or description…" autocomplete="off" aria-describedby="view-status">
 ${filterBoxes}
   <label><input type="checkbox" id="external"> ${t('show external deps', '他社依存も表示')}</label>
   <span class="legend">${t('💀 local reference · ⚠️ stale range', '💀 ローカル参照 ・ ⚠️ stale')}</span>
 </div>
-
+<p id="view-status" class="view-status" role="status" aria-live="polite"></p>
 ${sections}
+</section>
+</main>
+
+${report.categories.filter((category) => byCategory.get(category.id)?.length).map((category) => `
+<dialog class="relationship-dialog" id="relationships-${esc(category.id)}" aria-labelledby="graph-heading-${esc(category.id)}">
+  <div class="dialog-toolbar"><h2 id="graph-heading-${esc(category.id)}">${t(`Package relationships <span class="dialog-category">(${esc(category.title)})</span>`, `パッケージ相関図<span class="dialog-category">（${esc(category.titleJa ?? category.title)}）</span>`)}</h2><button type="button" class="dialog-close" data-graph-close autofocus>${t('Close', '閉じる')} <span aria-hidden="true">×</span></button></div>
+  <div class="dialog-body">
+    ${relationshipDiagram(report, category.id, freshness, provenance)}
+  </div>
+</dialog>`).join('\n')}
+
 
 <footer>
   ${t(`Generated ${generated}`, `生成 ${generated}`)} ·

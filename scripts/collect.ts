@@ -9,7 +9,10 @@
  * A failure on one package is recorded against that package and does not stop
  * the run: a dashboard that is mostly right is more useful than no dashboard.
  */
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { releaseVersionsMatch } from './lib/release-version.ts';
@@ -26,6 +29,7 @@ import { describeFromReadme, looksJapanese } from './lib/descriptions.ts';
 import { checkLive } from './lib/pages.ts';
 import { publishedDemo } from './lib/demos.ts';
 import { inheritedUnsandboxedRequirements, extensionUnsandboxed } from './lib/sandbox.ts';
+import { fixedEditorBuildDependency } from './lib/build-dependencies.ts';
 
 interface PagesResponse {
   html_url?: string;
@@ -80,6 +84,9 @@ const REPO_FIELDS = `
   samplesManifest: object(expression: "HEAD:samples/manifest.json") { ... on Blob { text } }
   extensionConfig: object(expression: "HEAD:src/config.ts") { ... on Blob { text } }
   viteConfig: object(expression: "HEAD:vite.config.ts") { ... on Blob { text } }
+  fixedEditorSource: object(expression: "HEAD:site/source.json") { ... on Blob { text } }
+  fixedEditorContract: object(expression: "HEAD:scripts/site/source.mjs") { ... on Blob { text } }
+  fixedEditorBuild: object(expression: "HEAD:scripts/site/build.mjs") { ... on Blob { text } }
 `;
 
 /**
@@ -291,7 +298,20 @@ async function analyseDependencies(
 }
 
 async function main() {
-  const catalog = await loadCatalog(join(ROOT, 'catalog.yaml'));
+  const collectionStartedAt = new Date().toISOString();
+  const catalogPath = join(ROOT, 'catalog.yaml');
+  const catalogSource = await readFile(catalogPath, 'utf8');
+  const catalogSha256 = createHash('sha256').update(catalogSource).digest('hex');
+  const run = promisify(execFile);
+  let catalogRevision: string | null = null;
+  try {
+    const [head, committed] = await Promise.all([
+      run('git', ['rev-parse', 'HEAD'], { cwd: ROOT }),
+      run('git', ['show', 'HEAD:catalog.yaml'], { cwd: ROOT }),
+    ]);
+    if (committed.stdout === catalogSource) catalogRevision = head.stdout.trim();
+  } catch { /* A source archive has no Git revision; the content hash still identifies it. */ }
+  const catalog = await loadCatalog(catalogPath);
   const { owner, npmToRepo, localProtocols } = catalog;
   const repoNames = catalog.entries.map((entry) => entry.repo);
 
@@ -348,6 +368,24 @@ async function main() {
     record.manifest = deps.manifest;
     record.dependencies = deps.dependencies;
     if (deps.error) record.errors.push(deps.error);
+    if (entry.buildSource) {
+      const result = fixedEditorBuildDependency({ sourceRevision: revision?.head?.oid ?? null,
+        packageJson: node.packageJson?.text,
+        sourceJson: node.fixedEditorSource?.text, contract: node.fixedEditorContract?.text,
+        build: node.fixedEditorBuild?.text, owner, catalogRepos: repoNames });
+      record.buildDependencies = [];
+      if (!result.error) {
+        for (const dependency of result.dependencies) {
+          const pinned = await rest<{ sha: string }>(`/repos/${owner}/${dependency.repo}/commits/${dependency.revision}`).catch(() => null);
+          if (pinned?.sha === dependency.revision) record.buildDependencies.push(dependency);
+          else result.error = 'fixed-editor-gui: pinned GUI revision could not be verified';
+        }
+      }
+      if (result.error) {
+        record.buildSourceError = result.error;
+        record.errors.push(result.error);
+      }
+    }
 
     if (entry.npm) {
       try {
@@ -375,6 +413,8 @@ async function main() {
 
   const report: DashboardReport = {
     generatedAt: new Date().toISOString(),
+    collectionStartedAt,
+    catalog: { sha256: catalogSha256, revision: catalogRevision },
     owner,
     scope: catalog.scope,
     site: catalog.site,
@@ -382,6 +422,9 @@ async function main() {
     packages,
   };
 
+  if (await readFile(catalogPath, 'utf8') !== catalogSource) {
+    throw new Error('catalog.yaml changed during collection; no snapshot was written. Run collect again.');
+  }
   await mkdir(dirname(OUT), { recursive: true });
   await writeFile(OUT, `${JSON.stringify(report, null, 2)}\n`);
 
