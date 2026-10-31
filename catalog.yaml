@@ -36,24 +36,33 @@ localProtocols: [file:, link:, workspace:, portal:, patch:]
 #   2. Is it a guide, sample collection or documentation site?      -> docs
 #   3. Is it for building, packaging or previewing extensions?     -> toolchain
 #   4. Is it an editor distribution, the forked scratch-gui, or a
-#      library that extends the editor itself?                      -> foundation
+#      library that only the editor uses?                           -> foundation
 #   5. Does a packaged app use it to host the TurboWarp runtime in
-#      its own page?                                                -> shell
-#   6. Is it a contract or adapter that extensions from several
+#      its own page, or is it the template such an app starts from? -> shell
+#   6. Is it a contract, API or adapter that extensions from several
 #      other categories build on, with no domain of its own?        -> contracts
-#   7. Does it mostly expose one JavaScript library or one browser
+#   7. Is it a camera source or an optical code format that packages
+#      in other categories read through?                            -> camera
+#   8. Does it mostly expose one JavaScript library or one browser
 #      API as blocks, adding little model of its own?               -> wraps
-#   8. Otherwise, pick by what the package is for, not by the medium
+#   9. Otherwise, pick by what the package is for, not by the medium
 #      it happens to use: a QR code that carries a WebRTC offer is
 #      networking, a QR code that is read from the camera is sensing.
 # Each category below lists what it includes and what it sends elsewhere.
+#
+# Categories must not depend on each other in a cycle, counting every
+# dependency kind including development dependencies: if category A uses B,
+# no package in B may use A, directly or through other categories. When a
+# dependency would close a cycle, move the lower-level package into a category
+# of its own (as camera was split from sensing) rather than draw an arrow back.
+# The dashboard warns about any cycle it finds in the collected data.
 
 categories:
-  # Includes: build tools, bundler plugins, project and app templates, manifest
-  #   contracts consumed by those templates, and local preview.
+  # Includes: build tools, bundler plugins, the extension template, manifest
+  #   contracts consumed by that template, and local preview.
   # Excludes: anything else a running project loads at runtime (-> shell,
-  #   contracts or a domain category). A template stays here even though its
-  #   name says "app".
+  #   contracts or a domain category), and the packaged-app template, which
+  #   depends on the app shell (-> shell).
   - id: toolchain
     title: Toolchain & Templates
     titleJa: ツールチェーン・テンプレート
@@ -63,30 +72,32 @@ categories:
       - sb3-toolchain
       - vite-plugin-turbowarp-extension
       - turbowarp-extension-template
-      - turbowarp-app-template
       - turbowarp-extension-manifest
       - turbowarp-sb3-source-builder
       - turbowarp-local-preview
 
   # Includes: the TurboWarp-Plus-Editor distribution, its scratch-gui fork,
-  #   and the data editor and security dialog libraries built into the editor.
+  #   and the security dialog library that only the editor uses.
   # Excludes: extensions that only run inside the editor (-> their domain),
-  #   and anything a packaged app uses outside the editor (-> shell).
+  #   anything a packaged app uses outside the editor (-> shell), and the data
+  #   editor contract that extensions build on, even though the editor bundles
+  #   it (-> contracts): the editor distribution uses extensions, so a library
+  #   that extensions use cannot share its category.
   # Keep the foundation ID stable for existing JSON consumers.
   - id: foundation
     title: Editor
     titleJa: エディター
-    description: TurboWarp-Plus-Editor, its forked editor and shared editor libraries.
-    descriptionJa: TurboWarp-Plus-Editor、フォークしたエディター、共通エディターライブラリ。
+    description: TurboWarp-Plus-Editor, its forked editor and editor-only libraries.
+    descriptionJa: TurboWarp-Plus-Editor、フォークしたエディター、エディター専用のライブラリ。
     packages:
       - turbowarp-plus-editor
       - scratch-gui
-      - turbowarp-extension-data-editor
       - turbowarp-extension-security-dialog
 
   # Includes: DOM shell primitives, runtime adapters, and the title and
   #   application menu chrome and live reload control used to host the TurboWarp
-  #   runtime in a packaged application page. Every app depends on turbowarp-app-shell.
+  #   runtime in a packaged application page, and the template a packaged app
+  #   starts from. Every app depends on turbowarp-app-shell.
   # Excludes: the editor (-> foundation), build-time preview (-> toolchain),
   #   and the apps themselves (-> apps).
   - id: shell
@@ -99,20 +110,23 @@ categories:
       - turbowarp-runtime-adapter
       - turbowarp-title-menu
       - turbowarp-live-reload-controller
+      - turbowarp-app-template
 
   # Includes: contracts that packages in several categories implement or
   #   consume (named data, named functions, runtime expressions, structured
-  #   diagnostics that any DSL host or app reports and the stage displays),
+  #   diagnostics that any DSL host or app reports and the stage displays,
+  #   the data editing contract and API that extensions and the editor share),
   #   and adapters to external UI and state frameworks (React, Jotai).
   # Excludes: a contract used only within one family, or a package that mainly
   #   provides blocks for one kind of data, device or service (-> that domain's
-  #   category); anything built into the editor (-> foundation).
+  #   category); anything only the editor uses (-> foundation).
   - id: contracts
     title: Extension Contracts
     titleJa: 拡張共通の契約
     description: Contracts and adapters shared by extensions across categories.
     descriptionJa: カテゴリをまたいで拡張が共有する契約とアダプタ。
     packages:
+      - turbowarp-extension-data-editor
       - turbowarp-runtime-expression
       - turbowarp-named-data
       - turbowarp-named-functions
@@ -146,7 +160,7 @@ categories:
   #   notifications shown by the project, and the loading, caching and
   #   playback of image and audio assets.
   # Excludes: 3D and AR scenes (-> spatial), camera images used as input
-  #   (-> sensing), dialogs that guard extension loading (-> foundation), the
+  #   (-> camera or sensing), dialogs that guard extension loading (-> foundation), the
   #   title and application menu around a packaged app (-> shell), and the
   #   shared diagnostics overlay, defined by its input format (-> contracts).
   - id: media
@@ -179,21 +193,35 @@ categories:
       - turbowarp-photogrammetry
       - turbowarp-time-space-sync
 
-  # Includes: input from the physical world: camera sources and lens
-  #   calibration, optical code schemes, recognition models and pose
-  #   estimation, keyboard and pointer input.
-  # Excludes: packages whose purpose is reaching another machine or service,
-  #   even if they use a camera, QR codes or speech to do it (-> network), and
-  #   thin wrappers of one decoder library or device API (-> wraps).
+  # Includes: the camera frame source and optical code formats, such as QR
+  #   structured append, that packages in several categories read through.
+  # Excludes: thin wrappers of one decoder library (-> wraps), and lens
+  #   calibration, recognition, pose estimation and input that interpret what
+  #   the camera sees (-> sensing). These sit below spatial, network, wraps and
+  #   sensing, which all read the camera or codes.
+  - id: camera
+    title: Camera & Codes
+    titleJa: カメラ・コード
+    description: Camera frame sources and optical code formats that other categories read through.
+    descriptionJa: 他のカテゴリが利用する、カメラ映像の入力元と光学コードの形式。
+    packages:
+      - turbowarp-camera-source
+      - qrcode-structured-append
+
+  # Includes: input from the physical world: lens calibration, recognition
+  #   models and pose estimation, keyboard and pointer input, and waiting for
+  #   input that arrives through codes or devices.
+  # Excludes: the camera source and optical code formats themselves (-> camera),
+  #   packages whose purpose is reaching another machine or service, even if
+  #   they use a camera, QR codes or speech to do it (-> network), and thin
+  #   wrappers of one decoder library or device API (-> wraps).
   - id: sensing
     title: Sensing & Input
     titleJa: センシング・入力
-    description: Cameras, codes, pose estimation and pointer input.
-    descriptionJa: カメラ、コード、姿勢推定、ポインタ入力。
+    description: Lens calibration, recognition, pose estimation and input.
+    descriptionJa: レンズ校正、認識、姿勢推定、入力。
     packages:
-      - turbowarp-camera-source
       - turbowarp-camera-calibration
-      - qrcode-structured-append
       - turbowarp-teachable-machine
       - turbowarp-realtime-motion-capture
       - turbowarp-visual-tracking
@@ -202,7 +230,7 @@ categories:
   # Includes: talking to other machines: peer connections and their pairing,
   #   HTTP servers and the platforms that host them, AI and other third-party
   #   APIs, and remotely controlled devices reached through a cloud service.
-  # Excludes: devices attached to this machine (-> sensing or wraps) and data
+  # Excludes: devices attached to this machine (-> camera, sensing or wraps) and data
   #   packages that only format request or response bodies (-> data).
   - id: network
     title: Networking & Services
@@ -240,7 +268,7 @@ categories:
 
   # Includes: applications that are deployed and used as-is, including ones
   #   that exist to verify an extension against real cameras and displays.
-  # Excludes: app templates (-> toolchain) and documentation sites (-> docs).
+  # Excludes: app templates (-> shell) and documentation sites (-> docs).
   #   An app goes here even when it is published to npm.
   - id: apps
     title: Applications

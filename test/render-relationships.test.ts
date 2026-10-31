@@ -83,6 +83,7 @@ test('renders category graph buttons and labelled dialogs while keeping the dash
     }
     assert.match(html, /aria-live="polite"/);
     assert.match(html, /data-freshness="warning"/);
+    assert.doesNotMatch(html, /data-category-cycles/);
     // A recent snapshot needs the exact catalog that produced it. A stale or
     // mismatched snapshot must be visibly labelled on the list and each dialog.
     const catalogSource = 'fixture catalog bytes\n';
@@ -171,6 +172,13 @@ test('renders category graph buttons and labelled dialogs while keeping the dash
     assert.match(all, /&lt;Toolchain&gt;/);
     assert.doesNotMatch(all, /<Toolchain>/);
     assert.match(editorDialog, /同パッケージが提供するデータ編集の契約・APIの利用/);
+    // api -> data-b and data-b -> api make Editor and Data depend on each other.
+    // The list and both dialogs say so; a dialog outside the cycle does not.
+    const cycleWarning = /<p class="data-warning" role="status" data-category-cycles><span lang="en">Categories depend on each other in a cycle: \{Data &amp; Documents, Editor\}\.[^<]*<\/span><span lang="ja">カテゴリ間の依存が循環しています：｛データ・ドキュメント、エディター｝。/g;
+    assert.equal([...editorHtml.matchAll(cycleWarning)].length, 3);
+    assert.match(editorDialog, cycleWarning);
+    const toolchainDialog = editorHtml.slice(editorHtml.indexOf('id="relationships-toolchain"'));
+    assert.doesNotMatch(toolchainDialog.slice(0, toolchainDialog.indexOf('</dialog>')), /data-category-cycles/);
     assert.match(editorDialog, /data-a<\/a> → <a[^>]*>turbowarp-extension-data-editor/);
   } finally {
     await rm(root, { recursive: true, force: true });

@@ -17,7 +17,7 @@ import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { DashboardPackage, DashboardReport, GitHubSummary, NpmStatus } from './lib/types.ts';
-import { categoryRelationships } from './lib/relationships.ts';
+import { categoryCycles, categoryRelationships } from './lib/relationships.ts';
 
 interface Thumbnail {
   light: string | null;
@@ -824,8 +824,8 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
     <div class="graph-secondary">
     <label class="development-toggle"><input type="checkbox" data-show-dev> ${t('Include development dependencies', '開発時の依存も表示')}</label>
     <p>${t('Arrows point from the package that uses another package to the package it uses. Select the checkbox to add development dependencies.', '矢印は「使うパッケージ → 使われるパッケージ」の向きです。開発時の依存は、チェックを入れると追加表示します。')}</p>
-    <p>${t('Translucent boxes show category names only: categories that use central packages on the left, categories they use on the right, so every arrow points left to right. A category related in both directions appears on both sides. Dashed arrows and their numbers summarize distinct package pairs for each category and central package, in each direction.', '左右の半透明の枠はカテゴリ名のみを表示します。左は中央のパッケージを使うカテゴリ、右は中央のパッケージが使うカテゴリで、矢印はすべて左から右へ向かいます。双方向に関係するカテゴリは左右の両方に表示します。破線は中央の実際の依存元・依存先へ結び、数字はカテゴリと中央のパッケージごと・方向ごとの依存関係の組数です。')}</p>
-    ${categoryId === 'foundation' ? `<p>${t('Extension arrows to turbowarp-extension-data-editor identify use of its data editing contract / API.', '機能拡張からturbowarp-extension-data-editorへの矢印は、同パッケージが提供するデータ編集の契約・APIの利用を示します。')}</p>` : ''}
+    <p>${t('Translucent boxes show category names only: categories that use central packages on the left, categories they use on the right, so every arrow points left to right. Categories must not depend on each other in a cycle; one that does appears on both sides with a warning. Dashed arrows and their numbers summarize distinct package pairs for each category and central package, in each direction.', '左右の半透明の枠はカテゴリ名のみを表示します。左は中央のパッケージを使うカテゴリ、右は中央のパッケージが使うカテゴリで、矢印はすべて左から右へ向かいます。カテゴリ間の依存は循環させず、循環している場合は該当カテゴリを左右の両方に表示して警告します。破線は中央の実際の依存元・依存先へ結び、数字はカテゴリと中央のパッケージごと・方向ごとの依存関係の組数です。')}</p>
+    ${graph.primary.some((pkg) => pkg.repo === 'turbowarp-extension-data-editor') ? `<p>${t('Extension arrows to turbowarp-extension-data-editor identify use of its data editing contract / API.', '機能拡張からturbowarp-extension-data-editorへの矢印は、同パッケージが提供するデータ編集の契約・APIの利用を示します。')}</p>` : ''}
     <details class="relationship-details"><summary>${t('Exact package relationships', 'パッケージ間の詳しい関係')}</summary>
     <p>${t('The graph shows catalog packages and their declared dependencies, including development dependencies, regardless of list filters. Dependencies not registered in the catalog are listed separately below.', '図はカタログ登録済みパッケージを対象とし、開発時の依存も含めています。一覧の絞り込みは反映しません。カタログ未登録の依存は下に分けて記載します。')}</p>
     ${graph.internal.length ? `<h4>${t('Within this category', 'このカテゴリ内')}</h4>${edgeList(graph.internal)}` : `<p class="relation-note">${t('No declared dependencies within this category.', 'カテゴリ内の依存宣言はありません。')}</p>`}
@@ -866,6 +866,18 @@ async function main() {
     ${report.catalog ? `<p>catalog SHA-256: <code>${esc(report.catalog.sha256)}</code>${report.catalog.revision ? `<br/>${t('Catalog revision', 'カテゴリ定義のリビジョン')}: <code>${esc(report.catalog.revision)}</code>` : ''}</p>` : ''}`;
   // Keep collected metadata for planning, but omit deprecated rows and totals.
   report.packages = report.packages.filter((pkg) => !pkg.npm?.deprecated);
+
+  // Category dependencies must form no cycle (see catalog.yaml). Dependencies
+  // come from other repositories, so a new one can close a cycle at any time.
+  const cycles = categoryCycles(report.packages);
+  const cycleNames = (lang: 'title' | 'titleJa') => cycles.map((cycle) => cycle.map((id) => {
+    const category = report.categories.find((entry) => entry.id === id);
+    return esc(category?.[lang] ?? category?.title ?? id);
+  }));
+  const cycleWarning = cycles.length ? `<p class="data-warning" role="status" data-category-cycles>${t(
+    `Categories depend on each other in a cycle: ${cycleNames('title').map((names) => `{${names.join(', ')}}`).join(' ')}. Move a package or split a category in catalog.yaml.`,
+    `カテゴリ間の依存が循環しています：${cycleNames('titleJa').map((names) => `｛${names.join('、')}｝`).join('')}。catalog.yamlでパッケージを移動するか、カテゴリを分割してください。`)}</p>` : '';
+  for (const cycle of cycles) console.warn(`warning: categories depend on each other in a cycle: ${cycle.join(', ')}`);
 
   // A site without dark mode produces two identical shots, so thumbnails.ts
   // keeps only the light one and `dark` stays null here.
@@ -987,6 +999,7 @@ ${rows}
 <section id="package-list" class="main-content" aria-labelledby="list-heading">
 <h2 id="list-heading">${t('Package list', 'パッケージ一覧')}</h2>
 ${freshness}
+${cycleWarning}
 <details class="graph-help"><summary>${t('Data sources', 'データの取得元')}</summary>${provenance}</details>
 <div class="stats">
 ${stats}
@@ -1007,7 +1020,7 @@ ${report.categories.filter((category) => byCategory.get(category.id)?.length).ma
 <dialog class="relationship-dialog" id="relationships-${esc(category.id)}" aria-labelledby="graph-heading-${esc(category.id)}">
   <div class="dialog-toolbar"><h2 id="graph-heading-${esc(category.id)}">${t(`Package relationships: <span class="dialog-category">${esc(category.title)}</span>`, `パッケージ相関図: <span class="dialog-category">${esc(category.titleJa ?? category.title)}</span>`)}</h2><button type="button" class="dialog-close" data-graph-close autofocus>${t('Close', '閉じる')} <span aria-hidden="true">×</span></button></div>
   <div class="dialog-body">
-    ${relationshipDiagram(report, category.id, freshness, provenance)}
+    ${relationshipDiagram(report, category.id, cycles.some((cycle) => cycle.includes(category.id)) ? freshness + cycleWarning : freshness, provenance)}
   </div>
 </dialog>`).join('\n')}
 

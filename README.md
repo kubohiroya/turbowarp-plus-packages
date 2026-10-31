@@ -34,10 +34,12 @@ verifies the pinned commit. Its pinned GUI SHA is kept separate from collected H
 Missing or unsupported metadata is reported as an error and produces no guessed edge.
 Solid arrows show actual internal edges. Translucent boxes on either side show only
 the connected category names: categories that use central packages on the left and
-categories they use on the right, so every arrow points left to right. A category
-related in both directions appears on both sides. Dashed arrows connect each outside category to the
+categories they use on the right, so every arrow points left to right. Categories
+must not depend on each other in a cycle; if collected data contains one anyway, the
+categories involved appear on both sides and the list and their dialogs show a warning.
+Dashed arrows connect each outside category to the
 actual central package, with distinct-pair counts per category, central package and
-direction. In the Editor diagram, `turbowarp-extension-data-editor` is labelled
+direction. In the Extension Contracts diagram, `turbowarp-extension-data-editor` is labelled
 “Data editing contract / API” so extensions' contract dependencies are visible.
 The dependencies between central packages are preserved.
 Expand the details for every actual edge and kind.
@@ -132,6 +134,13 @@ categories:
     packages:
       - turbowarp-your-new-package
 ```
+
+Categories must not depend on each other in a cycle, counting development
+dependencies too: if any package in category A uses category B, no package in B
+may use A, directly or through other categories. Move the lower-level package, or
+split it into a category of its own, instead. The criteria in `catalog.yaml`
+explain the current split, and the dashboard warns when collected data contains a
+cycle.
 
 The npm name defaults to `@kubohiroya/<repo>`. Override it with `npm:` when they
 differ, or `npm: false` for a repository that is deliberately not an npm package
