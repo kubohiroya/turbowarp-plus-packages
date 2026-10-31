@@ -31,11 +31,14 @@ peer, optional and verified fixed-GUI build relations; the checkbox adds develop
 dependencies as a separate visual style. The fixed-GUI adapter reads site/source.json,
 checks the readPins/verifyHost/buildPages contract without executing source, and
 verifies the pinned commit. Its pinned GUI SHA is kept separate from collected HEAD.
-Missing or unsupported metadata is reported as an error and produces no guessed edge. Solid arrows show actual internal edges. Each connected outside
-category has one translucent representative: most distinct connections to the
-focused category, then repository name on ties. Dashed arrows connect the category
-boundary to that summary, with distinct-pair counts; they do not claim direct
-edges to the representative. Expand the details for every actual edge and kind.
+Missing or unsupported metadata is reported as an error and produces no guessed edge.
+Solid arrows show actual internal edges. Translucent boxes on either side show only
+the connected category names. Dashed arrows connect each outside category to the
+actual central package, with distinct-pair counts per category, central package and
+direction. In the Editor diagram, `turbowarp-extension-data-editor` is labelled
+“Data editing contract / API” so extensions' contract dependencies are visible.
+The dependencies between central packages are preserved.
+Expand the details for every actual edge and kind.
 The graph scrolls horizontally on narrow screens. Dependencies on family packages
 missing from the catalog are listed explicitly in the details instead of assigning
 them an invented category. The dialog puts its diagram first; exact relationships

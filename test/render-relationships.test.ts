@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { createHash } from 'node:crypto';
-import type { DashboardPackage, DashboardReport } from '../scripts/lib/types.ts';
+import type { DashboardPackage, DashboardReport, Dependency } from '../scripts/lib/types.ts';
 
 test('renders category graph buttons and labelled dialogs while keeping the dashboard list-only', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dashboard-relationships-'));
@@ -72,7 +72,14 @@ test('renders category graph buttons and labelled dialogs while keeping the dash
     assert.match(html, /Not registered in the catalog/);
     assert.match(html, /@test\/unlisted/);
     assert.doesNotMatch(html, /class="graph-node[^>]*data-repo="unlisted"/);
-    assert.match(html, /Dashed arrows and their numbers/);
+    assert.match(html, /Translucent boxes show category names only/);
+    const externalNodes = [...modal.matchAll(/<g class="graph-node external"[^>]*>[\s\S]*?<\/g>/g)];
+    assert.equal(externalNodes.length, 1);
+    for (const [node] of externalNodes) {
+      assert.match(node, /data-category="other"/);
+      assert.match(node, /<strong><span lang="en">Other<\/span>/);
+      assert.doesNotMatch(node, /data-repo=|<a\b|outside|representative/);
+    }
     assert.match(html, /aria-live="polite"/);
     assert.match(html, /data-freshness="warning"/);
     // A recent snapshot needs the exact catalog that produced it. A stale or
@@ -98,6 +105,64 @@ test('renders category graph buttons and labelled dialogs while keeping the dash
     report.generatedAt = new Date().toISOString();
     report.packages[0]!.errors.push('repository metadata unavailable');
     assert.match(await rerender(), /data-freshness="warning"/);
+
+    // Several packages in one outside category can depend on different editor
+    // libraries. Keep each central endpoint and direction instead of implying
+    // an extension depends on the editor distribution or a representative.
+    const editor = pkg('turbowarp-plus-editor', 'foundation');
+    const gui = pkg('scratch-gui', 'foundation');
+    const api = pkg('turbowarp-extension-data-editor', 'foundation');
+    const security = pkg('security', 'foundation');
+    const dataA = pkg('data-a', 'data');
+    const dataB = pkg('data-b', 'data');
+    const dev = pkg('dev-only', 'toolchain');
+    const dependency = (target: DashboardPackage, kind: Dependency['kind'] = 'prod') => ({
+      name: target.manifest!.name!, range: '*', kind,
+      family: true, local: false, stale: false,
+    });
+    editor.buildDependencies = [{ repo: gui.repo, revision: 'a'.repeat(40), sourceRevision: 'b'.repeat(40),
+      sourcePath: 'site/source.json', contractPaths: ['scripts/site/source.mjs', 'scripts/site/build.mjs'] }];
+    editor.dependencies = [dependency(api, 'dev')];
+    gui.dependencies = [dependency(api), dependency(security)];
+    dataA.dependencies = [dependency(api)];
+    dataB.dependencies = [dependency(api), dependency(security, 'optional')];
+    api.dependencies = [dependency(dataB, 'optional')];
+    dev.dependencies = [dependency(api, 'dev')];
+    report.packages = [editor, gui, api, security, dataA, dataB, dev];
+    report.categories = [{ id: 'foundation', title: 'Editor', titleJa: 'エディター' },
+      { id: 'data', title: 'Data & Documents', titleJa: 'データ・ドキュメント' },
+      { id: 'toolchain', title: '<Toolchain>', titleJa: 'ツールチェーン' }];
+    const editorHtml = await rerender();
+    const editorDialog = editorHtml.slice(editorHtml.indexOf('id="relationships-foundation"'), editorHtml.indexOf('</dialog>'));
+    const variants = [...editorDialog.matchAll(/<svg class="relationship-svg"[\s\S]*?<\/svg>/g)].map(([svg]) => svg);
+    assert.equal(variants.length, 2);
+    const [primary, all] = variants as [string, string];
+    for (const svg of variants) {
+      const outside = [...svg.matchAll(/<g class="graph-node external"[^>]*>[\s\S]*?<\/g>/g)];
+      for (const [node] of outside) assert.doesNotMatch(node, /data-repo=|<a\b|data-a|data-b|dev-only/);
+      assert.match(svg, /Data &amp; Documents/);
+      assert.match(svg, /データ・ドキュメント/);
+      assert.match(svg, /データ編集の契約・API/);
+      const incoming = [...svg.matchAll(/<path class="graph-edge aggregate"[^>]*data-external-category="data"[^>]*data-direction="incoming"[^>]*>[\s\S]*?<\/path>/g)];
+      assert.equal(incoming.length, 2);
+      assert.ok(incoming.some(([edge]) => edge.includes(`data-central-repo="${api.repo}"`) && edge.includes('· 2</title>')));
+      assert.ok(incoming.some(([edge]) => edge.includes('data-central-repo="security"') && edge.includes('· 1</title>')));
+      for (const [edge] of incoming) assert.match(edge, /,640 \d+" marker-end=/);
+      assert.match(svg, /data-central-repo="turbowarp-extension-data-editor" data-direction="outgoing"/);
+      assert.doesNotMatch(svg, /data-central-repo="turbowarp-plus-editor"|data-central-repo="scratch-gui"/);
+      assert.match(svg, /data-edge-source="turbowarp-plus-editor" data-edge-target="scratch-gui" data-edge-kinds="build"/);
+      assert.match(svg, /data-edge-source="scratch-gui" data-edge-target="turbowarp-extension-data-editor" data-edge-kinds="prod"/);
+      assert.match(svg, /data-edge-source="scratch-gui" data-edge-target="security" data-edge-kinds="prod"/);
+      assert.match(svg, /Fixed GUI/);
+    }
+    assert.equal([...primary.matchAll(/data-edge-source=/g)].length, 3);
+    assert.equal([...all.matchAll(/data-edge-source=/g)].length, 4);
+    assert.doesNotMatch(primary, /data-external-category="toolchain"/);
+    assert.match(all, /data-external-category="toolchain"/);
+    assert.match(all, /&lt;Toolchain&gt;/);
+    assert.doesNotMatch(all, /<Toolchain>/);
+    assert.match(editorDialog, /同パッケージが提供するデータ編集の契約・APIの利用/);
+    assert.match(editorDialog, /data-a<\/a> → <a[^>]*>turbowarp-extension-data-editor/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -237,6 +237,7 @@ picture { display: block; }
 .graph-node rect { fill: var(--panel); stroke: var(--accent); stroke-width: 1.5; }
 .graph-node.external { opacity: .7; }
 .graph-node.external rect { stroke-dasharray: 5 4; }
+.graph-node.external .node-label { height: 60px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; text-align: center; }
 .node-label { font: 12px/1.3 system-ui, sans-serif; overflow-wrap: anywhere; padding: 9px 12px; color: var(--text); }
 .node-label strong { display: block; font-size: 12px; }
 .node-label small { display: block; margin-top: 5px; font-size: 10px; }
@@ -727,18 +728,20 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
       const label = kindLabels[kind as keyof typeof kindLabels];
       return label ? t(label[0], label[1]) : esc(kind);
     }).join(', ')})</span>${edge.build ? `<br/><span class="muted">${t('Fixed GUI', '固定GUI')}: <a href="https://github.com/${esc(report.owner)}/${esc(edge.target)}/tree/${esc(edge.build.revision)}"><code>${esc(edge.build.revision)}</code></a><br/>${t('Collected HEAD', '収集時のHEAD')}: <code>${esc(byRepo.get(edge.target)?.revision?.head?.oid ?? '')}</code><br/>${t('Source', '根拠')}: <a href="https://github.com/${esc(report.owner)}/${esc(edge.source)}/blob/${esc(edge.build.sourceRevision)}/${edge.build.sourcePath}">site/source.json</a></span>` : ''}</li>`).join('')}</ul>`;
-  const node = (pkg: DashboardPackage, x: number, y: number, external = false, caption = '') =>
-    `<g class="graph-node ${external ? 'external' : 'primary'}" data-repo="${esc(pkg.repo)}">
+  const node = (pkg: DashboardPackage, x: number, y: number, caption = '') =>
+    `<g class="graph-node primary" data-repo="${esc(pkg.repo)}">
       <a href="${esc(pkg.github?.url ?? `https://github.com/${report.owner}/${pkg.repo}`)}">
-        <rect x="${x}" y="${y}" width="250" height="${external ? 94 : 60}" rx="9"/>
-        <foreignObject x="${x}" y="${y}" width="250" height="${external ? 94 : 60}"><div xmlns="http://www.w3.org/1999/xhtml" class="node-label"><strong>${esc(pkg.label)}</strong>${caption}</div></foreignObject>
+        <rect x="${x}" y="${y}" width="250" height="60" rx="9"/>
+        <foreignObject x="${x}" y="${y}" width="250" height="60"><div xmlns="http://www.w3.org/1999/xhtml" class="node-label"><strong>${esc(pkg.label)}</strong>${caption}</div></foreignObject>
       </a>
     </g>`;
   const positions = new Map(graph.primary.map((pkg, i) => [pkg.repo, 64 + i * 76]));
   const primaryNodes = graph.primary.map((pkg) => {
     const pin = graph.edges.find((edge) => edge.target === pkg.repo && edge.build)?.build;
-    const caption = pin ? `<small>${t('Fixed GUI', '固定GUI')}: ${esc(pin.revision.slice(0, 7))}</small>` : '';
-    return node(pkg, 390, positions.get(pkg.repo)!, false, caption);
+    const caption = (pkg.repo === 'turbowarp-extension-data-editor'
+      ? `<small>${t('Data editing contract / API', 'データ編集の契約・API')}</small>` : '')
+      + (pin ? `<small>${t('Fixed GUI', '固定GUI')}: ${esc(pin.revision.slice(0, 7))}</small>` : '');
+    return node(pkg, 390, positions.get(pkg.repo)!, caption);
   }).join('');
   const internalEdges = graph.internal.map((edge, i) => {
     const sy = positions.get(edge.source)! + 30;
@@ -748,26 +751,41 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
   }).join('');
   const outsideNodes: string[] = [];
   const aggregateEdges: string[] = [];
-  for (const [groups, x, boundary] of [[left, 14, 342], [right, 756, 688]] as const) {
+  for (const [groups, x, packageX] of [[left, 14, 390], [right, 756, 640]] as const) {
     groups.forEach((group, i) => {
       const y = 64 + i * 108;
-      const outsideY = y + 47;
+      const outsideY = y + 30;
       const outsideX = x === 14 ? x + 250 : x;
       const c = report.categories.find((entry) => entry.id === group.category);
       const categoryTitle = t(esc(c?.title ?? group.category), esc(c?.titleJa ?? c?.title ?? group.category));
-      const caption = `<small>${categoryTitle}<br/>${t('Outside representative', '別カテゴリの代表')}</small>`;
-      outsideNodes.push(node(group.representative, x, y, true, caption));
+      outsideNodes.push(`<g class="graph-node external" data-category="${esc(group.category)}">
+        <rect x="${x}" y="${y}" width="250" height="60" rx="9"/>
+        <foreignObject x="${x}" y="${y}" width="250" height="60"><div xmlns="http://www.w3.org/1999/xhtml" class="node-label"><strong>${categoryTitle}</strong></div></foreignObject>
+      </g>`);
       for (const [edges, incoming] of [[group.incoming, true], [group.outgoing, false]] as const) {
         if (!edges.length) continue;
+        // Aggregate outside packages only; preserve the actual central endpoint.
+        const endpoints = new Map<string, typeof edges>();
+        for (const edge of edges) {
+          const repo = incoming ? edge.target : edge.source;
+          const groupEdges = endpoints.get(repo) ?? [];
+          groupEdges.push(edge);
+          endpoints.set(repo, groupEdges);
+        }
         const offset = group.incoming.length && group.outgoing.length ? (incoming ? -14 : 14) : 0;
-        const startX = incoming ? outsideX : boundary;
-        const endX = incoming ? boundary : outsideX;
-        const startY = outsideY + offset;
-        const endY = outsideY + offset;
-        const mid = (outsideX + boundary) / 2;
-        aggregateEdges.push(`<path class="graph-edge aggregate" d="M${startX} ${startY} C${mid} ${startY},${mid} ${endY},${endX} ${endY}" marker-end="url(#${esc(marker)})"><title>${esc(group.category)}: ${incoming ? 'incoming' : 'outgoing'} · ${edges.length}</title></path>
+        for (const [repo, groupEdges] of endpoints) {
+          const packageY = positions.get(repo)! + 30 + offset;
+          const startX = incoming ? outsideX : packageX;
+          const endX = incoming ? packageX : outsideX;
+          const startY = incoming ? outsideY + offset : packageY;
+          const endY = incoming ? packageY : outsideY + offset;
+          const mid = (outsideX + packageX) / 2;
+          const source = incoming ? group.category : repo;
+          const target = incoming ? repo : group.category;
+          aggregateEdges.push(`<path class="graph-edge aggregate" data-external-category="${esc(group.category)}" data-central-repo="${esc(repo)}" data-direction="${incoming ? 'incoming' : 'outgoing'}" d="M${startX} ${startY} C${mid} ${startY},${mid} ${endY},${endX} ${endY}" marker-end="url(#${esc(marker)})"><title>${esc(source)} → ${esc(target)} · ${groupEdges.length}</title></path>
           <rect class="edge-count" x="${mid - 14}" y="${(startY + endY) / 2 - 10}" width="28" height="20" rx="6"/>
-          <text class="graph-text" x="${mid}" y="${(startY + endY) / 2 + 4}" text-anchor="middle">${edges.length}</text>`);
+          <text class="graph-text" x="${mid}" y="${(startY + endY) / 2 + 4}" text-anchor="middle">${groupEdges.length}</text>`);
+        }
       }
     });
   }
@@ -779,7 +797,7 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
   const picture = `    <div class="panel graph-panel" tabindex="0" role="region" aria-labelledby="graph-heading-${esc(categoryId)}">
       <svg class="relationship-svg" viewBox="0 0 1020 ${height}" role="group" aria-labelledby="graph-title-${esc(variantId)} graph-description-${esc(variantId)}">
         <title id="graph-title-${esc(variantId)}">${esc(category.title)} / ${esc(category.titleJa ?? category.title)}</title>
-        <desc id="graph-description-${esc(variantId)}">Dependent → dependency. Solid: actual internal edges. Dashed: category aggregate. 利用側 → 依存先。実線：カテゴリ内の実際の依存。破線：カテゴリ単位の集約。Exact edges are listed below / 正確な関係は下の詳細一覧。</desc>
+        <desc id="graph-description-${esc(variantId)}">Dependent → dependency. Solid: actual internal edges. Dashed: outside categories connected to actual central packages. 利用側 → 依存先。実線：カテゴリ内の実際の依存。破線：外部カテゴリと中央の実際のパッケージとの関係。Exact edges are listed below / 正確な関係は下の詳細一覧。</desc>
         <defs><marker id="${esc(marker)}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="context-stroke"/></marker></defs>
         <rect class="category-boundary" x="342" y="14" width="346" height="${height - 28}" rx="16"/>
         <foreignObject x="360" y="20" width="310" height="36"><div xmlns="http://www.w3.org/1999/xhtml" class="node-label">${title}</div></foreignObject>
@@ -795,7 +813,8 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
     <div class="graph-secondary">
     <label class="development-toggle"><input type="checkbox" data-show-dev> ${t('Include development dependencies', '開発時の依存も表示')}</label>
     <p>${t('Arrows point from the package that uses another package to the package it uses. Select the checkbox to add development dependencies.', '矢印は「使うパッケージ → 使われるパッケージ」の向きです。開発時の依存は、チェックを入れると追加表示します。')}</p>
-    <p>${t('Translucent boxes represent other categories. Dashed arrows and their numbers summarize those categories’ relationships, which may involve packages other than the representative shown.', '半透明の枠は別カテゴリの代表パッケージです。破線と数字はそのカテゴリとの関係をまとめたもので、代表への直接の依存とは限りません。')}</p>
+    <p>${t('Translucent boxes show category names only. Dashed arrows and their numbers summarize distinct package pairs for each category and central package, in each direction.', '左右の半透明の枠はカテゴリ名のみを表示します。破線は中央の実際の依存元・依存先へ結び、数字はカテゴリと中央のパッケージごと・方向ごとの依存関係の組数です。')}</p>
+    ${categoryId === 'foundation' ? `<p>${t('Extension arrows to turbowarp-extension-data-editor identify use of its data editing contract / API.', '機能拡張からturbowarp-extension-data-editorへの矢印は、同パッケージが提供するデータ編集の契約・APIの利用を示します。')}</p>` : ''}
     <details class="relationship-details"><summary>${t('Exact package relationships', 'パッケージ間の詳しい関係')}</summary>
     <p>${t('The graph shows catalog packages and their declared dependencies, including development dependencies, regardless of list filters. Dependencies not registered in the catalog are listed separately below.', '図はカタログ登録済みパッケージを対象とし、開発時の依存も含めています。一覧の絞り込みは反映しません。カタログ未登録の依存は下に分けて記載します。')}</p>
     ${graph.internal.length ? `<h4>${t('Within this category', 'このカテゴリ内')}</h4>${edgeList(graph.internal)}` : `<p class="relation-note">${t('No declared dependencies within this category.', 'カテゴリ内の依存宣言はありません。')}</p>`}
@@ -804,7 +823,7 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
     </details>
     ${freshness}
     <details class="graph-help"><summary>${t('Data sources', 'データの取得元')}</summary>
-      <p>${t('Sources are package.json and verified build-source pins at the collected revision. A GUI pin and its collected HEAD are separate revisions. Representatives are selected from the visible dependency kinds by connection count, then repository name.', '収集時点のpackage.jsonと、ビルド処理を照合した固定GUI情報を使用します。固定GUIと収集時のHEADは別のリビジョンです。別カテゴリの代表は表示中の関係の接続数が最多のものとし、同数ならリポジトリ名順に選びます。')}</p>
+      <p>${t('Sources are package.json and verified build-source pins at the collected revision. A GUI pin and its collected HEAD are separate revisions. Outside relationships are grouped by category, central package and direction using the visible dependency kinds.', '収集時点のpackage.jsonと、ビルド処理を照合した固定GUI情報を使用します。固定GUIと収集時のHEADは別のリビジョンです。カテゴリ外の関係は表示中の依存種別を使い、カテゴリ・中央のパッケージ・方向ごとに集約します。')}</p>
       ${provenance}
       <ul>${graph.primary.map((pkg) => `<li><a href="https://github.com/${esc(report.owner)}/${esc(pkg.repo)}/blob/${esc(pkg.revision?.head?.oid ?? pkg.github?.defaultBranch ?? 'HEAD')}/package.json">${esc(pkg.label)}</a></li>`).join('')}</ul>
     </details>

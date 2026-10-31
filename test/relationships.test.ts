@@ -28,8 +28,7 @@ test('category diagrams resolve exact names and preserve incoming/outgoing kinds
   assert.equal(graph.external.length, 1);
   const group = graph.external[0]!;
   assert.equal(group.category, 'other');
-  assert.equal(group.representative.repo, 'outside-b');
-  assert.equal(group.packages.length, 2);
+  assert.ok(!('representative' in group));
   assert.equal(group.incoming.length, 3);
   assert.equal(group.outgoing.length, 2);
   assert.deepEqual(group.outgoing.find((edge) => edge.source === 'two'), { source: 'two', target: 'outside-a', kinds: ['dev'] });
@@ -40,10 +39,10 @@ test('category diagrams resolve exact names and preserve incoming/outgoing kinds
   assert.equal(packages[0]!.dependencies!.length, 4);
 });
 
-test('representative ties are lexical and independent of report/declaration ordering', () => {
+test('external category relations are independent of report/declaration ordering', () => {
   const packages = [pkg('focus', 'focus', [['z', 'prod'], ['a', 'prod']]), pkg('z', 'other'), pkg('a', 'other')];
-  assert.equal(categoryRelationships(packages, 'focus').external[0]!.representative.repo, 'a');
-  assert.equal(categoryRelationships([...packages].reverse(), 'focus').external[0]!.representative.repo, 'a');
+  assert.deepEqual(categoryRelationships(packages, 'focus').external,
+    categoryRelationships([...packages].reverse(), 'focus').external);
 });
 
 test('isolated packages and empty categories have no external representatives or fabricated relations', () => {
