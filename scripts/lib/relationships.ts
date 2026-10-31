@@ -43,29 +43,21 @@ export function categoryRelationships(packages: DashboardPackage[], category: st
     a.source < b.source ? -1 : a.source > b.source ? 1 : a.target < b.target ? -1 : a.target > b.target ? 1 : 0);
   const internal = edges.filter((edge) =>
     byRepo.get(edge.source)?.category === category && byRepo.get(edge.target)?.category === category);
-  const outside = new Map<string, { packages: Map<string, DashboardPackage>; edges: PackageEdge[] }>();
+  const outside = new Map<string, PackageEdge[]>();
   for (const edge of edges) {
     const source = byRepo.get(edge.source)!;
     const target = byRepo.get(edge.target)!;
     if (source.category === target.category) continue;
     const external = source.category === category ? target : source;
-    const group = outside.get(external.category) ?? { packages: new Map<string, DashboardPackage>(), edges: [] as PackageEdge[] };
-    group.packages.set(external.repo, external);
-    group.edges.push(edge);
+    const group = outside.get(external.category) ?? [];
+    group.push(edge);
     outside.set(external.category, group);
   }
   const external = [...outside].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([id, group]) => {
-    // Highest number of distinct cross-boundary package pairs; repo name breaks ties.
-    const candidates = [...group.packages.values()].sort((a, b) => {
-      const score = (repo: string) => group.edges.filter((edge) => edge.source === repo || edge.target === repo).length;
-      return score(b.repo) - score(a.repo) || (a.repo < b.repo ? -1 : a.repo > b.repo ? 1 : 0);
-    });
     return {
       category: id,
-      representative: candidates[0]!,
-      packages: candidates,
-      incoming: group.edges.filter((edge) => byRepo.get(edge.source)?.category !== category),
-      outgoing: group.edges.filter((edge) => byRepo.get(edge.source)?.category === category),
+      incoming: group.filter((edge) => byRepo.get(edge.source)?.category !== category),
+      outgoing: group.filter((edge) => byRepo.get(edge.source)?.category === category),
     };
   });
   return { primary, internal, external, edges };
