@@ -62,3 +62,29 @@ export function categoryRelationships(packages: DashboardPackage[], category: st
   });
   return { primary, internal, external, edges };
 }
+
+/**
+ * Groups of categories that depend on one another, directly or through other
+ * categories. Every dependency kind counts, so the result is empty only when
+ * no relationship diagram, with or without development dependencies, needs an
+ * arrow back to a category it already points to.
+ */
+export function categoryCycles(packages: DashboardPackage[]): string[][] {
+  const categories = [...new Set(packages.filter((pkg) => !pkg.npm?.deprecated).map((pkg) => pkg.category))].sort();
+  const uses = new Map(categories.map((category) => [category, categoryRelationships(packages, category).external
+    .filter((group) => group.outgoing.length).map((group) => group.category)]));
+  const reachable = new Map(categories.map((category) => {
+    const seen = new Set<string>();
+    const pending = [...uses.get(category)!];
+    for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
+      if (!seen.has(next)) { seen.add(next); pending.push(...uses.get(next)!); }
+    }
+    return [category, seen];
+  }));
+  const cycles: string[][] = [];
+  for (const category of categories) {
+    if (!reachable.get(category)!.has(category) || cycles.some((cycle) => cycle.includes(category))) continue;
+    cycles.push(categories.filter((other) => reachable.get(category)!.has(other) && reachable.get(other)!.has(category)));
+  }
+  return cycles;
+}

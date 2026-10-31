@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { categoryRelationships } from '../scripts/lib/relationships.ts';
+import { categoryCycles, categoryRelationships } from '../scripts/lib/relationships.ts';
 import type { DashboardPackage, Dependency } from '../scripts/lib/types.ts';
 
 function pkg(repo: string, category: string, dependencies: [string, Dependency['kind']][] = []): DashboardPackage {
@@ -75,4 +75,23 @@ test('primary graph includes a verified build source and runtime edges; developm
   assert.notEqual(build.revision, gui.revision.head!.oid);
   assert.equal(gui.revision.head!.oid, 'c'.repeat(40));
   assert.equal(categoryRelationships(packages, 'focus', { includeDev: true }).internal.length, 4);
+});
+
+test('category cycles are found through other categories and through development dependencies', () => {
+  // camera <- wraps <- sensing is layered; sensing -> network -> sensing is not.
+  const layered = [
+    pkg('camera-source', 'camera'),
+    pkg('decoder', 'wraps', [['camera-source', 'peer']]),
+    pkg('motion', 'sensing', [['decoder', 'peer'], ['camera-source', 'prod']]),
+  ];
+  assert.deepEqual(categoryCycles(layered), []);
+  assert.deepEqual(categoryCycles([...layered, pkg('peer', 'network', [['motion', 'prod']]), pkg('pairing', 'sensing', [['peer', 'dev']])]),
+    [['network', 'sensing']]);
+  // A longer loop is reported once, with every category on it and none outside.
+  const loop = [...layered, pkg('scene', 'spatial', [['motion', 'prod']]), pkg('stream', 'network', [['scene', 'prod']]),
+    pkg('qr-pairing', 'wraps', [['stream', 'prod']])];
+  assert.deepEqual(categoryCycles(loop), [['network', 'sensing', 'spatial', 'wraps']]);
+  // Deprecated packages are not drawn, so they cannot close a cycle either.
+  const retired = { ...pkg('retired', 'camera', [['motion', 'prod']]), npm: { name: '@test/retired', published: true, deprecated: 'obsolete' } };
+  assert.deepEqual(categoryCycles([...layered, retired]), []);
 });
