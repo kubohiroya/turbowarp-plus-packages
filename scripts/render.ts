@@ -76,6 +76,8 @@ const DARK_PALETTE = `
   --text: #e7eaf2;
   --muted: #949db8;
   --accent: #7f93ff;
+  --runtime-edge: #4da3ff;
+  --highlight: #ff6b6b;
   --ok-bg: #11301f; --ok-fg: #6fd79b;
   --warn-bg: #352713; --warn-fg: #f0bb63;
   --bad-bg: #38191b; --bad-fg: #f49a9a;
@@ -94,6 +96,8 @@ const STYLE = `
   --text: #1a1d26;
   --muted: #68718a;
   --accent: #3b55e0;
+  --runtime-edge: #0b6bcb;
+  --highlight: #d92d20;
   --demo-bg: #ddf4ff; --demo-fg: #132e42;
   --demo-border: #83bfd9; --demo-hover: #c8edff;
   --ok-bg: #e4f6ec; --ok-fg: #16633a;
@@ -242,12 +246,26 @@ picture { display: block; }
 .node-label strong { display: block; font-size: 12px; }
 .node-label small { display: block; margin-top: 5px; font-size: 10px; }
 .graph-node a:hover rect, .graph-node a:focus-visible rect { stroke-width: 3; }
-.graph-edge { fill: none; stroke: var(--accent); stroke-width: 1.5; }
-.graph-edge.development { stroke: var(--muted); stroke-dasharray: 3 4; }
+.graph-edge { fill: none; stroke: var(--runtime-edge); stroke-width: 1.5; }
+.graph-edge.aggregate { stroke-width: 2; }
+.graph-edge.development { stroke: var(--muted); stroke-width: .75; stroke-dasharray: 6 4; }
+.graph-edge.aggregate.development { stroke-width: 1; }
 .development-toggle { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
-.graph-edge.aggregate { stroke: var(--muted); stroke-width: 2; stroke-dasharray: 6 5; }
 .graph-text { fill: var(--text); font: 12px system-ui, sans-serif; }
-.edge-count { fill: var(--panel); stroke: var(--border); }
+.edge-count { fill: var(--panel); stroke: var(--runtime-edge); }
+.edge-count.development { stroke: var(--border); }
+.edge-count-label { cursor: help; }
+/* Hovering a box copies its arrows into this layer, above the other arrows. */
+.edge-highlight-layer { pointer-events: none; }
+.edge-highlight-layer .graph-edge, .edge-highlight-layer .edge-count { stroke: var(--highlight); }
+.graph-node.highlight rect { stroke: var(--highlight); stroke-width: 3; }
+.edge-tooltip {
+  position: fixed; z-index: 20; max-width: min(440px, calc(100vw - 16px)); padding: 8px 12px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text);
+  box-shadow: 0 6px 20px rgba(10, 15, 30, .25); font-size: 12px; overflow-wrap: anywhere; pointer-events: none;
+}
+.edge-tooltip ul { margin: 6px 0 0; padding-left: 18px; }
+.edge-tooltip li { margin: 3px 0; }
 .relationship-details { margin: 14px 0; font-size: 13px; }
 .relationship-details summary { cursor: pointer; color: var(--accent); }
 .relationship-details ul { padding-left: 22px; overflow-wrap: anywhere; }
@@ -400,6 +418,48 @@ for (const dialog of document.querySelectorAll('.relationship-dialog')) {
     }
   });
   dialog.querySelector('[data-graph-close]').addEventListener('click', () => dialog.close());
+  // A count shows its package pairs while the pointer is on it. A touch has no
+  // hover, so its tooltip stays until the next press elsewhere.
+  let tooltip = null;
+  const hideTooltip = () => { if (tooltip) tooltip.hidden = true; tooltip = null; };
+  for (const label of dialog.querySelectorAll('.edge-count-label')) {
+    label.addEventListener('pointerenter', () => {
+      hideTooltip();
+      tooltip = document.getElementById(label.dataset.tooltip);
+      tooltip.style.left = tooltip.style.top = '0';
+      tooltip.hidden = false;
+      const box = label.getBoundingClientRect();
+      const left = box.left + box.width / 2 - tooltip.offsetWidth / 2;
+      const above = box.top - tooltip.offsetHeight - 8;
+      tooltip.style.left = Math.max(8, Math.min(left, innerWidth - tooltip.offsetWidth - 8)) + 'px';
+      tooltip.style.top = (above < 8 ? box.bottom + 8 : above) + 'px';
+    });
+    label.addEventListener('pointerleave', (event) => { if (event.pointerType !== 'touch') hideTooltip(); });
+  }
+  dialog.addEventListener('pointerdown', (event) => { if (!event.target.closest('.edge-count-label')) hideTooltip(); });
+  dialog.addEventListener('scroll', hideTooltip, true);
+  dialog.addEventListener('close', hideTooltip);
+  // Pointing at a box, or focusing a package link, paints the box and every
+  // arrow that touches it in the highlight colour, on top of the other arrows.
+  for (const svg of dialog.querySelectorAll('.relationship-svg')) {
+    const layer = svg.querySelector('.edge-highlight-layer');
+    for (const node of svg.querySelectorAll('.graph-node')) {
+      const repo = node.dataset.repo && CSS.escape(node.dataset.repo);
+      const selector = repo
+        ? '[data-edge-source="' + repo + '"], [data-edge-target="' + repo + '"], [data-central-repo="' + repo + '"]'
+        : '[data-external-category="' + CSS.escape(node.dataset.category) + '"][data-direction="' + node.dataset.direction + '"]';
+      const on = () => {
+        node.classList.add('highlight');
+        layer.replaceChildren(...[...svg.querySelectorAll(selector)].filter((element) => !layer.contains(element))
+          .map((element) => element.cloneNode(true)));
+      };
+      const off = () => { node.classList.remove('highlight'); layer.replaceChildren(); };
+      node.addEventListener('pointerenter', on);
+      node.addEventListener('pointerleave', off);
+      node.addEventListener('focusin', on);
+      node.addEventListener('focusout', off);
+    }
+  }
   dialog.addEventListener('keydown', (event) => {
     if (event.key !== 'Tab') return;
     const controls = [...dialog.querySelectorAll('a[href], button, summary, [tabindex]')]
@@ -737,11 +797,12 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
   const unlisted = graph.primary.flatMap((pkg) => (pkg.dependencies ?? [])
     .filter((dep) => dep.name.startsWith(report.scope + '/') && !knownNames.has(dep.name))
     .map((dep) => ({ repo: pkg.repo, ...dep })));
+  const kindText = (edge: (typeof graph.edges)[number]) => edge.kinds.map((kind) => {
+    const label = kindLabels[kind as keyof typeof kindLabels];
+    return label ? t(label[0], label[1]) : esc(kind);
+  }).join(', ');
   const edgeList = (edges: typeof graph.edges) => `<ul>${edges.map((edge) =>
-    `<li>${link(edge.source)} → ${link(edge.target)} <span class="muted">(${edge.kinds.map((kind) => {
-      const label = kindLabels[kind as keyof typeof kindLabels];
-      return label ? t(label[0], label[1]) : esc(kind);
-    }).join(', ')})</span>${edge.build ? `<br/><span class="muted">${t('Fixed GUI', '固定GUI')}: <a href="https://github.com/${esc(report.owner)}/${esc(edge.target)}/tree/${esc(edge.build.revision)}"><code>${esc(edge.build.revision)}</code></a><br/>${t('Collected HEAD', '収集時のHEAD')}: <code>${esc(byRepo.get(edge.target)?.revision?.head?.oid ?? '')}</code><br/>${t('Source', '根拠')}: <a href="https://github.com/${esc(report.owner)}/${esc(edge.source)}/blob/${esc(edge.build.sourceRevision)}/${edge.build.sourcePath}">site/source.json</a></span>` : ''}</li>`).join('')}</ul>`;
+    `<li>${link(edge.source)} → ${link(edge.target)} <span class="muted">(${kindText(edge)})</span>${edge.build ? `<br/><span class="muted">${t('Fixed GUI', '固定GUI')}: <a href="https://github.com/${esc(report.owner)}/${esc(edge.target)}/tree/${esc(edge.build.revision)}"><code>${esc(edge.build.revision)}</code></a><br/>${t('Collected HEAD', '収集時のHEAD')}: <code>${esc(byRepo.get(edge.target)?.revision?.head?.oid ?? '')}</code><br/>${t('Source', '根拠')}: <a href="https://github.com/${esc(report.owner)}/${esc(edge.source)}/blob/${esc(edge.build.sourceRevision)}/${edge.build.sourcePath}">site/source.json</a></span>` : ''}</li>`).join('')}</ul>`;
   const node = (pkg: DashboardPackage, x: number, y: number, caption = '') =>
     `<g class="graph-node primary" data-repo="${esc(pkg.repo)}">
       <a href="${esc(pkg.github?.url ?? `https://github.com/${report.owner}/${pkg.repo}`)}">
@@ -749,6 +810,10 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
         <foreignObject x="${x}" y="${y}" width="250" height="60"><div xmlns="http://www.w3.org/1999/xhtml" class="node-label"><strong>${esc(pkg.label)}</strong>${caption}</div></foreignObject>
       </a>
     </g>`;
+  // Solid blue arrows are dependencies needed outside development;
+  // development-only ones are thin and dashed, inside the category and toward
+  // other categories alike.
+  const developmentOnly = (edge: (typeof graph.edges)[number]) => edge.kinds.every((kind) => kind === 'dev');
   const positions = new Map(graph.primary.map((pkg, i) => [pkg.repo, 64 + i * 76]));
   const primaryNodes = graph.primary.map((pkg) => {
     const pin = graph.edges.find((edge) => edge.target === pkg.repo && edge.build)?.build;
@@ -761,10 +826,13 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
     const sy = positions.get(edge.source)! + 30;
     const ty = positions.get(edge.target)! + 30;
     const lane = 370 - i * 7;
-    return `<path class="graph-edge${edge.kinds.every((kind) => kind === 'dev') ? ' development' : ''}" data-edge-source="${esc(edge.source)}" data-edge-target="${esc(edge.target)}" data-edge-kinds="${esc(edge.kinds.join(' '))}" d="M390 ${sy} C${lane} ${sy},${lane} ${ty},390 ${ty}" marker-end="url(#${esc(marker)})"><title>${esc(edge.source)} → ${esc(edge.target)} (${esc(edge.kinds.join(', '))})</title></path>`;
+    return `<path class="graph-edge${developmentOnly(edge) ? ' development' : ''}" data-edge-source="${esc(edge.source)}" data-edge-target="${esc(edge.target)}" data-edge-kinds="${esc(edge.kinds.join(' '))}" d="M390 ${sy} C${lane} ${sy},${lane} ${ty},390 ${ty}" marker-end="url(#${esc(marker)})"><title>${esc(edge.source)} → ${esc(edge.target)} (${esc(edge.kinds.join(', '))})</title></path>`;
   }).join('');
   const outsideNodes: string[] = [];
   const aggregateEdges: string[] = [];
+  // Each count explains itself on hover with its rows of the exact list below,
+  // without links, since the tooltip closes when the pointer leaves the count.
+  const tooltips: string[] = [];
   for (const [groups, x, packageX, incoming] of [[left, 14, 390, true], [right, 756, 640, false]] as const) {
     groups.forEach((group, i) => {
       const y = 64 + i * 108;
@@ -785,18 +853,39 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
         groupEdges.push(edge);
         endpoints.set(repo, groupEdges);
       }
-      for (const [repo, groupEdges] of endpoints) {
-        const packageY = positions.get(repo)! + 30;
-        const startX = incoming ? outsideX : packageX;
-        const endX = incoming ? packageX : outsideX;
-        const startY = incoming ? outsideY : packageY;
-        const endY = incoming ? packageY : outsideY;
-        const mid = (outsideX + packageX) / 2;
-        const source = incoming ? group.category : repo;
-        const target = incoming ? repo : group.category;
-        aggregateEdges.push(`<path class="graph-edge aggregate" data-external-category="${esc(group.category)}" data-central-repo="${esc(repo)}" data-direction="${direction}" d="M${startX} ${startY} C${mid} ${startY},${mid} ${endY},${endX} ${endY}" marker-end="url(#${esc(marker)})"><title>${esc(source)} → ${esc(target)} · ${groupEdges.length}</title></path>
-        <rect class="edge-count" x="${mid - 14}" y="${(startY + endY) / 2 - 10}" width="28" height="20" rx="6"/>
-        <text class="graph-text" x="${mid}" y="${(startY + endY) / 2 + 4}" text-anchor="middle">${groupEdges.length}</text>`);
+      for (const [repo, endpointEdges] of endpoints) {
+        // Runtime and development-only pairs get separate arrows and counts;
+        // when both exist, the runtime one runs just above the development one.
+        const kinds = [endpointEdges.filter((edge) => !developmentOnly(edge)), endpointEdges.filter(developmentOnly)]
+          .map((groupEdges, j) => ({ groupEdges, development: j === 1 }))
+          .filter(({ groupEdges }) => groupEdges.length);
+        for (const { groupEdges, development } of kinds) {
+          const shift = kinds.length > 1 ? (development ? 1 : -1) : 0;
+          const packageY = positions.get(repo)! + 30 + shift * 4;
+          const startX = incoming ? outsideX : packageX;
+          const endX = incoming ? packageX : outsideX;
+          const startY = incoming ? outsideY + shift * 4 : packageY;
+          const endY = incoming ? packageY : outsideY + shift * 4;
+          const mid = (outsideX + packageX) / 2;
+          const labelY = (startY + endY) / 2 + shift * 7;
+          const source = incoming ? group.category : repo;
+          const target = incoming ? repo : group.category;
+          const kind = development ? ' development' : '';
+          const ends = `data-external-category="${esc(group.category)}" data-central-repo="${esc(repo)}" data-direction="${direction}"`;
+          const tooltip = `edge-tip-${esc(variantId)}-${tooltips.length}`;
+          const central = esc(byRepo.get(repo)!.label);
+          const n = groupEdges.length;
+          tooltips.push(`<div class="edge-tooltip" id="${tooltip}" role="tooltip" hidden>
+        <strong>${incoming ? `${categoryTitle} → ${central}` : `${central} → ${categoryTitle}`}</strong><br/>
+        <span class="muted">${development ? t('Development only', '開発時のみ') : t('Runtime and other non-development', '実行時など開発時以外')} · ${t(`${n} package pair${n === 1 ? '' : 's'}`, `${n}組`)}</span>
+        <ul>${groupEdges.map((edge) => `<li>${esc(byRepo.get(edge.source)!.label)} → ${esc(byRepo.get(edge.target)!.label)} <span class="muted">(${kindText(edge)})</span>${edge.build ? `<br/><span class="muted">${t('Fixed GUI', '固定GUI')}: <code>${esc(edge.build.revision.slice(0, 7))}</code></span>` : ''}</li>`).join('')}</ul>
+      </div>`);
+          aggregateEdges.push(`<path class="graph-edge aggregate${kind}" ${ends} d="M${startX} ${startY} C${mid} ${startY},${mid} ${endY},${endX} ${endY}" marker-end="url(#${esc(marker)})"><title>${esc(source)} → ${esc(target)} · ${n}</title></path>
+          <g class="edge-count-label" ${ends} data-tooltip="${tooltip}" aria-describedby="${tooltip}">
+            <rect class="edge-count${kind}" x="${mid - 14}" y="${labelY - 10}" width="28" height="20" rx="6"/>
+            <text class="graph-text" x="${mid}" y="${labelY + 4}" text-anchor="middle">${n}</text>
+          </g>`);
+        }
       }
     });
   }
@@ -808,23 +897,24 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
   const picture = `    <div class="panel graph-panel" tabindex="0" role="region" aria-labelledby="graph-heading-${esc(categoryId)}">
       <svg class="relationship-svg" viewBox="0 0 1020 ${height}" role="group" aria-labelledby="graph-title-${esc(variantId)} graph-description-${esc(variantId)}">
         <title id="graph-title-${esc(variantId)}">${esc(category.title)} / ${esc(category.titleJa ?? category.title)}</title>
-        <desc id="graph-description-${esc(variantId)}">Dependent → dependency. Solid: actual internal edges. Dashed: outside categories connected to actual central packages, dependents on the left and dependencies on the right. 利用側 → 依存先。実線：カテゴリ内の実際の依存。破線：外部カテゴリと中央の実際のパッケージとの関係（左が利用側、右が依存先）。Exact edges are listed below / 正確な関係は下の詳細一覧。</desc>
+        <desc id="graph-description-${esc(variantId)}">Dependent → dependency. Solid blue: runtime and other non-development dependencies. Thin dashed: development-only dependencies. Arrows inside the category are actual internal edges; arrows to and from outside categories end at actual central packages, dependents on the left and dependencies on the right. 利用側 → 依存先。青の実線：実行時など開発時以外の依存。細い破線：開発時のみの依存。カテゴリ内の矢印は実際の依存、外部カテゴリとの矢印は中央の実際のパッケージに結びます（左が利用側、右が依存先）。Exact edges are listed below / 正確な関係は下の詳細一覧。</desc>
         <defs><marker id="${esc(marker)}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="context-stroke"/></marker></defs>
         <rect class="category-boundary" x="342" y="14" width="346" height="${height - 28}" rx="16"/>
         <foreignObject x="360" y="20" width="310" height="36"><div xmlns="http://www.w3.org/1999/xhtml" class="node-label">${title}</div></foreignObject>
-        ${internalEdges}${aggregateEdges.join('')}${primaryNodes}${outsideNodes.join('')}
+        ${internalEdges}${aggregateEdges.join('')}<g class="edge-highlight-layer" aria-hidden="true"></g>${primaryNodes}${outsideNodes.join('')}
       </svg>
+      ${tooltips.join('\n      ')}
     </div>
 `;
   if (options.diagramOnly) return picture;
   const primaryPicture = relationshipDiagram(report, categoryId, freshness, provenance, { includeDev: false, diagramOnly: true });
   return `<section data-graph-category="${esc(categoryId)}" aria-labelledby="graph-heading-${esc(categoryId)}">
-    <div class="graph-variant" data-graph-mode="primary">${primaryPicture}</div>
-    <div class="graph-variant" data-graph-mode="all" hidden>${picture}</div>
+    <div class="graph-variant" data-graph-mode="primary" hidden>${primaryPicture}</div>
+    <div class="graph-variant" data-graph-mode="all">${picture}</div>
     <div class="graph-secondary">
-    <label class="development-toggle"><input type="checkbox" data-show-dev> ${t('Include development dependencies', '開発時の依存も表示')}</label>
-    <p>${t('Arrows point from the package that uses another package to the package it uses. Select the checkbox to add development dependencies.', '矢印は「使うパッケージ → 使われるパッケージ」の向きです。開発時の依存は、チェックを入れると追加表示します。')}</p>
-    <p>${t('Translucent boxes show category names only: categories that use central packages on the left, categories they use on the right, so every arrow points left to right. Categories must not depend on each other in a cycle; one that does appears on both sides with a warning. Dashed arrows and their numbers summarize distinct package pairs for each category and central package, in each direction.', '左右の半透明の枠はカテゴリ名のみを表示します。左は中央のパッケージを使うカテゴリ、右は中央のパッケージが使うカテゴリで、矢印はすべて左から右へ向かいます。カテゴリ間の依存は循環させず、循環している場合は該当カテゴリを左右の両方に表示して警告します。破線は中央の実際の依存元・依存先へ結び、数字はカテゴリと中央のパッケージごと・方向ごとの依存関係の組数です。')}</p>
+    <label class="development-toggle"><input type="checkbox" data-show-dev checked> ${t('Include development dependencies', '開発時の依存も表示')}</label>
+    <p>${t('Arrows point from the package that uses another package to the package it uses. Solid blue arrows are runtime and other non-development dependencies; thin dashed arrows are development-only dependencies. Clear the checkbox to hide development dependencies.', '矢印は「使うパッケージ → 使われるパッケージ」の向きです。青い実線の矢印は実行時など開発時以外の依存、細い破線の矢印は開発時のみの依存です。開発時の依存は、チェックを外すと非表示にできます。')}</p>
+    <p>${t('Translucent boxes show category names only: categories that use central packages on the left, categories they use on the right, so every arrow points left to right. Categories must not depend on each other in a cycle; one that does appears on both sides with a warning. Their arrows end at the actual central packages, and the numbers summarize distinct package pairs for each category and central package, in each direction, counting development-only pairs separately.', '左右の半透明の枠はカテゴリ名のみを表示します。左は中央のパッケージを使うカテゴリ、右は中央のパッケージが使うカテゴリで、矢印はすべて左から右へ向かいます。カテゴリ間の依存は循環させず、循環している場合は該当カテゴリを左右の両方に表示して警告します。枠との矢印は中央の実際の依存元・依存先へ結び、数字はカテゴリと中央のパッケージごと・方向ごとの依存関係の組数です（開発時のみの組は別に数えます）。')}</p>
     ${graph.primary.some((pkg) => pkg.repo === 'turbowarp-extension-data-editor') ? `<p>${t('Extension arrows to turbowarp-extension-data-editor identify use of its data editing contract / API.', '機能拡張からturbowarp-extension-data-editorへの矢印は、同パッケージが提供するデータ編集の契約・APIの利用を示します。')}</p>` : ''}
     <details class="relationship-details"><summary>${t('Exact package relationships', 'パッケージ間の詳しい関係')}</summary>
     <p>${t('The graph shows catalog packages and their declared dependencies, including development dependencies, regardless of list filters. Dependencies not registered in the catalog are listed separately below.', '図はカタログ登録済みパッケージを対象とし、開発時の依存も含めています。一覧の絞り込みは反映しません。カタログ未登録の依存は下に分けて記載します。')}</p>
@@ -834,7 +924,7 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
     </details>
     ${freshness}
     <details class="graph-help"><summary>${t('Data sources', 'データの取得元')}</summary>
-      <p>${t('Sources are package.json and verified build-source pins at the collected revision. A GUI pin and its collected HEAD are separate revisions. Outside relationships are grouped by category, central package and direction using the visible dependency kinds.', '収集時点のpackage.jsonと、ビルド処理を照合した固定GUI情報を使用します。固定GUIと収集時のHEADは別のリビジョンです。カテゴリ外の関係は表示中の依存種別を使い、カテゴリ・中央のパッケージ・方向ごとに集約します。')}</p>
+      <p>${t('Sources are package.json and verified build-source pins at the collected revision. A GUI pin and its collected HEAD are separate revisions. Outside relationships are grouped by category, central package, direction and whether they are development-only, using the visible dependency kinds.', '収集時点のpackage.jsonと、ビルド処理を照合した固定GUI情報を使用します。固定GUIと収集時のHEADは別のリビジョンです。カテゴリ外の関係は表示中の依存種別を使い、カテゴリ・中央のパッケージ・方向・開発時のみかどうかごとに集約します。')}</p>
       ${provenance}
       <ul>${graph.primary.map((pkg) => `<li><a href="https://github.com/${esc(report.owner)}/${esc(pkg.repo)}/blob/${esc(pkg.revision?.head?.oid ?? pkg.github?.defaultBranch ?? 'HEAD')}/package.json">${esc(pkg.label)}</a></li>`).join('')}</ul>
     </details>

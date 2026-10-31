@@ -28,20 +28,23 @@ position remain unchanged; the graph includes the entire category regardless of
 list filters. Close with the visible button, Escape or a click on the backdrop to return to the invoking
 icon. The dialog keeps keyboard focus inside it while open.
 
-Arrows point from dependent to dependency. The default diagram includes production,
-peer, optional and verified fixed-GUI build relations; the checkbox adds development
-dependencies as a separate visual style. The fixed-GUI adapter reads site/source.json,
+Arrows point from dependent to dependency. The diagram shows production, peer,
+optional and verified fixed-GUI build relations as solid blue arrows, and development
+dependencies as thin dashed arrows; clearing the checkbox hides the development
+dependencies. The fixed-GUI adapter reads site/source.json,
 checks the readPins/verifyHost/buildPages contract without executing source, and
 verifies the pinned commit. Its pinned GUI SHA is kept separate from collected HEAD.
 Missing or unsupported metadata is reported as an error and produces no guessed edge.
-Solid arrows show actual internal edges. Translucent boxes on either side show only
+Arrows inside the category show actual internal edges. Translucent boxes on either side show only
 the connected category names: categories that use central packages on the left and
 categories they use on the right, so every arrow points left to right. Categories
 must not depend on each other in a cycle; if collected data contains one anyway, the
 categories involved appear on both sides and the list and their dialogs show a warning.
-Dashed arrows connect each outside category to the
+Arrows from and to these boxes connect each outside category to the
 actual central package, with distinct-pair counts per category, central package and
-direction. In the Extension Contracts diagram, `turbowarp-extension-data-editor` is labelled
+direction, counting development-only pairs separately. Hovering a count lists the
+package pairs it summarizes; hovering a box highlights it and its arrows in red.
+In the Extension Contracts diagram, `turbowarp-extension-data-editor` is labelled
 “Data editing contract / API” so extensions' contract dependencies are visible.
 The dependencies between central packages are preserved.
 Expand the details for every actual edge and kind.
