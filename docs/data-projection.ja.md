@@ -71,7 +71,7 @@ turbowarp-kvs        ─ キーのJSON配列（文字列・既存） ───�
 反復の外で`current…`を使うと、既存と同じく`ITERATION_CONTEXT_REQUIRED`で失敗します。
 
 既存ブロックと同じく`STRUCTURED_DATA_MVP`が有効なときだけ公開します。
-server compiler契約（`dist/extension-manifest.json` format version 3）のIR operation、型、errorと、semantic parity fixtureにも追加が必要です。
+server compiler契約（`dist/extension-manifest.json` format version 2）のIR operation、型、errorと、semantic parity fixtureにも追加が必要です。
 
 ## turbowarp-structured-data：document-dataからの部分木の取り込み
 
