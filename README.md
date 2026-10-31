@@ -23,7 +23,7 @@ status filters and the third-party dependency toggle. There is no tab-style view
 switch. A graph icon immediately to the right of each category heading opens that
 category's package relationships in a modal dialog. List filters and scroll
 position remain unchanged; the graph includes the entire category regardless of
-list filters. Close with the visible button or Escape to return to the invoking
+list filters. Close with the visible button, Escape or a click on the backdrop to return to the invoking
 icon. The dialog keeps keyboard focus inside it while open.
 
 Arrows point from dependent to dependency. The default diagram includes production,
@@ -33,7 +33,9 @@ checks the readPins/verifyHost/buildPages contract without executing source, and
 verifies the pinned commit. Its pinned GUI SHA is kept separate from collected HEAD.
 Missing or unsupported metadata is reported as an error and produces no guessed edge.
 Solid arrows show actual internal edges. Translucent boxes on either side show only
-the connected category names. Dashed arrows connect each outside category to the
+the connected category names: categories that use central packages on the left and
+categories they use on the right, so every arrow points left to right. A category
+related in both directions appears on both sides. Dashed arrows connect each outside category to the
 actual central package, with distinct-pair counts per category, central package and
 direction. In the Editor diagram, `turbowarp-extension-data-editor` is labelled
 “Data editing contract / API” so extensions' contract dependencies are visible.

@@ -48,8 +48,9 @@ test('renders category graph buttons and labelled dialogs while keeping the dash
     assert.match(listHtml, /aria-haspopup="dialog" aria-controls="relationships-focus"/);
     assert.match(html, /id="relationships-focus" aria-labelledby="graph-heading-focus"/);
     assert.match(html, /data-graph-close autofocus/);
-    assert.match(html, /Package relationships <span class="dialog-category">\(Focus\)/);
-    assert.match(html, /パッケージ相関図<span class="dialog-category">（対象）/);
+    assert.match(html, /Package relationships: <span class="dialog-category">Focus<\/span>/);
+    assert.match(html, /パッケージ相関図: <span class="dialog-category">対象<\/span>/);
+    assert.match(html, /addEventListener\('pointerdown'[\s\S]*pressedOnBackdrop && onBackdrop\(event\)\) dialog\.close\(\)/);
     const modal = html.slice(html.indexOf('<dialog class="relationship-dialog"'), html.indexOf('</dialog>'));
     assert.ok(modal.indexOf('class="panel graph-panel"') < modal.indexOf('class="graph-secondary"'));
     assert.ok(modal.indexOf('class="graph-secondary"') < modal.indexOf('class="data-as-of"'));
@@ -147,7 +148,15 @@ test('renders category graph buttons and labelled dialogs while keeping the dash
       assert.equal(incoming.length, 2);
       assert.ok(incoming.some(([edge]) => edge.includes(`data-central-repo="${api.repo}"`) && edge.includes('· 2</title>')));
       assert.ok(incoming.some(([edge]) => edge.includes('data-central-repo="security"') && edge.includes('· 1</title>')));
-      for (const [edge] of incoming) assert.match(edge, /,640 \d+" marker-end=/);
+      for (const [edge] of incoming) assert.match(edge, /d="M264 \d+ [^"]*,390 \d+" marker-end=/);
+      assert.match(svg, /data-central-repo="turbowarp-extension-data-editor" data-direction="outgoing" d="M640 \d+ [^"]*,756 \d+"/);
+      // A category related both ways is shown on both sides so that no arrow
+      // points right to left.
+      assert.match(svg, /<g class="graph-node external" data-category="data" data-direction="incoming">\s*<rect x="14"/);
+      assert.match(svg, /<g class="graph-node external" data-category="data" data-direction="outgoing">\s*<rect x="756"/);
+      const aggregates = [...svg.matchAll(/class="graph-edge aggregate"[^>]* d="M(\d+) [^"]*,(\d+) \d+"/g)];
+      assert.ok(aggregates.length >= 3);
+      for (const [, startX, endX] of aggregates) assert.ok(Number(startX) < Number(endX), `${startX} → ${endX}`);
       assert.match(svg, /data-central-repo="turbowarp-extension-data-editor" data-direction="outgoing"/);
       assert.doesNotMatch(svg, /data-central-repo="turbowarp-plus-editor"|data-central-repo="scratch-gui"/);
       assert.match(svg, /data-edge-source="turbowarp-plus-editor" data-edge-target="scratch-gui" data-edge-kinds="build"/);
