@@ -6,6 +6,8 @@
 
 Editor向け: [機能拡張メタデータJSONと依存関係の契約](docs/editor-extension-catalog.md)。
 
+データ・ドキュメント: [内部構造の投影と、反復・ASTの組み合わせ方（設計案）](docs/data-projection.ja.md)。
+
 [**ダッシュボード → kubohiroya.github.io/turbowarp-plus-packages**](https://kubohiroya.github.io/turbowarp-plus-packages/)
 
 [TurboWarp](https://turbowarp.org/) に機能を足す拡張・ツールチェーン・アプリケーション・
