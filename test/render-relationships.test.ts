@@ -59,12 +59,21 @@ test('renders category graph buttons and labelled dialogs while keeping the dash
     assert.match(html, /dialog.showModal\(\)/);
     assert.equal([...html.matchAll(/<tr data-search=/g)].length, 4);
     assert.equal([...html.matchAll(/<section data-graph-category=/g)].length, 3);
-    assert.equal([...html.matchAll(/class="graph-edge aggregate"/g)].length, 2);
+    assert.equal([...html.matchAll(/class="graph-edge aggregate development"/g)].length, 2);
+    assert.doesNotMatch(html, /class="graph-edge aggregate"/);
     assert.equal([...html.matchAll(/data-edge-source="one"/g)].length, 1);
     assert.match(html, /class="graph-edge development"/);
-    assert.match(html, /data-graph-mode="primary"/);
-    assert.match(html, /data-graph-mode="all" hidden/);
-    assert.match(html, /data-show-dev/);
+    // Development dependencies are shown unless the reader clears the box.
+    assert.match(html, /data-graph-mode="primary" hidden/);
+    assert.match(html, /data-graph-mode="all">/);
+    assert.match(html, /data-show-dev checked/);
+    // Runtime arrows are solid blue; development-only ones are dashed at half
+    // the width, inside the category (1.5) and toward other categories (2).
+    assert.match(html, /\.graph-edge \{[^}]*stroke: var\(--runtime-edge\); stroke-width: 1\.5;/);
+    assert.match(html, /\.graph-edge\.aggregate \{ stroke-width: 2; \}/);
+    assert.doesNotMatch(html, /\.graph-edge(\.aggregate)? \{[^}]*dasharray/);
+    assert.match(html, /\.graph-edge\.development \{[^}]*stroke-width: \.75; stroke-dasharray: 6 4;/);
+    assert.match(html, /\.graph-edge\.aggregate\.development \{ stroke-width: 1; \}/);
     assert.match(html, /&lt;unsafe &amp; label&gt;/);
     assert.doesNotMatch(html, /<unsafe/);
     assert.match(html, /No declared relations with other catalog categories/);
@@ -126,7 +135,7 @@ test('renders category graph buttons and labelled dialogs while keeping the dash
       sourcePath: 'site/source.json', contractPaths: ['scripts/site/source.mjs', 'scripts/site/build.mjs'] }];
     editor.dependencies = [dependency(api, 'dev')];
     gui.dependencies = [dependency(api), dependency(security)];
-    dataA.dependencies = [dependency(api)];
+    dataA.dependencies = [dependency(api), dependency(security, 'dev')];
     dataB.dependencies = [dependency(api), dependency(security, 'optional')];
     api.dependencies = [dependency(dataB, 'optional')];
     dev.dependencies = [dependency(api, 'dev')];
@@ -155,7 +164,7 @@ test('renders category graph buttons and labelled dialogs while keeping the dash
       // points right to left.
       assert.match(svg, /<g class="graph-node external" data-category="data" data-direction="incoming">\s*<rect x="14"/);
       assert.match(svg, /<g class="graph-node external" data-category="data" data-direction="outgoing">\s*<rect x="756"/);
-      const aggregates = [...svg.matchAll(/class="graph-edge aggregate"[^>]* d="M(\d+) [^"]*,(\d+) \d+"/g)];
+      const aggregates = [...svg.matchAll(/class="graph-edge aggregate[^"]*"[^>]* d="M(\d+) [^"]*,(\d+) \d+"/g)];
       assert.ok(aggregates.length >= 3);
       for (const [, startX, endX] of aggregates) assert.ok(Number(startX) < Number(endX), `${startX} → ${endX}`);
       assert.match(svg, /data-central-repo="turbowarp-extension-data-editor" data-direction="outgoing"/);
@@ -165,6 +174,39 @@ test('renders category graph buttons and labelled dialogs while keeping the dash
       assert.match(svg, /data-edge-source="scratch-gui" data-edge-target="security" data-edge-kinds="prod"/);
       assert.match(svg, /Fixed GUI/);
     }
+    // Runtime and development-only pairs between the same category and central
+    // package are counted on separate arrows that do not overlap.
+    assert.doesNotMatch(primary, /class="graph-edge aggregate development"/);
+    const toSecurity = (kind: string) => all.match(new RegExp(`<path class="graph-edge aggregate${kind}" data-external-category="data" data-central-repo="security" data-direction="incoming" d="M264 (\\d+) [^"]*,390 (\\d+)"[^>]*><title>[^<]*· 1</title>`));
+    const runtimeToSecurity = toSecurity('');
+    const developmentToSecurity = toSecurity(' development');
+    assert.ok(runtimeToSecurity && developmentToSecurity);
+    assert.ok(Number(runtimeToSecurity[2]) < Number(developmentToSecurity[2]));
+    assert.match(all, /data-external-category="toolchain" data-central-repo="turbowarp-extension-data-editor"/);
+    assert.match(all, /class="graph-edge aggregate development" data-external-category="toolchain"/);
+    // Each count names the exact pairs it summarizes in a tooltip of its own.
+    const tooltipIds = [...all.matchAll(/<g class="edge-count-label" data-external-category="data" data-central-repo="security" data-direction="incoming" data-tooltip="([^"]+)"/g)].map(([, id]) => id!);
+    assert.equal(tooltipIds.length, 2);
+    const [runtimeTip, developmentTip] = tooltipIds.map((id) =>
+      editorDialog.match(new RegExp(`<div class="edge-tooltip" id="${id}" role="tooltip" hidden>([\\s\\S]*?)</div>`))![1]!);
+    assert.match(runtimeTip!, /<strong><span lang="en">Data &amp; Documents<\/span>[^<]*<span lang="ja">データ・ドキュメント<\/span> → security<\/strong>/);
+    assert.match(runtimeTip!, /Runtime and other non-development[\s\S]*1 package pair</);
+    assert.match(runtimeTip!, /<li>data-b → security <span class="muted">\(<span lang="en">optional<\/span>/);
+    assert.doesNotMatch(runtimeTip!, /data-a/);
+    assert.match(developmentTip!, /Development only/);
+    assert.match(developmentTip!, /<li>data-a → security <span class="muted">\(<span lang="en">development<\/span>/);
+    assert.doesNotMatch(developmentTip!, /data-b/);
+    const allIds = [...editorHtml.matchAll(/ id="(edge-tip-[^"]+)"/g)].map(([, id]) => id);
+    assert.equal(new Set(allIds).size, allIds.length);
+    for (const [, id] of editorHtml.matchAll(/data-tooltip="([^"]+)"/g)) assert.ok(allIds.includes(id!), id);
+    // Hovering a box copies it and its arrows into a layer drawn above the
+    // arrows but below the boxes.
+    for (const svg of variants) {
+      const layer = svg.indexOf('<g class="edge-highlight-layer" aria-hidden="true"></g>');
+      assert.ok(layer > svg.lastIndexOf('class="graph-edge') && layer < svg.indexOf('<g class="graph-node'));
+    }
+    assert.match(editorHtml, /'\[data-edge-source="' \+ repo \+ '"\], \[data-edge-target="' \+ repo \+ '"\], \[data-central-repo="' \+ repo \+ '"\]'/);
+    assert.match(editorHtml, /'\[data-external-category="' \+ CSS\.escape\(node\.dataset\.category\) \+ '"\]\[data-direction="' \+ node\.dataset\.direction \+ '"\]'/);
     assert.equal([...primary.matchAll(/data-edge-source=/g)].length, 3);
     assert.equal([...all.matchAll(/data-edge-source=/g)].length, 4);
     assert.doesNotMatch(primary, /data-external-category="toolchain"/);
