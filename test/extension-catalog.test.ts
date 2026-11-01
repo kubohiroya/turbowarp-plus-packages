@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { test } from 'node:test';
+import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { extensionHeader, extensionDocsURL, extensionAuthor, extensionDisplayName, catalogEntryPresentation, assembleEditorCatalog, publishedExtension, collectEditorCatalog, type EditorExtension } from '../scripts/lib/extension-catalog.ts';
+import { extensionHeader, extensionDocsURL, extensionAuthor, extensionDisplayName, catalogEntryPresentation, assembleEditorCatalog, publishedExtension, collectEditorCatalog, type CatalogState, type EditorExtension } from '../scripts/lib/extension-catalog.ts';
 import type {DashboardPackage, DashboardReport} from '../scripts/lib/types.ts';
 const entry = (id: string): EditorExtension => ({id, name: id, package: `@owner/${id}`, version: '1.2.3', url: `https://cdn.test/${id}.js`, sha256: '0'.repeat(64), repository: 'https://github.com/owner/repo', dependencies: []});
 
@@ -238,7 +238,7 @@ test('collection carries dashboard category order and localized headings into th
     ], packages: [{repo: 'a', category: 'data', unsandboxed: 'unknown',
       npm: {name: '@owner/a', latest: '1.2.3', published: true}, github: {url: 'https://github.com/owner/a'}}],
   } as DashboardReport;
-  const result = await collectEditorCatalog(report);
+  const {catalog: result} = await collectEditorCatalog(report);
   assert.deepEqual(result.categories, [{id: 'empty', title: 'Empty'}, {id: 'data', title: 'Data', titleJa: 'データ'}]);
   assert.equal(result.extensions[0].category, 'data');
   assert.deepEqual(result.extensions[0].dependencies, []);
@@ -338,21 +338,18 @@ test('prerelease collection requires opt-in and still uses an immutable exact ar
     return new Response('// ID: a\n// Name: A\n');
   });
   await assert.rejects(collectEditorCatalog(report), /No non-deprecated stable version/);
-  const result = await collectEditorCatalog(report, {allowPrerelease: true});
+  const {catalog: result} = await collectEditorCatalog(report, {allowPrerelease: true});
   assert.equal(result.extensions[0].version, version);
   assert.equal(result.extensions[0].url, `${base}/dist/a.js`);
 });
 
-// Each of these uses a package name of its own: when a request fails, the
-// sibling it was started alongside in Promise.all keeps retrying unobserved,
-// and those late calls would otherwise land in the next test's counters.
 test('a refused connection is retried, and the retry still yields the published artifact', async t => {
-  const base = 'https://cdn.jsdelivr.net/npm/@owner/retry@1.2.3';
-  const tree = 'https://data.jsdelivr.com/v1/package/npm/@owner/retry@1.2.3/flat';
+  const base = 'https://cdn.jsdelivr.net/npm/@owner/a@1.2.3';
+  const tree = 'https://data.jsdelivr.com/v1/package/npm/@owner/a@1.2.3/flat';
   const responses: Record<string, unknown> = {
-    [`${base}/package.json`]: {name: '@owner/retry', version: '1.2.3'},
-    [tree]: {files: [{name: '/dist/retry.js'}]},
-    [`${base}/dist/retry.js`]: '// ID: retry\n// Name: Retry\nthrow new Error("must not execute");',
+    [`${base}/package.json`]: {name: '@owner/a', version: '1.2.3'},
+    [tree]: {files: [{name: '/dist/a.js'}]},
+    [`${base}/dist/a.js`]: '// ID: a\n// Name: A\nthrow new Error("must not execute");',
   };
   const calls: string[] = [];
   t.mock.method(globalThis, 'fetch', async (url: string) => {
@@ -364,22 +361,21 @@ test('a refused connection is retried, and the retry still yields the published 
     const value = responses[url];
     return new Response(typeof value === 'string' ? value : JSON.stringify(value));
   });
-  const pkg = {repo: 'retry', category: 'data', npm: {name: '@owner/retry', latest: '1.2.3'},
-    github: {url: 'https://github.com/owner/retry'}} as DashboardPackage;
-  assert.equal((await publishedExtension(pkg)).entry.url, `${base}/dist/retry.js`);
+  const pkg = {repo: 'a', category: 'data', npm: {name: '@owner/a', latest: '1.2.3'},
+    github: {url: 'https://github.com/owner/a'}} as DashboardPackage;
+  assert.equal((await publishedExtension(pkg)).entry.url, `${base}/dist/a.js`);
   assert.equal(calls.filter(call => call === tree).length, 2);
 });
 
 test('a missing file is asked for once, while an unreachable host is named after the last attempt', async t => {
+  const pkg = {repo: 'a', npm: {name: '@owner/a', latest: '1.2.3'}} as DashboardPackage;
+
   const missing: string[] = [];
   t.mock.method(globalThis, 'fetch', async (url: string) => {
     missing.push(url);
     return new Response('missing', {status: 404});
   });
-  await assert.rejects(
-    publishedExtension({repo: 'gone', npm: {name: '@owner/gone', latest: '1.2.3'}} as DashboardPackage),
-    /HTTP 404/,
-  );
+  await assert.rejects(publishedExtension(pkg), /HTTP 404/);
   assert.deepEqual(missing.map(url => missing.filter(call => call === url).length), [1, 1]);
 
   const refused: string[] = [];
@@ -387,9 +383,140 @@ test('a missing file is asked for once, while an unreachable host is named after
     refused.push(url);
     throw new TypeError('fetch failed');
   });
-  await assert.rejects(
-    publishedExtension({repo: 'refused', npm: {name: '@owner/refused', latest: '1.2.3'}} as DashboardPackage),
-    /cdn\.jsdelivr\.net.*: unreachable/,
-  );
+  await assert.rejects(publishedExtension(pkg), /cdn\.jsdelivr\.net.*: unreachable/);
   assert.equal(refused.filter(url => url.endsWith('/package.json')).length, 3);
+});
+
+test('a sibling request is abandoned once its partner has failed for good', async t => {
+  const pkg = {repo: 'a', npm: {name: '@owner/a', latest: '1.2.3'}} as DashboardPackage;
+  const calls: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string, init?: RequestInit) => {
+    calls.push(url);
+    if (url.endsWith('/package.json')) return new Response('missing', {status: 404});
+    // The file tree never answers by itself: only the abort can end this wait,
+    // and a retried request would show up as a second call below.
+    return new Promise<Response>((_resolve, reject) =>
+      init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason), {once: true}));
+  });
+  await assert.rejects(publishedExtension(pkg), /HTTP 404/);
+  assert.equal(calls.filter(url => url.endsWith('/flat')).length, 1);
+});
+
+test('an already aborted caller stops before the first retry', async t => {
+  const pkg = {repo: 'a', npm: {name: '@owner/a', latest: '1.2.3'}} as DashboardPackage;
+  const calls: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string, init?: RequestInit) => {
+    calls.push(url);
+    init!.signal!.throwIfAborted();
+    throw new TypeError('fetch failed');
+  });
+  await assert.rejects(publishedExtension(pkg, {signal: AbortSignal.abort()}));
+  // The pair starts together, and neither reaches a second attempt.
+  assert.equal(calls.length, 2);
+});
+
+/** One working package that depends on one the CDN refuses to serve. */
+function dependentPair(): {report: DashboardReport; carried: CatalogState['published'][number]} {
+  return {
+    report: {
+      generatedAt: 'now',
+      categories: [{id: 'data', title: 'Data', titleJa: 'データ', description: 'Not emitted'}],
+      packages: [
+        {repo: 'a', category: 'data', unsandboxed: 'unknown', npm: {name: '@owner/a', latest: '1.2.3', published: true},
+          github: {url: 'https://github.com/owner/a'}},
+        {repo: 'b', category: 'data', unsandboxed: 'unknown', npm: {name: '@owner/b', latest: '1.0.0', published: true},
+          github: {url: 'https://github.com/owner/b'}},
+      ],
+    } as DashboardReport,
+    carried: {
+      entry: {id: 'b', name: 'B', package: '@owner/b', version: '1.0.0', sha256: '1'.repeat(64),
+        url: 'https://cdn.jsdelivr.net/npm/@owner/b@1.0.0/dist/b.js', repository: 'https://github.com/owner/b',
+        // Both are re-read from the report when the entry is carried over.
+        category: 'moved-away', docsURL: 'https://owner.github.io/b/', dependencies: []},
+      manifest: {name: '@owner/b', version: '1.0.0'},
+    },
+  };
+}
+
+function mockPairFetch(t: TestContext) {
+  const base = 'https://cdn.jsdelivr.net/npm/@owner/a@1.2.3';
+  const responses: Record<string, unknown> = {
+    [`${base}/package.json`]: {name: '@owner/a', version: '1.2.3', dependencies: {'@owner/b': '^1.0.0'}},
+    'https://data.jsdelivr.com/v1/package/npm/@owner/a@1.2.3/flat': {files: [{name: '/dist/a.js'}]},
+    [`${base}/dist/a.js`]: '// ID: a\n// Name: A\n',
+  };
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    if (!Object.hasOwn(responses, url)) return new Response('missing', {status: 404});
+    const value = responses[url];
+    return new Response(typeof value === 'string' ? value : JSON.stringify(value));
+  });
+}
+
+test('an unreadable package keeps its previous entry, with local fields re-read', async t => {
+  const {report, carried} = dependentPair();
+  mockPairFetch(t);
+  const {catalog, state, carriedOver} = await collectEditorCatalog(report, {
+    previous: {schemaVersion: 1, savedAt: 'before', published: [carried], failures: {}},
+  });
+  // Dropping @owner/b instead would make assembling @owner/a fail outright.
+  assert.deepEqual(catalog.extensions.map(extension => extension.id), ['a', 'b']);
+  assert.deepEqual(catalog.extensions[0].dependencies, ['b']);
+  assert.equal(catalog.extensions[1].version, '1.0.0');
+  assert.equal(catalog.extensions[1].category, 'data');
+  assert.equal(catalog.extensions[1].docsURL, undefined);
+  assert.deepEqual(carriedOver.map(({package: name, attempts}) => [name, attempts]), [['@owner/b', 1]]);
+  assert.equal(state.failures['@owner/b'].attempts, 1);
+  assert.equal(state.failures['@owner/b'].since, state.savedAt);
+  assert.equal(state.published.length, 2);
+});
+
+test('the fallback is a grace period, not a permanent cover-up', async t => {
+  const {report, carried} = dependentPair();
+  mockPairFetch(t);
+  const failures = {'@owner/b': {attempts: 3, error: 'HTTP 404', since: 'three runs ago'}};
+  await assert.rejects(
+    collectEditorCatalog(report, {previous: {schemaVersion: 1, savedAt: 'before', published: [carried], failures}}),
+    /@owner\/b.*4 consecutive runs have failed since three runs ago/s,
+  );
+
+  // The same run succeeds while the package is still inside the grace period.
+  const {carriedOver} = await collectEditorCatalog(report, {
+    previous: {schemaVersion: 1, savedAt: 'before', published: [carried], failures},
+    maxAttempts: 4,
+  });
+  assert.deepEqual(carriedOver.map(({attempts}) => attempts), [4]);
+});
+
+test('a package with nothing published before it fails has no fallback', async t => {
+  const {report} = dependentPair();
+  mockPairFetch(t);
+  await assert.rejects(
+    collectEditorCatalog(report, {previous: {schemaVersion: 1, savedAt: 'before', published: [], failures: {}}}),
+    /@owner\/b.*nothing published previously/s,
+  );
+  await assert.rejects(collectEditorCatalog(report), /@owner\/b.*nothing published previously/s);
+});
+
+test('a recovered package clears its failure record', async t => {
+  const {report, carried} = dependentPair();
+  const base = 'https://cdn.jsdelivr.net/npm/@owner/b@1.0.0';
+  const responses: Record<string, unknown> = {
+    'https://cdn.jsdelivr.net/npm/@owner/a@1.2.3/package.json': {name: '@owner/a', version: '1.2.3'},
+    'https://data.jsdelivr.com/v1/package/npm/@owner/a@1.2.3/flat': {files: [{name: '/dist/a.js'}]},
+    'https://cdn.jsdelivr.net/npm/@owner/a@1.2.3/dist/a.js': '// ID: a\n// Name: A\n',
+    [`${base}/package.json`]: {name: '@owner/b', version: '1.0.0'},
+    'https://data.jsdelivr.com/v1/package/npm/@owner/b@1.0.0/flat': {files: [{name: '/dist/b.js'}]},
+    [`${base}/dist/b.js`]: '// ID: b\n// Name: B\n',
+  };
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    assert.ok(Object.hasOwn(responses, url), `Unexpected request ${url}`);
+    const value = responses[url];
+    return new Response(typeof value === 'string' ? value : JSON.stringify(value));
+  });
+  const {state, carriedOver} = await collectEditorCatalog(report, {
+    previous: {schemaVersion: 1, savedAt: 'before', published: [carried],
+      failures: {'@owner/b': {attempts: 2, error: 'HTTP 404', since: 'two runs ago'}}},
+  });
+  assert.deepEqual(carriedOver, []);
+  assert.deepEqual(state.failures, {});
 });
