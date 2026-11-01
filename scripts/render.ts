@@ -939,14 +939,21 @@ async function main() {
   const catalogMatches = Boolean(catalogHash && report.catalog?.sha256 === catalogHash);
   const snapshotTime = Date.parse(report.generatedAt);
   const recent = Number.isFinite(snapshotTime) && snapshotTime <= Date.now() + 60_000 && Date.now() - snapshotTime <= 86_400_000;
-  const collectionErrors = report.packages.filter((pkg) => pkg.errors.length).length;
-  const verified = catalogMatches && recent && collectionErrors === 0;
+  const failedPackages = report.packages.filter((pkg) => pkg.errors.length);
+  const verified = catalogMatches && recent && failedPackages.length === 0;
   const issues: [string, string][] = [];
   if (!catalogMatches) issues.push(report.catalog && catalogHash
     ? ['Category changes are not reflected in this snapshot.', 'カテゴリ定義の変更がデータに未反映です。']
     : ['The category definition used for this snapshot cannot be verified.', 'データに使用したカテゴリ定義を確認できません。']);
   if (!recent) issues.push(['The acquisition time is invalid or more than 24 hours old.', '取得日時が不明か、取得から24時間以上が経過しています。']);
-  if (collectionErrors) issues.push([`Collection failed for ${collectionErrors} packages.`, `${collectionErrors}件のパッケージを取得できませんでした。`]);
+  if (failedPackages.length) {
+    // Name the packages, so a reader knows which rows may be out of date.
+    const names = failedPackages.map((pkg) => esc(pkg.label));
+    issues.push([
+      `Collection failed for ${names.length} ${names.length === 1 ? 'package' : 'packages'}: ${names.join(', ')}.`,
+      `${names.length}件のパッケージを取得できませんでした：${names.join('、')}。`,
+    ]);
+  }
   const timeLabel = Number.isFinite(snapshotTime) ? new Date(snapshotTime).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' : report.generatedAt;
   const freshness = `<div class="data-as-of" data-freshness="${verified ? 'verified' : 'warning'}">
     <p>${t('Data acquired', 'データ取得')}: <time datetime="${esc(report.generatedAt)}">${esc(timeLabel)}</time></p>
