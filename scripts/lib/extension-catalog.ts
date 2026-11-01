@@ -135,10 +135,34 @@ export function extensionAuthor(metadata: Record<string, string>, manifest: Publ
   return {...(author !== undefined ? {author} : {}), ...(authorURL ? {authorURL} : {})};
 }
 
-async function request(url: string): Promise<Response> {
-  const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
-  if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
-  return response;
+/**
+ * Every request here runs inside a `Promise.all`, so one refused connection
+ * used to abandon the whole catalog and with it the dashboard build. The
+ * transient cases are worth another go: a connection that never opened, a rate
+ * limit, a 5xx. A 404 is an answer rather than a hiccup, so it is not retried.
+ */
+async function request(url: string, retries = 2): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    let response;
+    try {
+      response = await fetch(url, { signal: AbortSignal.timeout(30000) });
+    } catch (cause) {
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+        continue;
+      }
+      throw new Error(`${url}: unreachable`, { cause });
+    }
+
+    if (!response.ok) {
+      if ((response.status === 429 || response.status >= 500) && attempt < retries) {
+        await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+        continue;
+      }
+      throw new Error(`${url}: HTTP ${response.status}`);
+    }
+    return response;
+  }
 }
 
 /** Stable catalogs do not promote a prerelease merely because its publisher moved latest. */
