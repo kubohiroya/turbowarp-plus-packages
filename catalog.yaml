@@ -76,8 +76,10 @@ categories:
       - turbowarp-sb3-source-builder
       - turbowarp-local-preview
 
-  # Includes: the TurboWarp-Plus-Editor distribution, its scratch-gui fork,
-  #   and the security dialog library that only the editor uses.
+  # Includes: the TurboWarp-Plus-Editor distribution, its scratch-gui fork, and
+  #   the libraries only an editor host uses: the security dialog and the
+  #   verified extension loading core, which the editor and the Packager drive
+  #   through host-owned trust and registration ports.
   # Excludes: extensions that only run inside the editor (-> their domain),
   #   anything a packaged app uses outside the editor (-> shell), and the data
   #   editor contract that extensions build on, even though the editor bundles
@@ -93,6 +95,7 @@ categories:
       - turbowarp-plus-editor
       - scratch-gui
       - turbowarp-extension-security-dialog
+      - turbowarp-extension-loader
 
   # Includes: DOM shell primitives, runtime adapters, and the title and
   #   application menu chrome and live reload control used to host the TurboWarp
