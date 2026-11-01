@@ -1,8 +1,9 @@
+import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { extensionHeader, extensionDocsURL, extensionAuthor, extensionDisplayName, catalogEntryPresentation, assembleEditorCatalog, publishedExtension, collectEditorCatalog, type EditorExtension } from '../scripts/lib/extension-catalog.ts';
 import type {DashboardPackage, DashboardReport} from '../scripts/lib/types.ts';
-const entry = (id: string): EditorExtension => ({id, name: id, package: `@owner/${id}`, version: '1.2.3', url: `https://cdn.test/${id}.js`, repository: 'https://github.com/owner/repo', dependencies: []});
+const entry = (id: string): EditorExtension => ({id, name: id, package: `@owner/${id}`, version: '1.2.3', url: `https://cdn.test/${id}.js`, sha256: '0'.repeat(64), repository: 'https://github.com/owner/repo', dependencies: []});
 
 test('family display names use a single TurboWarp prefix and hyphen-separated words, retaining product spelling', () => {
   for (const [name, expected] of [
@@ -281,7 +282,10 @@ test('published license uses the extension declaration before the package manife
     return new Response(`// ID: a\n// Name: A\n${declaration}`);
   });
   const pkg = {repo:'a',npm:{name:'@owner/a',latest:'1.2.3'},github:{url:'https://github.com/owner/a'}} as DashboardPackage;
-  assert.equal((await publishedExtension(pkg)).entry.license,'MPL-2.0');
+  const first = (await publishedExtension(pkg)).entry;
+  assert.equal(first.license,'MPL-2.0');
+  // The digest covers the exact served bytes, so an Editor can recognize an embedded copy.
+  assert.equal(first.sha256, createHash('sha256').update('// ID: a\n// Name: A\n').digest('hex'));
   declaration = '// License: See the bundled extension notices below.\n';
   assert.equal((await publishedExtension(pkg)).entry.license,'See the bundled extension notices below.');
 });
