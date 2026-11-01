@@ -14,6 +14,7 @@
 ### turbowarp-plus-editor
 
 - npmには、ランチャーとして最小の内容だけを公開します。アイコン、編集ボタンのCSS、EditorのURLと編集ボタンを作るスニペット、固定ソースの記録（`site/source.json`）です。
+- 拡張ローダーの起動APIと、YAML編集のコマンドもランチャーに含めます。どちらも別パッケージの実装本体を呼ぶ薄い受け渡しで、本体はplus-editorに置きません。
 - Editor本体（GUIのビルド一式）はnpmに入れず、GitHub Pagesで配信します。
 - アイコンとスニペットは、このリポジトリで保持・管理します。
 - スニペットの部分だけはMPL-2.0とします（下の「ライセンスの切り分け」の規則6）。他のサイトのJavaScriptから読み込んでも、そのサイトにGPL-3.0の義務がかからないようにするためです。
@@ -72,6 +73,7 @@
 - plus-editorのwebpack設定で、このモジュールをplus-editorの結合モジュールに差し替えます。今の設定もGUIの設定を読み込んで項目を足しているので、同じ場所で行えます。
 - 結合モジュールは独自拡張のパッケージを読み込み、portに合わせて渡します。結合モジュールはPagesのビルド専用で、npmのランチャーには含めません。
 - 本家のファイルの改変は、差し込み口を呼ぶ数行のフックだけにします。
+- 拡張ローダーは、結合モジュールがplus-editorの起動API（`bootstrapExtensionLoader`）でつなぎます。フォークが自前で持っている同じフラグの判定（`src/config/extension-loader-flag.js`）は、これで要らなくなります。
 
 再編で得られるものは次のとおりです。
 
@@ -114,7 +116,7 @@
 ### turbowarp-plus-editor
 
 - 独自のコードは約1,400行で、ビルド、固定ソースの検証、CIのチェック、案内ページです。YAML編集ツールは、document-editorを呼ぶ1〜9行の受け渡しになっています。
-- npmパッケージには、スニペットのほかに次の2つが入っています。どちらも実装本体は別パッケージにあり、plus-editorにあるのは薄い受け渡しです。
+- npmパッケージには、スニペットのほかに次の2つが入っています。どちらも実装本体は別パッケージにあり、plus-editorにあるのは薄い受け渡しです。どちらもランチャーの範囲として残します。
   - **拡張ローダーの起動API**（`./extension-loader`の`bootstrapExtensionLoader`、74行）：起動時のURLフラグ`twPlusExtensionLoader`を読み、ローダーとGUIの接続を渡されたとおりにつなぐだけです。ローダー本体はturbowarp-extension-loaderにあります。familyの中にこのAPIの利用者はなく、フォークは同じフラグを自前の`src/config/extension-loader-flag.js`で読んでいます。
   - **YAML編集のコマンド**（`turbowarp-plus-editor-yaml`、9行）：turbowarp-document-editor（MPL-2.0）のコマンドに、plus-editorのURL・パス・表示名を渡して起動するだけです。そのため、document-editorとdocument-dataが実行時依存になっています。
 - 開発依存に、データ系のパッケージ（structured-data、named-data、yaml-json、document-source）があります。YAMLと文書のブラウザーテストに使っており、plus-editorが依存の連鎖のいちばん下になる原因です。
@@ -146,11 +148,12 @@
 ## 未決事項
 
 1. 依存の向きの再編を採用するか（この文書の提案）。
-2. **ランチャーの範囲：** plus-editorのnpmパッケージに残す薄い受け渡しを決めます。
-   - 拡張ローダーの起動APIは、利用者がなく、フォークにも同じフラグの判定があるので、plus-editorから外すことを提案します。必要なら、turbowarp-extension-loaderの側に置きます。
-   - YAML編集のコマンドは、plus-editorのURLでEditorを開くランチャーなので、残すことを提案します。
 
-決定済み（2026-11-01）：スニペットの部分だけをMPL-2.0にする。security-dialogをMPL-2.0で書き直す。
+決定済み（2026-11-01）：
+
+- スニペットの部分だけをMPL-2.0にする。
+- security-dialogをMPL-2.0で書き直す。
+- 拡張ローダーの起動APIとYAML編集のコマンドは、ランチャーの範囲としてplus-editorに残す。
 
 ## 関連文書
 
