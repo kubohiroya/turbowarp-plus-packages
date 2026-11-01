@@ -342,3 +342,54 @@ test('prerelease collection requires opt-in and still uses an immutable exact ar
   assert.equal(result.extensions[0].version, version);
   assert.equal(result.extensions[0].url, `${base}/dist/a.js`);
 });
+
+// Each of these uses a package name of its own: when a request fails, the
+// sibling it was started alongside in Promise.all keeps retrying unobserved,
+// and those late calls would otherwise land in the next test's counters.
+test('a refused connection is retried, and the retry still yields the published artifact', async t => {
+  const base = 'https://cdn.jsdelivr.net/npm/@owner/retry@1.2.3';
+  const tree = 'https://data.jsdelivr.com/v1/package/npm/@owner/retry@1.2.3/flat';
+  const responses: Record<string, unknown> = {
+    [`${base}/package.json`]: {name: '@owner/retry', version: '1.2.3'},
+    [tree]: {files: [{name: '/dist/retry.js'}]},
+    [`${base}/dist/retry.js`]: '// ID: retry\n// Name: Retry\nthrow new Error("must not execute");',
+  };
+  const calls: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    calls.push(url);
+    // The failure that cost us a dashboard build: the connection never opened.
+    if (url === tree && calls.filter(call => call === tree).length === 1) {
+      throw new TypeError('fetch failed');
+    }
+    const value = responses[url];
+    return new Response(typeof value === 'string' ? value : JSON.stringify(value));
+  });
+  const pkg = {repo: 'retry', category: 'data', npm: {name: '@owner/retry', latest: '1.2.3'},
+    github: {url: 'https://github.com/owner/retry'}} as DashboardPackage;
+  assert.equal((await publishedExtension(pkg)).entry.url, `${base}/dist/retry.js`);
+  assert.equal(calls.filter(call => call === tree).length, 2);
+});
+
+test('a missing file is asked for once, while an unreachable host is named after the last attempt', async t => {
+  const missing: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    missing.push(url);
+    return new Response('missing', {status: 404});
+  });
+  await assert.rejects(
+    publishedExtension({repo: 'gone', npm: {name: '@owner/gone', latest: '1.2.3'}} as DashboardPackage),
+    /HTTP 404/,
+  );
+  assert.deepEqual(missing.map(url => missing.filter(call => call === url).length), [1, 1]);
+
+  const refused: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    refused.push(url);
+    throw new TypeError('fetch failed');
+  });
+  await assert.rejects(
+    publishedExtension({repo: 'refused', npm: {name: '@owner/refused', latest: '1.2.3'}} as DashboardPackage),
+    /cdn\.jsdelivr\.net.*: unreachable/,
+  );
+  assert.equal(refused.filter(url => url.endsWith('/package.json')).length, 3);
+});
