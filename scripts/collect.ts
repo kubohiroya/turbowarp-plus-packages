@@ -358,7 +358,9 @@ async function main() {
         record.errors.push(`revision: ${errorMessage(error)}`);
         return null;
       }),
-      pagesStatus(owner, entry.repo, entry.category === 'apps'),
+      entry.pages
+        ? pagesStatus(owner, entry.repo, entry.category === 'apps')
+        : Promise.resolve<PagesStatus>({ enabled: false }),
       analyseDependencies(node.packageJson?.text ?? null, { npmToRepo, localProtocols }),
     ]);
 
