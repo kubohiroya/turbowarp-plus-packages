@@ -19,7 +19,11 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Pinned rather than ubuntu-latest: `playwright install --with-deps` only
+    # knows the system packages for Ubuntu 20.04, 22.04 and 24.04, so the
+    # migration of ubuntu-latest to Ubuntu 26 would break the icon and
+    # thumbnail steps. Move this on once Playwright lists the newer release.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -49,7 +53,7 @@ jobs:
         run: npm run editor:catalog
 
       - name: Restore thumbnail snapshots
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: site/thumbs
           key: thumbnails-v1-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -79,7 +83,7 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
