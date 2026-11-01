@@ -147,6 +147,9 @@ categories:
   #   by part in memory. The other packages do not implement a contract of
   #   either one: they project their structure to JSON text, or, as the
   #   Markdown and HTML builders do, pass rendered text to document-data.
+  #   document-source decorates document-data's source document registry
+  #   with where a source lives (an SB3 file or an HTTPS URL) and how it is
+  #   edited (text, YAML blocks or schema blocks), keeping no second copy.
   #   See docs/data-projection.ja.md.
   - id: data
     title: Data & Documents
@@ -156,6 +159,7 @@ categories:
     packages:
       - turbowarp-structured-data
       - turbowarp-document-data
+      - turbowarp-document-source
       - turbowarp-markdown
       - turbowarp-html
       - turbowarp-text-lines
