@@ -32,10 +32,14 @@ export async function loadCatalog(path = 'catalog.yaml'): Promise<Catalog> {
       if (override.buildSource && override.buildSource !== 'fixed-editor-gui') {
         throw new Error(`${path}: unsupported buildSource for "${repo}"`);
       }
+      if (override.pages !== undefined && override.pages !== false) {
+        throw new Error(`${path}: "pages" for "${repo}" may only be false`);
+      }
       entries.push({
         repo,
         category: category.id,
         npm: override.npm === false ? null : (override.npm ?? `${scope}/${repo}`),
+        pages: override.pages !== false,
         note: override.note ?? null,
         label: override.label ?? repo,
         // Summaries are read from the repository's own READMEs; these only

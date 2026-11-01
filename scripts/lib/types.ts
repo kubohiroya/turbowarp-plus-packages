@@ -26,6 +26,7 @@ export interface RawCatalog {
   localProtocols?: string[];
   overrides?: Record<string, {
     npm?: string | false;
+    pages?: false;
     note?: string;
     label?: string;
     description?: string;
@@ -38,6 +39,8 @@ export interface CatalogEntry {
   repo: string;
   category: string;
   npm: string | null;
+  /** False when the repository's Pages site is deliberately not shown. */
+  pages: boolean;
   note: string | null;
   label: string;
   description: string | null;
