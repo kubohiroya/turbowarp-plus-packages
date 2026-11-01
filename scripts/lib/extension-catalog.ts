@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import semver from 'semver';
 import { pool } from './github.ts';
 import { describeFromReadme } from './descriptions.ts';
@@ -12,6 +13,8 @@ export interface EditorExtension {
   repository: string;
   docsURL?: string;
   url: string;
+  /** SHA-256 (lowercase hex) of the exact bytes served at `url`. */
+  sha256: string;
   category?: string;
   description?: string;
   descriptions?: Record<string, string>;
@@ -174,7 +177,9 @@ export async function publishedExtension(pkg: DashboardPackage, {allowPrerelease
   });
   for (const path of paths) {
     const url = `${base}${path}`;
-    const source = await request(url).then(r => r.text());
+    const response = await request(url);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const source = new TextDecoder().decode(bytes);
     const metadata = extensionHeader(source);
     if (!/^[a-zA-Z0-9]+$/.test(metadata.id ?? '') || !metadata.name) continue;
     const descriptions: Record<string, string> = Object.fromEntries(Object.entries(metadata).flatMap(([key, value]) => {
@@ -195,6 +200,7 @@ export async function publishedExtension(pkg: DashboardPackage, {allowPrerelease
     const docsURL = extensionDocsURL(pkg);
     return { manifest, entry: {
       id: metadata.id, name: metadata.name, package: name, version, url,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
       category: pkg.category,
       repository: secure(pkg.github.url),
       ...(docsURL ? {docsURL} : {}),

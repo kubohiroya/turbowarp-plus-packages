@@ -30,6 +30,7 @@ Pages workflowおよび `build` / `build:no-thumbnails` に組み込み、ダッ
       "repository": "https://github.com/owner/example",
       "docsURL": "https://owner.github.io/example/",
       "url": "https://cdn.jsdelivr.net/npm/@owner/example@1.0.0/dist/example.js",
+      "sha256": "3f2ef438093c09c09eb402a8ecb13ffd706a839c2fbde11c5f2f3a9b3dc4f229",
       "category": "data",
       "description": "An example extension.",
       "descriptions": {"ja": "機能拡張の例です。"},
@@ -55,6 +56,7 @@ Pages workflowおよび `build` / `build:no-thumbnails` に組み込み、ダッ
 | `repository` | 対象リポジトリのHTTPS URL。 |
 | `docsURL` | Pages APIで確認した公開ドキュメントのHTTPS URL。`pages.enabled` / `pages.live` がtrueでHTTP 200を確認できた場合だけ付与します。 |
 | `url` | 完全固定npm版の読み込み用JSのHTTPS URL。 |
+| `sha256` | `url` が返すJSのバイト列のSHA-256（小文字16進64桁）。Editorは、`url` から取得したコードと、この値と一致するコード（作品に同梱されたEmbeddedを含む）を、TurboWarp標準ギャラリーと同じく信頼済みとして扱います。 |
 | `category` | `categories[].id` を参照するカテゴリID。新たに生成する全機能拡張に付与します。 |
 | `description` / `descriptions` | 既定の説明とロケール別説明。宣言コメントを優先し、日本語がなければ同じnpm版の `README.ja.md` の要約を使用します。 |
 | `author` / `license` | 製作者名とライセンス。製作者名は公開manifestの `author.name`（または文字列の名前）を優先し、なければ宣言コメントを使用します。 |
