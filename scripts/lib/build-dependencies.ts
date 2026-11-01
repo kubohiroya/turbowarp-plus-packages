@@ -20,7 +20,7 @@ export function fixedEditorBuildDependency(input: {
   if (!input.sourceJson || !input.contract || !input.build || !input.packageJson) return fail('source metadata or build contract is missing');
   try {
     const manifest = JSON.parse(input.packageJson);
-    if (manifest?.scripts?.['build:pages'] !== 'node scripts/site/build.mjs') return fail('unsupported build entry point');
+    if (manifest?.scripts?.['build:pages'] !== 'node scripts/site/build.ts') return fail('unsupported build entry point');
   } catch { return fail('package manifest is invalid'); }
   if (!input.sourceRevision || !SHA.test(input.sourceRevision)) return fail('source revision is unverified');
   let pins: { guiRepository?: unknown; guiRevision?: unknown };
@@ -31,8 +31,8 @@ export function fixedEditorBuildDependency(input: {
   const [owner, repo, extra] = pins.guiRepository.split('/');
   if (owner !== input.owner || !repo || extra || !input.catalogRepos.includes(repo)) return fail('GUI repository is outside the known catalog');
 
-  const contract = ts.createSourceFile('source.mjs', input.contract, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
-  const build = ts.createSourceFile('build.mjs', input.build, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const contract = ts.createSourceFile('source.ts', input.contract, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const build = ts.createSourceFile('build.ts', input.build, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   if ([input.contract, input.build].some((source) => ts.transpileModule(source, {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }, reportDiagnostics: true,
   }).diagnostics?.some((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error))) {
@@ -69,7 +69,7 @@ export function fixedEditorBuildDependency(input: {
   const verifiesHead = calls(verify, (call) => text(call.expression, contract) === 'assert.equal'
     && text(call.arguments[0], contract) === 'revision' && text(call.arguments[1], contract) === 'pins.guiRevision');
   const importsContract = build.statements.some((node) => ts.isImportDeclaration(node)
-    && literal(node.moduleSpecifier, './source.mjs') && text(node.importClause, build)?.includes('readPins') && text(node.importClause, build)?.includes('verifyHost'));
+    && literal(node.moduleSpecifier, './source.ts') && text(node.importClause, build)?.includes('readPins') && text(node.importClause, build)?.includes('verifyHost'));
   const callsContract = calls(buildPages, (call) => text(call.expression, build) === 'readPins')
     && calls(buildPages, (call) => text(call.expression, build) === 'verifyHost'
       && text(call.arguments[0], build) === 'gui' && text(call.arguments[1], build) === 'pins');
@@ -81,5 +81,5 @@ export function fixedEditorBuildDependency(input: {
     return fail('unsupported build contract; no dependency was inferred');
   }
   return { dependencies: [{ repo, revision: pins.guiRevision, sourceRevision: input.sourceRevision,
-    sourcePath: 'site/source.json', contractPaths: ['scripts/site/source.mjs', 'scripts/site/build.mjs'] }] };
+    sourcePath: 'site/source.json', contractPaths: ['scripts/site/source.ts', 'scripts/site/build.ts'] }] };
 }
