@@ -7,7 +7,7 @@
 
 | リポジトリ | ライセンス | 責務 | 公開先 |
 |---|---|---|---|
-| turbowarp-plus-editor | GPL-3.0 | Editorのランチャー、Editor本体の組み立てと配信、アイコンとスニペット | npm（ランチャーだけ）、GitHub Pages |
+| turbowarp-plus-editor | GPL-3.0（スニペットだけMPL-2.0） | Editorのランチャー、Editor本体の組み立てと配信、アイコンとスニペット | npm（ランチャーだけ）、GitHub Pages |
 | scratch-guiフォーク（kubohiroya/scratch-gui） | GPL-3.0（TurboWarp版から継承） | 本家scratch-guiへの最小限の差し込み口 | 公開しない |
 | 独自拡張のパッケージ（turbowarp-plus family） | MPL-2.0 | 独自拡張の実装本体 | npm |
 
@@ -16,6 +16,7 @@
 - npmには、ランチャーとして最小の内容だけを公開します。アイコン、編集ボタンのCSS、EditorのURLと編集ボタンを作るスニペット、固定ソースの記録（`site/source.json`）です。
 - Editor本体（GUIのビルド一式）はnpmに入れず、GitHub Pagesで配信します。
 - アイコンとスニペットは、このリポジトリで保持・管理します。
+- スニペットの部分だけはMPL-2.0とします（下の「ライセンスの切り分け」の規則6）。他のサイトのJavaScriptから読み込んでも、そのサイトにGPL-3.0の義務がかからないようにするためです。
 
 ### scratch-guiフォーク
 
@@ -41,7 +42,10 @@
 3. 独自拡張のパッケージには「Incompatible With Secondary Licenses」の表示を付けません。付けると、GPLのEditorに組み込めなくなります。
 4. フォークのコードを独自拡張のパッケージへ移すとき、MPL-2.0にできるのは、本家のコードを含まない新規のファイルだけです。本家のファイルの改変部分と、本家のコンポーネントを写した部分は、GPL-3.0のままフォークに残します。移す前に、ファイルごとに由来を確かめます。著作権者がkubohiroyaだけであることも確かめます。外部の寄稿が含まれる場合は、その著作権者の同意が必要です。
 5. Pagesで配信するEditor本体は、GPL-3.0の作品として配ります。同梱するMPLパッケージのライセンス文と、ソースの入手先（npmとGitHub）を記録します。plus-editorは文書エディター系のパッケージについて`notices/`を生成しているので、これをすべての独自拡張のパッケージに広げます。
-6. plus-editorのnpmパッケージ（ランチャー）はGPL-3.0です。
+6. plus-editorのnpmパッケージ（ランチャー）はGPL-3.0ですが、スニペットの部分だけはMPL-2.0とします。
+   - 対象は、EditorのURLと編集ボタンのHTMLを作る関数（`src/index.ts`の`createEditorURL`・`renderEditButton`と定数）と、編集ボタンのCSS（`assets/edit-button.css`）です。アイコンは対象に含めません。
+   - 対象のファイルには`SPDX-License-Identifier: MPL-2.0`を書き、MPL-2.0の全文をパッケージに同梱します。package.jsonの`license`は`(GPL-3.0-or-later AND MPL-2.0)`とし、READMEにMPL-2.0の範囲を書きます。
+   - スニペットのファイルは、パッケージ内のGPLのファイルをimportしません。
 
 ## 依存の向き
 
@@ -110,26 +114,29 @@
 ### turbowarp-plus-editor
 
 - 独自のコードは約1,400行で、ビルド、固定ソースの検証、CIのチェック、案内ページです。YAML編集ツールは、document-editorを呼ぶ1〜9行の受け渡しになっています。
-- npmパッケージに、ランチャー以外のものが入っています。
-  - 拡張ローダーの起動API（`./extension-loader`の`bootstrapExtensionLoader`）
-  - YAML編集のコマンド（`turbowarp-plus-editor-yaml`）と、そのための実行時依存（document-data、document-editor）
+- npmパッケージには、スニペットのほかに次の2つが入っています。どちらも実装本体は別パッケージにあり、plus-editorにあるのは薄い受け渡しです。
+  - **拡張ローダーの起動API**（`./extension-loader`の`bootstrapExtensionLoader`、74行）：起動時のURLフラグ`twPlusExtensionLoader`を読み、ローダーとGUIの接続を渡されたとおりにつなぐだけです。ローダー本体はturbowarp-extension-loaderにあります。familyの中にこのAPIの利用者はなく、フォークは同じフラグを自前の`src/config/extension-loader-flag.js`で読んでいます。
+  - **YAML編集のコマンド**（`turbowarp-plus-editor-yaml`、9行）：turbowarp-document-editor（MPL-2.0）のコマンドに、plus-editorのURL・パス・表示名を渡して起動するだけです。そのため、document-editorとdocument-dataが実行時依存になっています。
 - 開発依存に、データ系のパッケージ（structured-data、named-data、yaml-json、document-source）があります。YAMLと文書のブラウザーテストに使っており、plus-editorが依存の連鎖のいちばん下になる原因です。
 
 ### ライセンス
 
 | パッケージ | 現在 | 方針との関係 |
 |---|---|---|
-| turbowarp-plus-editor | GPL-3.0-or-later | 合っている |
+| turbowarp-plus-editor | GPL-3.0-or-later（全体） | スニペットの部分をMPL-2.0に分ける |
 | scratch-guiフォーク | GPL-3.0 | 合っている |
 | turbowarp-document-editor | MPL-2.0 | 合っている |
 | scratch-vmフォーク | MPL-2.0 | 本家（TurboWarp/scratch-vm）から継承。独自拡張から使える |
-| turbowarp-extension-security-dialog | GPL-3.0-only | 合っていない。NOTICEのアイコンの帰属表示が本家と同じで、本家のセキュリティ画面に由来する可能性がある |
+| turbowarp-extension-security-dialog | GPL-3.0-only | MPL-2.0で書き直す。NOTICEのアイコンの帰属表示が本家と同じで、本家のセキュリティ画面に由来する部分がある可能性がある |
 | turbowarp-extension-data-editor | 宣言なし（LICENSEファイルもない） | 合っていない |
 | turbowarp-extension-loader | UNLICENSED・private（npm未公開、Git参照） | 合っていない |
 
 ## 移行の進め方
 
-1. **ライセンスを揃えます。** data-editorとextension-loaderにMPL-2.0を宣言し、extension-loaderはnpmにも公開します。security-dialogは由来を確かめます。
+1. **ライセンスを揃えます。**
+   - data-editorとextension-loaderにMPL-2.0を宣言し、extension-loaderはnpmにも公開します。
+   - security-dialogはMPL-2.0で書き直します。本家（scratch-gui）のコードに由来する部分は使わずに作り直します。kubohiroyaが書いた、本家に由来しない部分は、そのままMPL-2.0にできます。
+   - plus-editorのスニペットの部分をMPL-2.0に分けます（規則6）。
 2. **差し込みの仕組みを作ります。** フォークに差し込み口を作り、plus-editorのwebpack設定で差し替えます。中身はまだ移さず、plus-editorの統合E2Eで動作が変わらないことを確かめます。
 3. **機能を1つずつ移します。** 本家のファイルの改変が少ないものから、独自拡張のパッケージへ移します。段階ごとに、plus-editorの統合E2Eで確かめます。
 4. **フォークからfamilyへの依存を外します。** plus-editorの`prepare-core.ts`のコピーと`verifyHost`の照合は、plus-editorのlockを基準にした確認へ置き換えます。
@@ -139,9 +146,11 @@
 ## 未決事項
 
 1. 依存の向きの再編を採用するか（この文書の提案）。
-2. **スニペットのライセンス：** 編集ボタンを作る関数を、他のサイトのJavaScriptからimportすると、そのJavaScriptにGPL-3.0の義務がかかります。生成したHTMLを貼り付ける使い方なら影響しません。familyのDocsやSamplesのサイトでの使い方に合わせて、スニペットの部分だけを別のライセンス（MPL-2.0など）にするか決めます。
-3. **ランチャーの範囲：** plus-editorのnpmパッケージから、拡張ローダーの起動APIとYAML編集のコマンドを外すか決めます。
-4. **security-dialogのライセンス：** MPL-2.0にするか決めます。本家のコードに由来する部分があれば、書き直しが必要です。
+2. **ランチャーの範囲：** plus-editorのnpmパッケージに残す薄い受け渡しを決めます。
+   - 拡張ローダーの起動APIは、利用者がなく、フォークにも同じフラグの判定があるので、plus-editorから外すことを提案します。必要なら、turbowarp-extension-loaderの側に置きます。
+   - YAML編集のコマンドは、plus-editorのURLでEditorを開くランチャーなので、残すことを提案します。
+
+決定済み（2026-11-01）：スニペットの部分だけをMPL-2.0にする。security-dialogをMPL-2.0で書き直す。
 
 ## 関連文書
 
