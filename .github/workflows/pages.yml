@@ -49,6 +49,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # What the last run published, so a package the CDN refuses to serve today
+      # keeps its last known-good entry instead of costing us the publication.
+      # A miss simply leaves no fallback, and an unreadable package fails.
+      - name: Restore the extension catalog fallback
+        uses: actions/cache@v6
+        with:
+          path: data/extension-catalog-state.json
+          key: extension-catalog-v1-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            extension-catalog-v1-${{ github.ref_name }}-
+
       - name: Generate the Editor extension catalog
         run: npm run editor:catalog
 

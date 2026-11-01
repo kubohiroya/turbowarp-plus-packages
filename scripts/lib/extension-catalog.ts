@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import semver from 'semver';
 import { pool } from './github.ts';
+import { errorMessage } from './errors.ts';
 import { describeFromReadme } from './descriptions.ts';
 import {catalogIconURL} from './extension-branding.ts';
 import type { DashboardPackage, DashboardReport } from './types.ts';
@@ -36,7 +37,7 @@ export interface EditorCatalog {
   categories?: EditorCategory[];
   extensions: EditorExtension[];
 }
-interface PublishedManifest {
+export interface PublishedManifest {
   name?: string;
   version?: string;
   jsdelivr?: string;
@@ -47,7 +48,7 @@ interface PublishedManifest {
   peerDependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
 }
-interface PublishedExtension {
+export interface PublishedExtension {
   entry: EditorExtension;
   manifest: PublishedManifest;
 }
@@ -135,20 +136,33 @@ export function extensionAuthor(metadata: Record<string, string>, manifest: Publ
   return {...(author !== undefined ? {author} : {}), ...(authorURL ? {authorURL} : {})};
 }
 
+/** A backoff wait that gives up the moment the caller's signal is aborted. */
+function wait(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const abort = () => { clearTimeout(timer); reject(signal!.reason); };
+    const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); resolve(); }, ms);
+    if (signal?.aborted) abort();
+    else signal?.addEventListener('abort', abort, {once: true});
+  });
+}
+
 /**
- * Every request here runs inside a `Promise.all`, so one refused connection
- * used to abandon the whole catalog and with it the dashboard build. The
- * transient cases are worth another go: a connection that never opened, a rate
- * limit, a 5xx. A 404 is an answer rather than a hiccup, so it is not retried.
+ * One refused connection used to abandon the whole catalog and with it the
+ * dashboard build. The transient cases are worth another go: a connection that
+ * never opened, a rate limit, a 5xx. A 404 is an answer rather than a hiccup,
+ * so it is not retried, and neither is anything once `signal` is aborted —
+ * that abort means some sibling has already failed for good.
  */
-async function request(url: string, retries = 2): Promise<Response> {
+async function request(url: string, {retries = 2, signal}: {retries?: number; signal?: AbortSignal} = {}): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
     let response;
     try {
-      response = await fetch(url, { signal: AbortSignal.timeout(30000) });
+      const timeout = AbortSignal.timeout(30000);
+      response = await fetch(url, {signal: signal ? AbortSignal.any([signal, timeout]) : timeout});
     } catch (cause) {
+      signal?.throwIfAborted();
       if (attempt < retries) {
-        await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+        await wait(500 * 2 ** attempt, signal);
         continue;
       }
       throw new Error(`${url}: unreachable`, { cause });
@@ -156,7 +170,7 @@ async function request(url: string, retries = 2): Promise<Response> {
 
     if (!response.ok) {
       if ((response.status === 429 || response.status >= 500) && attempt < retries) {
-        await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+        await wait(500 * 2 ** attempt, signal);
         continue;
       }
       throw new Error(`${url}: HTTP ${response.status}`);
@@ -166,10 +180,10 @@ async function request(url: string, retries = 2): Promise<Response> {
 }
 
 /** Stable catalogs do not promote a prerelease merely because its publisher moved latest. */
-async function publishedVersion(name: string, latest: string, allowPrerelease: boolean): Promise<string> {
+async function publishedVersion(name: string, latest: string, allowPrerelease: boolean, signal?: AbortSignal): Promise<string> {
   if (!semver.valid(latest)) throw new Error(`Invalid published version: ${name}@${latest}`);
   if (allowPrerelease || !semver.prerelease(latest)) return latest;
-  const registry = await request(`https://registry.npmjs.org/${name}`).then(r => r.json()) as {
+  const registry = await request(`https://registry.npmjs.org/${name}`, {signal}).then(r => r.json()) as {
     versions?: Record<string, {deprecated?: string}>;
   };
   const candidates = Object.entries(registry.versions ?? {}).flatMap(([version, manifest]) =>
@@ -179,14 +193,35 @@ async function publishedVersion(name: string, latest: string, allowPrerelease: b
   return stable;
 }
 
-/** Discover the primary runnable artifact in an exact npm version, never in a moving branch. */
-export async function publishedExtension(pkg: DashboardPackage, {allowPrerelease = false} = {}): Promise<PublishedExtension> {
+/**
+ * Discover the primary runnable artifact in an exact npm version, never in a
+ * moving branch.
+ *
+ * Every request for one package shares an abort scope. The pair below runs
+ * concurrently, so without it the surviving request would go on retrying into
+ * a result nobody is left to read.
+ */
+export async function publishedExtension(
+  pkg: DashboardPackage,
+  {allowPrerelease = false, signal}: {allowPrerelease?: boolean; signal?: AbortSignal} = {},
+): Promise<PublishedExtension> {
+  const scope = new AbortController();
+  try {
+    return await readPublishedExtension(pkg, allowPrerelease,
+      signal ? AbortSignal.any([signal, scope.signal]) : scope.signal);
+  } catch (error) {
+    scope.abort(error);
+    throw error;
+  }
+}
+
+async function readPublishedExtension(pkg: DashboardPackage, allowPrerelease: boolean, signal: AbortSignal): Promise<PublishedExtension> {
   const name = pkg.npm!.name!;
-  const version = await publishedVersion(name, pkg.npm!.latest!, allowPrerelease);
+  const version = await publishedVersion(name, pkg.npm!.latest!, allowPrerelease, signal);
   const base = `https://cdn.jsdelivr.net/npm/${name}@${version}`;
   const [manifest, tree] = await Promise.all([
-    request(`${base}/package.json`).then(r => r.json()) as Promise<PublishedManifest>,
-    request(`https://data.jsdelivr.com/v1/package/npm/${name}@${version}/flat`).then(r => r.json()) as Promise<{ files: { name: string }[] }>,
+    request(`${base}/package.json`, {signal}).then(r => r.json()) as Promise<PublishedManifest>,
+    request(`https://data.jsdelivr.com/v1/package/npm/${name}@${version}/flat`, {signal}).then(r => r.json()) as Promise<{ files: { name: string }[] }>,
   ]);
   if (manifest.name !== name || manifest.version !== version) {
     throw new Error(`Published manifest mismatch: ${name}@${version}`);
@@ -201,7 +236,7 @@ export async function publishedExtension(pkg: DashboardPackage, {allowPrerelease
   });
   for (const path of paths) {
     const url = `${base}${path}`;
-    const response = await request(url);
+    const response = await request(url, {signal});
     const bytes = new Uint8Array(await response.arrayBuffer());
     const source = new TextDecoder().decode(bytes);
     const metadata = extensionHeader(source);
@@ -211,7 +246,7 @@ export async function publishedExtension(pkg: DashboardPackage, {allowPrerelease
       return locale ? [[locale, value]] : [];
     }));
     if (!descriptions.ja && tree.files.some(file => file.name === '/README.ja.md')) {
-      const readme = await request(`${base}/README.ja.md`).then(response => response.text());
+      const readme = await request(`${base}/README.ja.md`, {signal}).then(response => response.text());
       const summary = describeFromReadme(readme, {names: [name, pkg.repo]});
       if (summary) descriptions.ja = summary;
     }
@@ -294,13 +329,129 @@ export function assembleEditorCatalog(
   return { schemaVersion: 1, generatedAt, ...(catalogCategories !== undefined ? {categories: catalogCategories} : {}), extensions };
 }
 
-export async function collectEditorCatalog(report: DashboardReport, {allowPrerelease = false} = {}): Promise<EditorCatalog> {
+/**
+ * What one failing package carries over from, and how long it has been
+ * failing. Kept out of `extensions-v1.json`: this is our bookkeeping, not part
+ * of the published contract.
+ */
+export interface CatalogFailure {
+  /** Consecutive runs that have failed, this one included. */
+  attempts: number;
+  error: string;
+  /** When the run of failures started. */
+  since: string;
+}
+
+export interface CatalogState {
+  schemaVersion: 1;
+  savedAt: string;
+  /** The records behind the catalog we just published, manifests included. */
+  published: PublishedExtension[];
+  failures: Record<string, CatalogFailure>;
+}
+
+export interface CatalogCollection {
+  catalog: EditorCatalog;
+  /** Feed this back as `previous` on the next run. */
+  state: CatalogState;
+  carriedOver: {package: string; attempts: number; error: string}[];
+}
+
+/**
+ * Only the fields this module declares are worth keeping. The rest of a
+ * package.json — scripts, devDependencies — is noise in a file we restore on
+ * every run.
+ */
+function persistableManifest({name, version, jsdelivr, unpkg, author, license,
+  dependencies, peerDependencies, optionalDependencies}: PublishedManifest): PublishedManifest {
+  return Object.fromEntries(Object.entries({name, version, jsdelivr, unpkg, author, license,
+    dependencies, peerDependencies, optionalDependencies}).filter(([, value]) => value !== undefined));
+}
+
+/**
+ * Local facts are re-read even for a carried-over entry: a package moved to
+ * another category, or a docs site that went down, is knowledge we already
+ * have in `data/dashboard.json` and should not keep stale copies of. Only what
+ * had to be fetched — version, URL, hash, name, description, banner — comes
+ * from the previous run.
+ */
+function withCurrentLocalFields(kept: PublishedExtension, pkg: DashboardPackage): PublishedExtension {
+  const entry = {...kept.entry, category: pkg.category};
+  delete entry.docsURL;
+  const docsURL = extensionDocsURL(pkg);
+  return {...kept, entry: docsURL ? {...entry, docsURL} : entry};
+}
+
+/**
+ * Collect every publishable extension, falling back to the previous run for
+ * any package that cannot be read right now.
+ *
+ * A single unreachable package used to cost the whole dashboard its
+ * publication. It cannot simply be dropped either: `assembleEditorCatalog`
+ * validates dependencies between extensions, so removing one would break
+ * every extension that depends on it, and the Editor loads a project's
+ * extensions all-or-nothing. So a failure keeps the last known-good record
+ * instead — but only for `maxAttempts` runs in a row. Past that it is no
+ * longer a hiccup, and the build fails rather than publishing a stale entry
+ * indefinitely. A package with nothing to fall back on fails immediately.
+ */
+export async function collectEditorCatalog(report: DashboardReport, {allowPrerelease = false, previous, maxAttempts = 3}: {
+  allowPrerelease?: boolean;
+  previous?: CatalogState;
+  maxAttempts?: number;
+} = {}): Promise<CatalogCollection> {
   const candidates = report.packages.filter(pkg => pkg.unsandboxed !== undefined &&
     !['apps', 'toolchain'].includes(pkg.category) && pkg.npm?.published && pkg.npm.latest &&
     !pkg.npm.deprecated && !pkg.github?.isArchived);
-  const published = await pool(candidates, 4, pkg => publishedExtension(pkg, {allowPrerelease}));
+  const results = await pool(candidates, 4, async pkg => {
+    try {
+      return {pkg, record: await publishedExtension(pkg, {allowPrerelease})};
+    } catch (error) {
+      // Held, not thrown: the other packages are still worth collecting, and
+      // whether this one is fatal depends on what the previous run left us.
+      return {pkg, error: errorMessage(error)};
+    }
+  });
+
+  const keptByPackage = new Map((previous?.published ?? []).map(record => [record.entry.package, record]));
+  const savedAt = new Date().toISOString();
+  const published: PublishedExtension[] = [];
+  const failures: Record<string, CatalogFailure> = {};
+  const carriedOver: CatalogCollection['carriedOver'] = [];
+  const fatal: string[] = [];
+
+  for (const result of results) {
+    if (result.record) {
+      published.push(result.record);
+      continue;
+    }
+    const name = result.pkg.npm!.name!;
+    const kept = keptByPackage.get(name);
+    const previousFailure = previous?.failures[name];
+    const attempts = (previousFailure?.attempts ?? 0) + 1;
+    if (!kept) {
+      fatal.push(`${name}: ${result.error} (nothing published previously to fall back on)`);
+      continue;
+    }
+    if (attempts > maxAttempts) {
+      fatal.push(`${name}: ${result.error} (${attempts} consecutive runs have failed since ${previousFailure!.since})`);
+      continue;
+    }
+    published.push(withCurrentLocalFields(kept, result.pkg));
+    failures[name] = {attempts, error: result.error!, since: previousFailure?.since ?? savedAt};
+    carriedOver.push({package: name, attempts, error: result.error!});
+  }
+  if (fatal.length > 0) {
+    throw new Error(`Cannot build the extension catalog:\n  ${fatal.join('\n  ')}`);
+  }
+
   const knownExtensions = new Set(report.packages.filter(pkg => pkg.unsandboxed !== undefined &&
     !['apps', 'toolchain'].includes(pkg.category)).flatMap(pkg => pkg.npm?.name ? [pkg.npm.name] : []));
   const categories = report.categories.map(({id, title, titleJa}) => ({id, title, ...(titleJa != null ? {titleJa} : {})}));
-  return assembleEditorCatalog(report.generatedAt, published, knownExtensions, categories);
+  return {
+    catalog: assembleEditorCatalog(report.generatedAt, published, knownExtensions, categories),
+    state: {schemaVersion: 1, savedAt, failures,
+      published: published.map(record => ({...record, manifest: persistableManifest(record.manifest)}))},
+    carriedOver,
+  };
 }
