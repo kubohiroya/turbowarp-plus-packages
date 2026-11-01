@@ -6,6 +6,8 @@ Runnable samples: [distribution standard and demo plans for all extensions (Japa
 
 Data & Documents: [projecting internal structure for iteration and document trees, a design proposal (Japanese)](docs/data-projection.ja.md).
 
+Editor architecture: [structure, responsibilities and license split of TurboWarp-Plus-Editor (Japanese)](docs/editor-architecture.ja.md).
+
 [**Dashboard → kubohiroya.github.io/turbowarp-plus-packages**](https://kubohiroya.github.io/turbowarp-plus-packages/)
 
 An index of the TurboWarp Plus family: extensions, toolchains, applications and
