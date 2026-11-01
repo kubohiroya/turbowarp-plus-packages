@@ -85,8 +85,8 @@ const REPO_FIELDS = `
   extensionConfig: object(expression: "HEAD:src/config.ts") { ... on Blob { text } }
   viteConfig: object(expression: "HEAD:vite.config.ts") { ... on Blob { text } }
   fixedEditorSource: object(expression: "HEAD:site/source.json") { ... on Blob { text } }
-  fixedEditorContract: object(expression: "HEAD:scripts/site/source.mjs") { ... on Blob { text } }
-  fixedEditorBuild: object(expression: "HEAD:scripts/site/build.mjs") { ... on Blob { text } }
+  fixedEditorContract: object(expression: "HEAD:scripts/site/source.ts") { ... on Blob { text } }
+  fixedEditorBuild: object(expression: "HEAD:scripts/site/build.ts") { ... on Blob { text } }
 `;
 
 /**

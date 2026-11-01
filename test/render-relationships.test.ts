@@ -132,7 +132,7 @@ test('renders category graph buttons and labelled dialogs while keeping the dash
       family: true, local: false, stale: false,
     });
     editor.buildDependencies = [{ repo: gui.repo, revision: 'a'.repeat(40), sourceRevision: 'b'.repeat(40),
-      sourcePath: 'site/source.json', contractPaths: ['scripts/site/source.mjs', 'scripts/site/build.mjs'] }];
+      sourcePath: 'site/source.json', contractPaths: ['scripts/site/source.ts', 'scripts/site/build.ts'] }];
     editor.dependencies = [dependency(api, 'dev')];
     gui.dependencies = [dependency(api), dependency(security)];
     dataA.dependencies = [dependency(api), dependency(security, 'dev')];

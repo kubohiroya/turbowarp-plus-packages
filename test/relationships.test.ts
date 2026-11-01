@@ -62,7 +62,7 @@ test('npm identity is supported when a manifest name is absent, regardless of th
 test('primary graph includes a verified build source and runtime edges; development remains optional', () => {
   const editor = pkg('editor', 'focus', [['data', 'dev']]);
   editor.buildDependencies = [{ repo: 'gui', revision: 'a'.repeat(40), sourceRevision: 'b'.repeat(40),
-    sourcePath: 'site/source.json', contractPaths: ['scripts/site/source.mjs', 'scripts/site/build.mjs'] }];
+    sourcePath: 'site/source.json', contractPaths: ['scripts/site/source.ts', 'scripts/site/build.ts'] }];
   const gui = pkg('gui', 'focus', [['data', 'prod'], ['security', 'prod']]);
   gui.revision = { head: { oid: 'c'.repeat(40), committedDate: '2026-10-30' }, state: 'untagged', tag: null, release: null, aheadBy: null };
   const packages = [editor, gui, pkg('data', 'focus'), pkg('security', 'focus')];

@@ -221,7 +221,7 @@ export interface BuildDependency {
   revision: string;
   sourceRevision: string;
   sourcePath: 'site/source.json';
-  contractPaths: ['scripts/site/source.mjs', 'scripts/site/build.mjs'];
+  contractPaths: ['scripts/site/source.ts', 'scripts/site/build.ts'];
 }
 
 export interface DemoProject {
