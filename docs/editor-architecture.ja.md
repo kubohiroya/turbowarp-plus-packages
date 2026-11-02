@@ -14,7 +14,7 @@
 ### turbowarp-plus-editor
 
 - npmには、ランチャーとして最小の内容だけを公開します。アイコン、編集ボタンのCSS、EditorのURLと編集ボタンを作るスニペット、固定ソースの記録（`site/source.json`）です。
-- 拡張ローダーの起動APIと、YAML編集のコマンドもランチャーに含めます。どちらも別パッケージの実装本体を呼ぶ薄い受け渡しで、本体はplus-editorに置きません。
+- 拡張ローダーの起動API、YAML編集のコマンド、SB3の保存形式を書き換えるコマンドもランチャーに含めます。どれも別パッケージの実装本体を呼ぶ受け渡しで、本体はplus-editorに置きません。
 - Editor本体（GUIのビルド一式）はnpmに入れず、GitHub Pagesで配信します。
 - アイコンとスニペットは、このリポジトリで保持・管理します。
 - スニペットの部分だけはMPL-2.0とします（下の「ライセンスの切り分け」の規則6）。他のサイトのJavaScriptから読み込んでも、そのサイトにGPL-3.0の義務がかからないようにするためです。
@@ -226,9 +226,11 @@ TurboWarp-Plus全体で、機能拡張だけでなくアセットやDSLファイ
 ### turbowarp-plus-editor
 
 - 独自のコードは約1,400行で、ビルド、固定ソースの検証、CIのチェック、案内ページです。YAML編集ツールは、document-editorを呼ぶ1〜9行の受け渡しになっています。
-- npmパッケージには、スニペットのほかに次の2つが入っています。どちらも実装本体は別パッケージにあり、plus-editorにあるのは薄い受け渡しです。どちらもランチャーの範囲として残します。
+- npmパッケージには、スニペットのほかに次の3つが入っています。どれも実装本体は別パッケージにあり、plus-editorにあるのは受け渡しです。どれもランチャーの範囲として残します。
   - **拡張ローダーの起動API**（`./extension-loader`の`bootstrapExtensionLoader`、74行）：起動時のURLフラグ`twPlusExtensionLoader`を読み、ローダーとGUIの接続を渡されたとおりにつなぐだけです。ローダー本体はturbowarp-extension-loaderにあります。familyの中にこのAPIの利用者はなく、フォークは同じフラグを自前の`src/config/extension-loader-flag.js`で読んでいます。
   - **YAML編集のコマンド**（`turbowarp-plus-editor-yaml`、9行）：turbowarp-document-editor（MPL-2.0）のコマンドに、plus-editorのURL・パス・表示名を渡して起動するだけです。そのため、document-editorとdocument-dataが実行時依存になっています。
+  - **SB3の保存形式を書き換えるコマンド**（`turbowarp-plus-editor-sb3-format`、256行）：SB3のZIPを読み書きし、「このコマンドが書けるもの」の表を添えて、turbowarp-sb3-save-format（MPL-2.0）の`./writer`を呼びます。形式を書く処理は`./writer`にあります。そのため、sb3-save-formatとjszipが実行時依存になっています。起動APIの入口（`.`と`./extension-loader`）はこのコマンドをimportしないので、起動APIだけを使う人はjszipを読み込みません。
+  - このコマンドは別パッケージに分けません。Node.jsのコマンドはブラウザーのIndexedDBにある控えを読めないので、どこに置いても機能を絞った版になります（`cached`の控えは作れず、作品が記録する形式だけを書けます）。分けても機能は増えず、拡張ローダー・sb3-save-format・plus-editorの版を揃える相手が1つ増えるだけです。
 - 開発依存に、データ系のパッケージ（structured-data、named-data、yaml-json、document-source）があります。YAMLと文書のブラウザーテストに使っており、plus-editorが依存の連鎖のいちばん下になる原因です。
 
 ### ライセンス
@@ -273,6 +275,7 @@ TurboWarp-Plus全体で、機能拡張だけでなくアセットやDSLファイ
 - スニペットの部分だけをMPL-2.0にする。
 - security-dialogをMPL-2.0で書き直す。
 - 拡張ローダーの起動APIとYAML編集のコマンドは、ランチャーの範囲としてplus-editorに残す。
+- SB3の保存形式を書き換えるコマンドも、ランチャーの範囲としてplus-editorに残す。Node.jsのコマンドは機能を絞った版にしかならず、別パッケージにすると版を揃える手間だけが増えるため（2026-11-03）。
 - ローダーが扱う拡張の入口は「TurboWarp-Plus」の一覧だけにし、Extension-Loaderボタンもカタログ外の拡張の追加機能も作らない。カスタム拡張画面からローダーとの接続を外す。
 - 依存の向きを再編する。plus-editorが独自拡張のパッケージに（開発依存として）依存し、ビルドのときにフォークへ差し込む。フォークはscratch-vmフォーク以外のfamilyに依存せず、差し込み口とフックだけを持つ。
 - 拡張を追加するときと開くときで、同じ選択画面（security-dialog）を出す。開く人が控えを断るのも、開くときのこの画面で行う。拡張の許可や検証のための画面をほかに置かず、フォーク独自の許可画面と「拡張の検証・許可」を廃止する。
