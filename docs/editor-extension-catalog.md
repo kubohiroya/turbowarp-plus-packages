@@ -56,7 +56,7 @@ Pages workflowおよび `build` / `build:no-thumbnails` に組み込み、ダッ
 | `repository` | 対象リポジトリのHTTPS URL。 |
 | `docsURL` | Pages APIで確認した公開ドキュメントのHTTPS URL。`pages.enabled` / `pages.live` がtrueでHTTP 200を確認できた場合だけ付与します。 |
 | `url` | 完全固定npm版の読み込み用JSのHTTPS URL。 |
-| `sha256` | `url` が返すJSのバイト列のSHA-256（小文字16進64桁）。Editorは、`url` から取得したコードと、この値と一致するコード（作品に同梱されたEmbeddedを含む）を、TurboWarp標準ギャラリーと同じく信頼済みとして扱います。 |
+| `sha256` | `url` が返すJSのバイト列のSHA-256（小文字16進64桁）。Editorは、`url` から取得したコードと、この値と一致するコード（作品が中身を持つ`embedded-file`・`embedded-data`を含む）を、TurboWarp標準ギャラリーと同じく信頼済みとして扱います。 |
 | `category` | `categories[].id` を参照するカテゴリID。新たに生成する全機能拡張に付与します。 |
 | `description` / `descriptions` | 既定の説明とロケール別説明。宣言コメントを優先し、日本語がなければ同じnpm版の `README.ja.md` の要約を使用します。 |
 | `author` / `license` | 製作者名とライセンス。製作者名は公開manifestの `author.name`（または文字列の名前）を優先し、なければ宣言コメントを使用します。 |
