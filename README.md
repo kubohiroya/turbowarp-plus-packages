@@ -22,7 +22,13 @@ English | [日本語](README.ja.md)
 
 ## What the dashboard shows
 
-The dashboard displays the **Package list** only, with summary cards, search,
+The dashboard displays the **Package list** only. Both the list and its table of
+contents separate **Apps & Documentation** (apps, documentation and samples)
+from **Development Packages** (all other categories). On wide screens, the table
+of contents stays on the left while scrolling; category links jump to their
+headings. On narrow screens it appears above the list. Categories with no
+search or status-filter matches are also hidden from the table of contents.
+The list includes summary cards, search,
 status filters and the third-party dependency toggle. There is no tab-style view
 switch. A graph icon immediately to the right of each category heading opens that
 category's package relationships in a modal dialog. List filters and scroll

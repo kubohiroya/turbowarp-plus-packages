@@ -35,22 +35,28 @@ test('renders distinct bilingual sandbox requirements and supports older snapsho
     assert.equal(result.status, 0, result.stderr);
     const html = await readFile(join(root, 'site/index.html'), 'utf8');
     const rows = [...html.matchAll(/<tr data-search=[\s\S]*?<\/tr>/g)].map(([row]) => row);
+    // Display groups can reorder categories; identify rows by package instead.
+    const rowFor = (repo: string) => {
+      const row = rows.find((row) => row.startsWith(`<tr data-search="${repo} `));
+      assert.ok(row, `Missing row for ${repo}`);
+      return row;
+    };
     for (const [i, [style, icon, en, ja]] of [
       ['warn', '🔓', 'required', '必須'], ['idle', '◐', 'optional', '任意'],
       ['ok', '🛡', 'not needed', '不要'], ['idle', '?', 'unknown', '不明'],
     ].entries()) {
-      assert.ok(rows[i].includes(`<span class="tag ${style}"><span aria-hidden="true">${icon}</span>`));
-      assert.ok(rows[i].includes(`<span lang="en">Without sandbox: ${en}</span>`));
-      assert.ok(rows[i].includes(`<span lang="ja">サンドボックスなし：${ja}</span>`));
+      assert.ok(rowFor(`extension-${i}`).includes(`<span class="tag ${style}"><span aria-hidden="true">${icon}</span>`));
+      assert.ok(rowFor(`extension-${i}`).includes(`<span lang="en">Without sandbox: ${en}</span>`));
+      assert.ok(rowFor(`extension-${i}`).includes(`<span lang="ja">サンドボックスなし：${ja}</span>`));
     }
-    assert.doesNotMatch(rows[4], /sandbox-status|Without sandbox|サンドボックスなし/);
-    assert.match(rows[5], /title="extension-&quot;&lt;required&gt;"/);
-    for (const row of [rows[5], rows[6], rows[7]]) {
+    assert.doesNotMatch(rowFor('extension-4'), /sandbox-status|Without sandbox|サンドボックスなし/);
+    assert.match(rowFor('extension-inherited'), /title="extension-&quot;&lt;required&gt;"/);
+    for (const row of [rowFor('extension-inherited'), rowFor('app-inherited'), rowFor('app-override')]) {
       assert.match(row, /Without sandbox: required/);
       assert.match(row, /サンドボックスなし：必須/);
       assert.doesNotMatch(row, /サンドボックスなし：不要/);
     }
-    assert.doesNotMatch(rows[8], /sandbox-status|Without sandbox|サンドボックスなし/);
+    assert.doesNotMatch(rowFor('app-no-requirement'), /sandbox-status|Without sandbox|サンドボックスなし/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
