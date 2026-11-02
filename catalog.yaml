@@ -153,6 +153,8 @@ categories:
   #   document-source decorates document-data's source document registry
   #   with where a source lives (an SB3 file or an HTTPS URL) and how it is
   #   edited (text, YAML blocks or schema blocks), keeping no second copy.
+  #   yaml-json builds immutable structured fragments, parses text into that
+  #   model, validates schemas and renders YAML/JSON for other data packages.
   #   See docs/data-projection.ja.md.
   - id: data
     title: Data & Documents
@@ -163,6 +165,7 @@ categories:
       - turbowarp-structured-data
       - turbowarp-document-data
       - turbowarp-document-source
+      - turbowarp-yaml-json
       - turbowarp-markdown
       - turbowarp-html
       - turbowarp-text-lines
@@ -260,7 +263,7 @@ categories:
       - turbowarp-sesame
 
   # Includes: thin extensions whose blocks mostly expose one JavaScript library
-  #   (a QR encoder or decoder, a YAML parser) or one browser API (Web Speech,
+  #   (a QR encoder or decoder) or one browser API (Web Speech,
   #   WebUSB, Web Crypto) as it is, adding little model of their own.
   # Excludes: packages that build their own model on top of a library, such as
   #   a scene graph over A-Frame or a recognition pipeline over Teachable
@@ -274,7 +277,6 @@ categories:
     packages:
       - turbowarp-qr-display
       - turbowarp-jsqr
-      - turbowarp-yaml-json
       - turbowarp-web-speech
       - turbowarp-webusb-pasori
       - turbowarp-uuid
