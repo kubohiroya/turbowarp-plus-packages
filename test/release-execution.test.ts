@@ -211,3 +211,28 @@ test('concurrent execution keeps one consistent journal and resumes only unfinis
     assert(events.indexOf('right:complete') < events.indexOf('leaf:prepared'));
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('a step found unnecessary stops before pushing, lets its downstream continue and stays cancelled on resume', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'release-cancel-'));
+  try {
+    const { plan, config } = fixture();
+    const digest = executionDigest(plan, config);
+    const events: string[] = [];
+    const cancelling = (): ReleaseDriver => {
+      const driver = fakeDriver(events);
+      const prepared = driver.prepared;
+      driver.prepared = async (step, profile, entry) => {
+        await prepared(step, profile, entry);
+        if (step.repo === 'upstream') entry.cancelled = 'unchanged';
+      };
+      return driver;
+    };
+    const result = await executeReleasePlan(plan, config, root, cancelling, digest);
+    assert.equal(result.entries.upstream.cancelled, 'unchanged');
+    assert(!events.includes('upstream:pushed'));
+    assert(events.includes('downstream:complete'));
+    events.length = 0;
+    await executeReleasePlan(plan, config, root, () => fakeDriver(events), digest);
+    assert.deepEqual(events, ['upstream:preflight', 'downstream:preflight', 'downstream:complete']);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
