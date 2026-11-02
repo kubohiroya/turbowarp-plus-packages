@@ -8,6 +8,7 @@ import semver from 'semver';
 import type { Command, ExecutionConfig, ExecutionEntry, ExecutionState, ReleaseDriver, ReleaseProfile } from './release-execution.ts';
 import type { PackagePlan } from './release-plan.ts';
 import { profileFromContract } from './release-contract.ts';
+import { effectiveUpdates, onlyDependencyUpdate, samePublishedContent } from './release-unneeded.ts';
 
 export class CommandFailure extends Error {
   constructor(readonly command: Command, readonly stdout: string, readonly stderr: string, readonly status: number | null) {
@@ -203,14 +204,40 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     }
   }
 
+  private updates(step: PackagePlan) {
+    const cancelled = new Set(Object.entries(this.state.entries).filter(([, entry]) => entry.cancelled).map(([repo]) => repo));
+    return effectiveUpdates(step, cancelled);
+  }
+
+  /** Compare the candidate tarball with the published one; equal content means publishing is unnecessary. */
+  private async unchangedFromPublished(step: PackagePlan, profile: ReleaseProfile, artifact: string): Promise<boolean> {
+    const directory = await mkdtemp(join(this.artifacts(step), '.compare-'));
+    try {
+      const output = await this.npm(profile, ['pack', `${step.name}@${step.publishedVersion}`, '--ignore-scripts', '--json', '--pack-destination', directory], directory);
+      const result = JSON.parse(output);
+      const filename = (Array.isArray(result) ? result[0] : result)?.filename;
+      assert(typeof filename === 'string' && basename(filename) === filename, '公開済みtarballを特定できません。');
+      for (const [name, source] of [['candidate', artifact], ['published', join(directory, filename)]]) {
+        await mkdir(join(directory, name));
+        await this.run(['tar', '-xzf', source, '-C', join(directory, name)]);
+      }
+      return await samePublishedContent(join(directory, 'candidate', 'package'), join(directory, 'published', 'package'));
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  }
+
   async prepared(step: PackagePlan, profile: ReleaseProfile, entry: ExecutionEntry): Promise<void> {
     if (step.action === 'none') return;
+    const updates = this.updates(step);
+    if (onlyDependencyUpdate(step) && !updates.length) {
+      entry.cancelled = '依存の更新先がすべて取りやめになり、更新するものがありません。';
+      return;
+    }
     const cwd = this.path(step);
     if (!entry.commit) {
       const path = join(cwd, 'package.json');
       const before = await readFile(path, 'utf8');
       const manifest = JSON.parse(before);
-      for (const change of step.dependencyUpdates) {
+      for (const change of updates) {
         assert([change.from, change.to].includes(manifest[change.field]?.[change.name]), '依存指定が解析時から変わっています。');
         manifest[change.field][change.name] = change.to;
       }
@@ -251,6 +278,10 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
         entry.artifact = artifact;
         entry.shasum = packedHash;
       } finally { await rm(temporary, { recursive: true, force: true }); }
+      if (onlyDependencyUpdate(step) && step.publishedVersion && await this.unchangedFromPublished(step, profile, entry.artifact)) {
+        entry.cancelled = `公開済みの${step.publishedVersion}と、利用者に届く中身が同じです（変わるのはversionとdevDependenciesだけ）。`;
+        return;
+      }
       if (!entry.extraArtifacts) {
         const extraArtifacts: NonNullable<ExecutionEntry['extraArtifacts']> = [];
         for (const file of profile.artifacts ?? []) {
@@ -269,7 +300,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     }
     const after = JSON.parse(await readFile(join(cwd, 'package.json'), 'utf8'));
     assert(after.name === step.name && after.version === versionOf(step), '検証コマンドがname/versionを変更しました。');
-    for (const change of step.dependencyUpdates) assert.equal(after[change.field]?.[change.name], change.to);
+    for (const change of updates) assert.equal(after[change.field]?.[change.name], change.to);
     assert.equal(await this.git(step, 'status', '--porcelain'), '', '検証後に未コミット変更があります。');
   }
 
@@ -290,7 +321,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
       } else {
         const notes = join(this.root, 'notes', step.repo, 'pr-body.md');
         await mkdir(dirname(notes), { recursive: true });
-        await writeFile(notes, `${step.name}を${versionOf(step)}へ更新する。\n\n依存更新:\n${step.dependencyUpdates.map(update => `- ${update.name}: ${update.from} → ${update.to}`).join('\n') || '- なし'}\n\n検証: 設定されたinstall/prepare/verifyを実行済み。\n計画SHA: ${this.state.digest}\n\nロールバック: 未公開差分はrevert。公開済み版は上書きせず別番号で修正する。\n`);
+        await writeFile(notes, `${step.name}を${versionOf(step)}へ更新する。\n\n依存更新:\n${this.updates(step).map(update => `- ${update.name}: ${update.from} → ${update.to}`).join('\n') || '- なし'}\n\n検証: 設定されたinstall/prepare/verifyを実行済み。\n計画SHA: ${this.state.digest}\n\nロールバック: 未公開差分はrevert。公開済み版は上書きせず別番号で修正する。\n`);
         entry.prUrl = await this.run(['gh', 'pr', 'create', '--repo', step.repository, '--base', entry.base!, '--head', entry.branch!, '--title', `chore(release): prepare ${step.name} ${versionOf(step)}`, '--body-file', notes]);
         assert.match(entry.prUrl, new RegExp(`^https://github.com/${step.repository}/pull/\\d+$`, 'u'));
         entry.pr = Number(entry.prUrl.split('/').at(-1));

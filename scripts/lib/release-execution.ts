@@ -41,6 +41,8 @@ export interface ExecutionEntry {
   publishAccepted?: boolean;
   extraArtifacts?: { path: string; sha256: string }[];
   dispatchHeadSha?: string;
+  /** Why the step turned out to be unnecessary; it then stops without pushing, tagging or publishing. */
+  cancelled?: string;
   error?: string;
 }
 export interface ExecutionState {
@@ -228,6 +230,10 @@ export async function executeReleasePlan(
       const entry = state.entries[step.repo];
       const profile = config.repositories[step.repository];
       try {
+        if (entry.cancelled) {
+          progress(step.repository, 'cancelled');
+          return;
+        }
         if (entry.phase === 'complete') {
           progress(step.repository, 'recheck');
           await driver.complete(step, profile, entry);
@@ -238,8 +244,13 @@ export async function executeReleasePlan(
           if (phase === 'pending') continue;
           progress(step.repository, phase);
           await driver[phase](step, profile, entry);
-          entry.phase = phase;
           delete entry.error;
+          if (entry.cancelled) {
+            progress(step.repository, 'cancelled');
+            await save();
+            break;
+          }
+          entry.phase = phase;
           await save();
         }
       } catch (error) {
