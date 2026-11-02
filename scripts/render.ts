@@ -124,7 +124,30 @@ body {
 }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
-.wrap { max-width: 1440px; margin: 0 auto; padding: 0 16px 80px; }
+.wrap { max-width: 1720px; margin: 0 auto; padding: 0 24px 80px; }
+.catalog-layout { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: 32px; align-items: start; }
+.main-content { min-width: 0; }
+.category-toc {
+  position: sticky; top: 16px; max-height: calc(100dvh - 32px); overflow-y: auto;
+  padding: 18px 14px; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 14px; font-size: 13px;
+}
+.category-toc h2 { margin: 0 8px 16px; font-size: 17px; }
+.toc-group + .toc-group { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
+.toc-group h3 {
+  margin: 0 0 10px; padding: 9px 10px; border-left: 4px solid var(--accent);
+  border-radius: 0 7px 7px 0; background: var(--idle-bg); color: var(--text);
+  font-size: 15px; font-weight: 700; line-height: 1.4;
+}
+.category-toc ul { list-style: none; padding: 0 0 0 8px; margin: 0 0 0 10px; border-left: 1px solid var(--border); }
+.category-toc a { display: block; padding: 7px 8px; border-radius: 7px; color: var(--text); overflow-wrap: anywhere; }
+.category-toc a:hover { background: var(--idle-bg); text-decoration: none; }
+.category-toc a[aria-current="location"] { background: var(--idle-bg); color: var(--accent); font-weight: 600; }
+.package-group { margin: 32px 0 40px; }
+.package-group > header { margin-bottom: 20px; padding: 18px 20px; border-left: 4px solid var(--accent); background: var(--idle-bg); border-radius: 0 10px 10px 0; }
+.package-group > header h3 { margin: 0 0 4px; font-size: 23px; }
+.package-group > header p { margin: 0; color: var(--muted); font-size: 13px; }
+#package-list section[data-category] { scroll-margin-top: calc(var(--toolbar-height, 160px) + 16px); }
 
 header.hero { padding: 40px 0 24px; display: flex; gap: 20px; align-items: flex-start; }
 .hero .mark { width: 66px; height: 66px; flex: none; }
@@ -294,7 +317,7 @@ html.modal-open { overflow: hidden; scrollbar-gutter: stable; }
 .graph-secondary > p { font-size: 13px; margin: 6px 0; }
 .graph-help { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .category-heading { display: flex; gap: 10px; align-items: center; margin-bottom: 4px; }
-.category-heading h3 { margin: 0; font-size: 19px; }
+.category-heading h4 { margin: 0; font-size: 19px; }
 .category-graph {
   display: inline-flex; justify-content: center; align-items: center; flex: none;
   width: 36px; height: 36px; padding: 7px; cursor: pointer; color: var(--accent);
@@ -310,18 +333,25 @@ a:focus-visible, button:focus-visible, select:focus-visible, summary:focus-visib
   outline: 3px solid var(--accent); outline-offset: 3px;
 }
 .main-content > h2 { font-size: 25px; margin: 0 0 8px; }
-.main-content > section > h3 { font-size: 19px; margin: 0 0 2px; }
-.main-content > section > p.lead { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
 .view-status { color: var(--muted); font-size: 13px; }
 .data-as-of { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 .data-warning { padding: 10px 12px; border: 1px solid var(--warn-fg); border-radius: 8px; color: var(--warn-fg); background: var(--warn-bg); }
 [hidden] { display: none !important; }
+@media (max-width: 960px) {
+  .catalog-layout { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .category-toc { position: static; max-height: none; }
+  .category-toc ul { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+  .category-toc a { border: 1px solid var(--border); }
+}
 @media (max-width: 600px) {
   .wrap { padding-left: 12px; padding-right: 12px; }
   header.hero { padding-top: 24px; gap: 12px; }
   header.hero h1 { font-size: 24px; }
   .hero .mark { width: 42px; height: 42px; }
   .toolbar { position: static; }
+  #package-list section[data-category] { scroll-margin-top: 16px; }
+  .package-group > header { padding: 14px; }
+  .package-group > header h3 { font-size: 21px; }
   .dialog-body { padding: 12px; }
   .dialog-toolbar { padding: 10px 12px; }
   .toolbar input[type=search] { min-width: 0; width: 100%; }
@@ -347,6 +377,34 @@ const filters = [...document.querySelectorAll('[data-filter]')];
 const showExternal = document.getElementById('external');
 // The language switch lives in the shared header, which reports presses.
 const header = document.querySelector('turbowarp-plus-header');
+const categorySections = [...document.querySelectorAll('#package-list section[data-category]')];
+const tocLinks = [...document.querySelectorAll('.category-toc a[data-category-link]')];
+const toolbar = document.querySelector('.toolbar');
+
+function updateCurrentCategory() {
+  const visible = categorySections.filter((section) => !section.hidden);
+  const top = getComputedStyle(toolbar).position === 'sticky' ? toolbar.getBoundingClientRect().height + 24 : 24;
+  let current = visible[0];
+  for (const section of visible) {
+    if (section.getBoundingClientRect().top <= top) current = section;
+    else break;
+  }
+  for (const link of tocLinks) {
+    if (link.dataset.categoryLink === current?.dataset.category) link.setAttribute('aria-current', 'location');
+    else link.removeAttribute('aria-current');
+  }
+}
+
+let scrollPending = false;
+window.addEventListener('scroll', () => {
+  if (scrollPending) return;
+  scrollPending = true;
+  requestAnimationFrame(() => { updateCurrentCategory(); scrollPending = false; });
+}, { passive: true });
+new ResizeObserver(() => {
+  document.documentElement.style.setProperty('--toolbar-height', toolbar.getBoundingClientRect().height + 'px');
+  updateCurrentCategory();
+}).observe(toolbar);
 
 const PLACEHOLDER = {
   en: 'Filter by name or description…',
@@ -368,7 +426,7 @@ function apply() {
   const active = filters.filter((f) => f.checked).map((f) => f.dataset.filter);
 
   let matching = 0;
-  for (const section of document.querySelectorAll('#package-list section[data-category]')) {
+  for (const section of categorySections) {
     let shown = 0;
     for (const row of section.querySelectorAll('tbody tr')) {
       const haystack = row.dataset.search;
@@ -382,6 +440,16 @@ function apply() {
     section.hidden = shown === 0;
     matching += shown;
   }
+  for (const link of tocLinks) {
+    link.parentElement.hidden = document.getElementById('category-' + link.dataset.categoryLink).hidden;
+  }
+  for (const group of document.querySelectorAll('.package-group')) {
+    group.hidden = ![...group.querySelectorAll('section[data-category]')].some((section) => !section.hidden);
+  }
+  for (const group of document.querySelectorAll('.toc-group')) {
+    group.hidden = ![...group.querySelectorAll('li')].some((item) => !item.hidden);
+  }
+  updateCurrentCategory();
   document.getElementById('view-status').textContent = document.documentElement.lang === 'ja'
     ? matching + ' 件が一致' : matching + ' packages match';
 }
@@ -1001,10 +1069,31 @@ async function main() {
 
   const head = HEADERS.map(([en, ja]) => `<th>${t(en, ja)}</th>`).join('');
 
-  const sections = report.categories
+  const visibleCategories = report.categories.filter((category) => byCategory.get(category.id)?.length);
+  const groups = [
+    {
+      id: 'use', title: t('Apps & Documentation', 'アプリ・ドキュメント'),
+      description: t('Ready-to-use apps, guides and sample projects.', 'そのまま使えるアプリと、使い方を学ぶガイド・サンプル。'),
+      categories: visibleCategories.filter((category) => ['apps', 'docs'].includes(category.id)),
+    },
+    {
+      id: 'develop', title: t('Development Packages', '開発用パッケージ'),
+      description: t('Extensions, editor components and tools for building projects and apps.', 'プロジェクトやアプリを作るための拡張・エディター構成要素・ツール。'),
+      categories: visibleCategories.filter((category) => !['apps', 'docs'].includes(category.id)),
+    },
+  ].filter((group) => group.categories.length);
+
+  const toc = `<nav class="category-toc" aria-labelledby="toc-heading">
+  <h2 id="toc-heading">${t('Contents', '目次')}</h2>
+  ${groups.map((group) => `<div class="toc-group" data-toc-group="${group.id}">
+    <h3>${group.title}</h3>
+    <ul>${group.categories.map((category) => `<li><a href="#category-${esc(category.id)}" data-category-link="${esc(category.id)}">${t(esc(category.title), esc(category.titleJa ?? category.title))}</a></li>`).join('')}</ul>
+  </div>`).join('\n')}
+</nav>`;
+
+  const sections = new Map(visibleCategories
     .map((category) => {
       const packages = byCategory.get(category.id) ?? [];
-      if (!packages.length) return '';
 
       const rows = packages.map((pkg) => row(pkg, thumbs.get(pkg.repo), report.site?.demoEditorUrl ?? DEFAULT_DEMO_EDITOR)).join('\n');
       const heading = t(esc(category.title), esc(category.titleJa ?? category.title));
@@ -1012,8 +1101,8 @@ async function main() {
         ? `<p class="lead">${t(esc(category.description), esc(category.descriptionJa ?? category.description))}</p>`
         : '';
 
-      return `<section data-category="${esc(category.id)}">
-  <div class="category-heading"><h3>${heading}</h3>
+      return [category.id, `<section data-category="${esc(category.id)}" id="category-${esc(category.id)}" aria-labelledby="category-heading-${esc(category.id)}" tabindex="-1">
+  <div class="category-heading"><h4 id="category-heading-${esc(category.id)}">${heading}</h4>
     <button type="button" class="category-graph" data-graph-open="relationships-${esc(category.id)}" aria-haspopup="dialog" aria-controls="relationships-${esc(category.id)}" title="${esc(category.title)} / ${esc(category.titleJa ?? category.title)}: Package relationships / パッケージ相関図">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 7L16 7M7 9L11 17M17 9L13 17"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="19" r="3"/></svg>
       <span class="sr-only">${t(`View relationships: ${esc(category.title)}`, `パッケージ相関図を表示：${esc(category.titleJa ?? category.title)}`)}</span>
@@ -1026,9 +1115,12 @@ async function main() {
 ${rows}
     </tbody>
   </table></div>
-</section>`;
-    })
-    .join('\n');
+</section>`] as const;
+    }));
+  const groupedSections = groups.map((group) => `<div class="package-group" data-package-group="${group.id}" role="group" aria-labelledby="group-heading-${group.id}">
+  <header><h3 id="group-heading-${group.id}">${group.title}</h3><p>${group.description}</p></header>
+  ${group.categories.map((category) => sections.get(category.id)).join('\n')}
+</div>`).join('\n');
 
   const counts = [
     report.packages.length,
@@ -1092,7 +1184,8 @@ ${rows}
   </div>
 </header>
 
-<main>
+<main class="catalog-layout">
+${toc}
 <section id="package-list" class="main-content" aria-labelledby="list-heading">
 <h2 id="list-heading">${t('Package list', 'パッケージ一覧')}</h2>
 ${freshness}
@@ -1109,7 +1202,7 @@ ${filterBoxes}
   <span class="legend">${t('💀 local reference · ⚠️ stale range', '💀 ローカル参照 ・ ⚠️ stale')}</span>
 </div>
 <p id="view-status" class="view-status" role="status" aria-live="polite"></p>
-${sections}
+${groupedSections}
 </section>
 </main>
 
