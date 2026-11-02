@@ -62,7 +62,7 @@ export function localContractReader(directory: string): ReadSource {
 }
 
 /** Infer existing scripts and generic OIDC jobs; extra repository declarations are optional. */
-export function profileFromContract(manifestText: string, workflowText: string, exception: Partial<ReleaseProfile> = {}): ReleaseProfile {
+export function profileFromContract(manifestText: string, workflowText: string, exception: Partial<ReleaseProfile> = {}, unpublished = false): ReleaseProfile {
   const manifest = object(JSON.parse(manifestText));
   const contract = manifest.turbowarpRelease === undefined ? {} : object(manifest.turbowarpRelease);
   if (manifest.turbowarpRelease !== undefined) assert.equal(contract.schemaVersion, 1, 'turbowarpRelease.schemaVersionは1が必要です。');
@@ -84,7 +84,8 @@ export function profileFromContract(manifestText: string, workflowText: string, 
     verify, artifacts: contract.artifacts ?? [],
   };
   if (exception.publish) assert(exception.publish.mode !== 'cli' && exception.publish.workflow === 'release.yml', '例外もTrusted Publisher・release.ymlが必須です。');
-  if (manifest.private === true) return { ...commands, ...exception, publish: { mode: 'tag-workflow', workflow: 'release.yml' } };
+  // Private packages and update-only steps never publish, so they need no publishing workflow.
+  if (manifest.private === true || unpublished) return { ...commands, ...exception, publish: { mode: 'tag-workflow', workflow: 'release.yml' } };
   const doc = parseDocument(workflowText, { uniqueKeys: true });
   assert(!doc.errors.length, `release.ymlが不正です: ${doc.errors.map(error => error.message).join(', ')}`);
   const workflow = object(doc.toJS());
@@ -154,9 +155,10 @@ export function resolveContracts(plan: ReleasePlan, read: ReadSource, overrides?
     try {
       const manifest = read(step.repository, step.headSha!, 'package.json');
       const metadata = JSON.parse(manifest);
-      const workflow = metadata.private === true ? '' : read(step.repository, step.headSha!, '.github/workflows/release.yml');
+      const unpublished = metadata.private === true || step.action === 'update-only';
+      const workflow = unpublished ? '' : read(step.repository, step.headSha!, '.github/workflows/release.yml');
       const override = overrides?.repositories[step.repository];
-      const profile = profileFromContract(manifest, workflow, override);
+      const profile = profileFromContract(manifest, workflow, override, unpublished);
       assert.equal(metadata.name, step.name, '計画とpackage名が異なります。');
       assert.equal(metadata.version, step.currentVersion, '計画とpackage版が異なります。');
       result.repositories[step.repository] = profile;

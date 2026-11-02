@@ -181,3 +181,18 @@ test('discovery and saved dry-run work offline without modifying repo/workspace 
     assert.equal((await readFile(join(repo, 'package.json'), 'utf8')), '{}');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('an update-only step of a public package needs no publishing workflow', () => {
+  const p = plan();
+  p.steps[0] = { ...p.steps[0], action: 'update-only', publishedVersion: null };
+  p.publishTargets = [];
+  const read = (_repo: string, _sha: string, file: string) => {
+    if (file === 'package.json') return manifest();
+    throw new Error(`${file} must not be read`);
+  };
+  const config = resolveContracts(p, read);
+  assert.deepEqual(config.repositories['family/tool'].verify, [['corepack', 'pnpm', 'run', 'release:verify']]);
+  assert.deepEqual(Object.keys(config.contracts[0].files), ['package.json']);
+  p.steps[0] = { ...p.steps[0], action: 'publish' };
+  assert.throws(() => resolveContracts(p, read), /release\.yml must not be read/u);
+});
