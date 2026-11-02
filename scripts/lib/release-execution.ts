@@ -147,12 +147,46 @@ export async function saveExecutionState(directory: string, state: ExecutionStat
 }
 
 /** Persist every boundary; re-check completed upstreams before continuing a resumed batch. */
+/**
+ * Run each step once every upstream step in the plan has finished, at most `concurrency` at a time.
+ * After a failure no new step starts; the running ones finish and the first error is thrown.
+ */
+export async function runByDependencies(
+  steps: PackagePlan[], concurrency: number, run: (step: PackagePlan) => Promise<void>,
+): Promise<void> {
+  const inPlan = new Set(steps.map(step => step.repo));
+  const upstream = new Map(steps.map(step => [step.repo,
+    new Set(step.dependencyUpdates.map(update => update.upstreamRepo).filter(repo => inPlan.has(repo) && repo !== step.repo))]));
+  const done = new Set<string>();
+  const waiting = [...steps];
+  const running = new Set<Promise<void>>();
+  let failure: { error: unknown } | undefined;
+  while (waiting.length || running.size) {
+    while (!failure && running.size < concurrency) {
+      const index = waiting.findIndex(step => [...upstream.get(step.repo)!].every(repo => done.has(repo)));
+      if (index < 0) break;
+      const [step] = waiting.splice(index, 1);
+      const task: Promise<void> = run(step).then(
+        () => { done.add(step.repo); },
+        error => { failure ??= { error }; },
+      ).finally(() => running.delete(task));
+      running.add(task);
+    }
+    if (!running.size) break;
+    await Promise.race(running);
+  }
+  if (failure) throw failure.error;
+  if (waiting.length) throw new Error(`依存先が終わらないため実行できません: ${waiting.map(step => step.repo).join(', ')}`);
+}
+
 export async function executeReleasePlan(
   plan: ReleasePlan, config: ExecutionConfig, workspace: string,
   createDriver: (save: () => Promise<void>, state: ExecutionState) => ReleaseDriver,
   confirmation: string,
   progress: (repository: string, phase: string) => void = () => {},
+  concurrency = 1,
 ): Promise<ExecutionState> {
+  if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error('並列数は1以上の整数が必要です。');
   const digest = executionDigest(plan, config);
   if (confirmation !== digest) throw new Error('dry-runで表示した実行digestと確認値が一致しません。');
   const directory = resolve(workspace);
@@ -172,7 +206,9 @@ export async function executeReleasePlan(
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       state = { schemaVersion: 1, digest, entries: Object.create(null) as Record<string, ExecutionEntry>, effectiveConfig: config };
     }
-    const save = () => saveExecutionState(directory, state);
+    // Steps run concurrently, so writes of the shared state are serialized.
+    let saving: Promise<void> = Promise.resolve();
+    const save = () => (saving = saving.catch(() => {}).then(() => saveExecutionState(directory, state)));
     const driver = createDriver(save, state);
     for (const step of plan.steps) {
       const entry = Object.hasOwn(state.entries, step.repo) ? state.entries[step.repo] : { phase: 'pending' as const };
@@ -188,7 +224,7 @@ export async function executeReleasePlan(
       }
     }
     await save();
-    for (const step of plan.steps) {
+    await runByDependencies(plan.steps, concurrency, async step => {
       const entry = state.entries[step.repo];
       const profile = config.repositories[step.repository];
       try {
@@ -211,7 +247,7 @@ export async function executeReleasePlan(
         await save();
         throw error;
       }
-    }
+    });
     return state;
   } finally {
     await rm(lock, { recursive: true });

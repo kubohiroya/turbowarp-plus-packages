@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { executeReleasePlan, executionDigest, PHASES } from '../scripts/lib/release-execution.ts';
+import { executeReleasePlan, executionDigest, PHASES, runByDependencies } from '../scripts/lib/release-execution.ts';
 import type { ExecutionConfig, ExecutionEntry, ReleaseDriver } from '../scripts/lib/release-execution.ts';
 import type { ReleasePlan, PackagePlan } from '../scripts/lib/release-plan.ts';
 import { parsePackResult } from '../scripts/lib/release-driver.ts';
@@ -146,5 +146,68 @@ test('release CLI dry-run prints approved actions and performs no writes or exte
     const rejected = spawnSync(process.execPath, [...args, '--execute', '--confirm', 'incorrect'], { encoding: 'utf8' });
     assert.equal(rejected.status, 1); assert.match(rejected.stderr, /digest/u);
     assert.deepEqual((await readdir(root)).sort(), ['config.json', 'plan.json']);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+function diamond(): PackagePlan[] {
+  // root <- left, right <- leaf ; lone has no dependency in the plan.
+  const deps: Record<string, string[]> = { root: [], left: ['root'], right: ['root'], lone: [], leaf: ['left', 'right'] };
+  return Object.entries(deps).map(([repo, upstream]) => ({ ...fixture().plan.steps[0], repo, repository: `family/${repo}`, name: `@family/${repo}`,
+    dependencyUpdates: upstream.map(name => ({ field: 'dependencies', name: `@family/${name}`, upstreamRepo: name, from: '^1.0.0', to: '^1.1.0', targetVersion: '1.1.0', source: 'planned' })) }));
+}
+
+test('independent steps run together while every step waits for its upstream steps', async () => {
+  const started: string[] = [];
+  const finished = new Set<string>();
+  let active = 0, peak = 0;
+  const steps = diamond();
+  await runByDependencies(steps, 3, async step => {
+    for (const update of step.dependencyUpdates) assert(finished.has(update.upstreamRepo), `${step.repo} waits for ${update.upstreamRepo}`);
+    started.push(step.repo); active++; peak = Math.max(peak, active);
+    await new Promise(resolve => setTimeout(resolve, 5));
+    active--; finished.add(step.repo);
+  });
+  assert.equal(finished.size, steps.length);
+  assert.deepEqual(started.slice(0, 2).sort(), ['lone', 'root']);
+  assert(peak <= 3 && peak >= 2);
+  const serial: string[] = [];
+  await runByDependencies(steps, 1, async step => { serial.push(step.repo); });
+  assert.deepEqual(serial, ['root', 'left', 'right', 'lone', 'leaf']);
+});
+
+test('after a failure no new step starts, running steps finish and the first error is thrown', async () => {
+  const started: string[] = [];
+  let leftFinished = false;
+  await assert.rejects(runByDependencies(diamond(), 3, async step => {
+    started.push(step.repo);
+    if (step.repo === 'right') throw new Error('right failed');
+    if (step.repo === 'left') { await new Promise(resolve => setTimeout(resolve, 10)); leftFinished = true; }
+  }), /right failed/u);
+  assert(leftFinished);
+  assert(!started.includes('leaf'));
+});
+
+test('concurrent execution keeps one consistent journal and resumes only unfinished steps', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'release-parallel-'));
+  try {
+    const { config: base } = fixture();
+    const plan = { ...fixture().plan, steps: diamond() };
+    plan.order = plan.steps.map(step => step.repo);
+    plan.publishTargets = plan.steps.map(step => ({ repository: step.repository, name: step.name!, version: '1.1.0', tag: 'v1.1.0', headSha: step.headSha! }));
+    const profile = Object.values(base.repositories)[0];
+    const config: ExecutionConfig = { schemaVersion: 1, repositories: Object.fromEntries(plan.steps.map(step => [step.repository, profile])) };
+    const digest = executionDigest(plan, config);
+    const events: string[] = [];
+    await assert.rejects(executeReleasePlan(plan, config, root, () => fakeDriver(events, 'right:merged'), digest, () => {}, 4), /injected/u);
+    const saved = JSON.parse(await readFile(join(root, 'state.json'), 'utf8'));
+    assert.equal(saved.entries.right.phase, 'pushed');
+    assert.equal(saved.entries.lone.phase, 'complete');
+    assert.equal(saved.entries.left.phase, 'complete');
+    assert.equal(saved.entries.leaf.phase, 'pending');
+    events.length = 0;
+    const result = await executeReleasePlan(plan, config, root, () => fakeDriver(events), digest, () => {}, 4);
+    assert(Object.values(result.entries).every(entry => entry.phase === 'complete'));
+    assert(!events.includes('left:prepared') && !events.includes('right:prepared'));
+    assert(events.indexOf('right:complete') < events.indexOf('leaf:prepared'));
   } finally { await rm(root, { recursive: true, force: true }); }
 });

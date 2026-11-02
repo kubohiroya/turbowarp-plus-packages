@@ -16,11 +16,12 @@ const HELP = `使い方: pnpm release --plan <plan.json> --workspace <専用dir>
 --discover --repos-dir <dir>  既存package.json/workflowを入力SHAから解決（導入中は既定OFF）
 --config <file>              明示設定、またはdiscoverに対する例外
 --resolved <dry-run.json>    保存したdry-runの実効設定を再利用（再解決しない）
+--concurrency <n>            依存先が終わった対象を同時にn件まで進める（既定4。1で従来どおり直列）
 --help                       この説明を表示
 
 実行時は専用checkoutで依存/version更新、install/prepare/verify、pack、commit/push、
-PR/CI/Squash Merge、タグ/Release、npm公開、provenance/ハッシュ/latest/next照合を直列実行。
-上流の完了確認前には下流へ進みません。state.jsonと成果物をworkspaceへ保存します。
+PR/CI/Squash Merge、タグ/Release、npm公開、provenance/ハッシュ/latest/next照合を対象ごとに実行。
+依存先の完了確認前にはその対象へ進みません。依存しあわない対象は並列に進みます。state.jsonと成果物をworkspaceへ保存します。
 既存の利用者checkoutは変更しません。外部公開は--execute指定時のみ行います。`;
 
 try {
@@ -28,13 +29,15 @@ try {
     plan: { type: 'string' }, config: { type: 'string' }, workspace: { type: 'string' },
     execute: { type: 'boolean' }, confirm: { type: 'string' }, help: { type: 'boolean' },
     discover: { type: 'boolean' }, 'repos-dir': { type: 'string' }, resolved: { type: 'string' },
+    concurrency: { type: 'string' },
   } });
   if (values.help) console.log(HELP);
   else {
     if (positionals.length || !values.plan || !values.workspace || Boolean(values.execute) !== Boolean(values.confirm) ||
         (values.resolved && (values.config || values.discover || values['repos-dir'])) ||
         (values.discover && !values['repos-dir']) || (!values.discover && values['repos-dir']) ||
-        (!values.discover && !values.config && !values.resolved)) throw new Error(HELP);
+        (!values.discover && !values.config && !values.resolved) ||
+        (values.concurrency !== undefined && !/^[1-9][0-9]*$/u.test(values.concurrency))) throw new Error(HELP);
     const plan = JSON.parse(await readFile(values.plan, 'utf8')) as ReleasePlan;
     let config: ExecutionConfig;
     if (values.resolved) {
@@ -61,7 +64,7 @@ try {
     else {
       const state = await executeReleasePlan(plan, config, values.workspace,
         (save, state) => new GithubNpmReleaseDriver(values.workspace!, config, state, save), values.confirm!,
-        (repository, phase) => console.error(`[${repository}] ${phase}`));
+        (repository, phase) => console.error(`[${repository}] ${phase}`), Number(values.concurrency ?? 4));
       console.log(JSON.stringify({ mode: 'complete', digest, state }, null, 2));
     }
   }
