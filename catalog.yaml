@@ -77,9 +77,7 @@ categories:
       - turbowarp-local-preview
 
   # Includes: the TurboWarp-Plus-Editor distribution, its scratch-gui fork, and
-  #   the libraries only an editor host uses: the security dialog and the
-  #   verified extension loading core, which the editor and the Packager drive
-  #   through host-owned trust and registration ports.
+  #   the libraries only an editor host uses, such as the security dialog.
   # Excludes: extensions that only run inside the editor (-> their domain),
   #   anything a packaged app uses outside the editor (-> shell), and the data
   #   editor contract that extensions build on, even though the editor bundles
@@ -95,15 +93,16 @@ categories:
       - turbowarp-plus-editor
       - scratch-gui
       - turbowarp-extension-security-dialog
-      - turbowarp-extension-loader
       - turbowarp-document-editor
       - turbowarp-sb3-save-format
       - turbowarp-script-transfer
 
   # Includes: DOM shell primitives, runtime adapters, and the title and
   #   application menu chrome and live reload control used to host the TurboWarp
-  #   runtime in a packaged application page, and the template a packaged app
-  #   starts from. Every app depends on turbowarp-app-shell.
+  #   runtime in a packaged application page, the verified extension loading
+  #   core shared by the editor and generated apps through host-owned trust and
+  #   registration ports, and the template a packaged app starts from.
+  #   Every app depends on turbowarp-app-shell.
   # Excludes: the editor (-> foundation), build-time preview (-> toolchain),
   #   and the apps themselves (-> apps).
   - id: shell
@@ -114,6 +113,7 @@ categories:
     packages:
       - turbowarp-app-shell
       - turbowarp-runtime-adapter
+      - turbowarp-extension-loader
       - turbowarp-title-menu
       - turbowarp-live-reload-controller
       - turbowarp-app-template
