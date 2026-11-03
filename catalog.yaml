@@ -153,9 +153,12 @@ categories:
   #   by part in memory. The other packages do not implement a contract of
   #   either one: they project their structure to JSON text, or, as the
   #   Markdown and HTML builders do, pass rendered text to document-data.
-  #   document-source decorates document-data's source document registry
-  #   with where a source lives (an SB3 file or an HTTPS URL) and how it is
-  #   edited (text, YAML blocks or schema blocks), keeping no second copy.
+  #   document-source supplies shared source contracts together with adapters
+  #   for document-data's registry and yaml-json's syntax model, keeping no
+  #   second document copy. It stays here while those implementations are
+  #   coupled: moving it alone to contracts would create a category cycle,
+  #   because data packages already use contracts. A lower-level source
+  #   contract must be separated from these implementations before that move.
   #   yaml-json builds immutable structured fragments, parses text into that
   #   model, validates schemas and renders YAML/JSON for other data packages.
   #   See docs/data-projection.ja.md.
@@ -328,8 +331,6 @@ categories:
 # left at the default are reported as "unpublished" until they appear on npm,
 # which is intentional: that is a status worth seeing.
 overrides:
-  turbowarp-document-source:
-    label: turbowarp-document-source (formerly turbowarp-embedded-yaml)
   turbowarp-plus-editor:
     buildSource: fixed-editor-gui
   scratch-gui:
