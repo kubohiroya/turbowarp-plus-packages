@@ -133,6 +133,7 @@ categories:
     descriptionJa: カテゴリをまたいで拡張が共有する契約とアダプタ。
     packages:
       - turbowarp-extension-data-editor
+      - turbowarp-document-source
       - turbowarp-runtime-expression
       - turbowarp-named-data
       - turbowarp-named-functions
@@ -153,12 +154,10 @@ categories:
   #   by part in memory. The other packages do not implement a contract of
   #   either one: they project their structure to JSON text, or, as the
   #   Markdown and HTML builders do, pass rendered text to document-data.
-  #   document-source supplies shared source contracts together with adapters
-  #   for document-data's registry and yaml-json's syntax model, keeping no
-  #   second document copy. It stays here while those implementations are
-  #   coupled: moving it alone to contracts would create a category cycle,
-  #   because data packages already use contracts. A lower-level source
-  #   contract must be separated from these implementations before that move.
+  #   document-source defines the shared source protocol (-> contracts).
+  #   Registry, persistence and project patches belong to document-data;
+  #   YAML block views and source conversion belong to yaml-json. Both
+  #   implementations depend on the protocol, with no reverse dependency.
   #   yaml-json builds immutable structured fragments, parses text into that
   #   model, validates schemas and renders YAML/JSON for other data packages.
   #   See docs/data-projection.ja.md.
@@ -170,7 +169,6 @@ categories:
     packages:
       - turbowarp-structured-data
       - turbowarp-document-data
-      - turbowarp-document-source
       - turbowarp-yaml-json
       - turbowarp-markdown
       - turbowarp-html
