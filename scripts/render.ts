@@ -777,7 +777,7 @@ function row(pkg: DashboardPackage, thumb: Thumbnail | undefined, editorUrl: str
   const { en = '', ja = '' } = pkg.descriptions ?? {};
 
   // Both languages are searchable whichever one is on screen.
-  const haystack = [pkg.repo, pkg.npm?.name, en, ja, pkg.category]
+  const haystack = [pkg.repo, pkg.label, pkg.npm?.name, en, ja, pkg.category]
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
