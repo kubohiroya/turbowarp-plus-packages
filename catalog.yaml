@@ -96,6 +96,9 @@ categories:
       - scratch-gui
       - turbowarp-extension-security-dialog
       - turbowarp-extension-loader
+      - turbowarp-document-editor
+      - turbowarp-sb3-save-format
+      - turbowarp-script-transfer
 
   # Includes: DOM shell primitives, runtime adapters, and the title and
   #   application menu chrome and live reload control used to host the TurboWarp
@@ -325,6 +328,8 @@ categories:
 # left at the default are reported as "unpublished" until they appear on npm,
 # which is intentional: that is a status worth seeing.
 overrides:
+  turbowarp-document-source:
+    label: turbowarp-document-source (formerly turbowarp-embedded-yaml)
   turbowarp-plus-editor:
     buildSource: fixed-editor-gui
   scratch-gui:
