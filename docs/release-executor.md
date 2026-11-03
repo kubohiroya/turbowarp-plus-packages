@@ -124,7 +124,7 @@ private更新はPR/CI/mergeまでです。既存タグや公開版を推測・�
 
 既存タグがある未公開版の補完は、このexecutorでは未対応です。公開開始前に停止するため、repo側の既存workflowで検証済み成果物の公開を完了してから再計画してください。自身の実行記録に保存したタグからの再開は、この制限には含みません。
 
-準備後は専用checkout内で候補commitを固定し、その内容に対して検証します。生成物とGit差分を比較する既存checkも候補を基準に実行し、検証成功とcleanを確認してからpushします。マージ後のmain CIも確認してからタグ・公開・完了へ進みます。
+準備後は専用checkout内で候補commitを固定し、その内容に対して検証します。生成物とGit差分を比較する既存checkも候補を基準に実行し、検証成功とcleanを確認してからpushします。マージ後は、mergeの直前に確かめたbaseの上にsquashされたか（merge commitの親が計画の入力SHAか）を見ます。そうであれば、PRのCIが同じツリーを検証済みなので、main CIを待たずにタグ・公開・完了へ進みます。マージ中にbaseが進んでいた場合だけ、main CIの成功を待ちます。
 
 workspaceのstate.jsonにはdigest、実効設定、phase、commit、PR、merge、成果物、workflow run、エラーを保存します。
 途中失敗後も同じplan、preview、workspace、digestで再開します。完了済み上流を再照合し、同じworkflowを再dispatchしません。
