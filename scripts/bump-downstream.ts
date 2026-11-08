@@ -6,9 +6,10 @@ import { applyReleasePlan } from './lib/apply-release-plan.ts';
 import { errorMessage } from './lib/errors.ts';
 import { createDownstreamReleasePlan, formatReleasePlan } from './lib/release-plan.ts';
 
-const HELP = `使い方: npm run bump:downstream -- <npm名またはrepo名> [オプション]
+const HELP = `使い方: npm run bump:downstream -- <npm名またはrepo名>... [オプション]
 
 指定パッケージを起点に、直接・間接の依存元を上流から順に処理します。
+起点を複数指定すると1つの計画にまとめ、複数の起点に依存する対象も1回だけ更新します。
 既定では計画だけを出力します。
 --data <解析JSON>       既定入力: data/dashboard.json
 --json                 機械可読JSONを標準出力
@@ -34,7 +35,7 @@ try {
   if (values.help) {
     console.log(HELP);
   } else {
-    if (positionals.length !== 1 || !positionals[0]) throw new Error(HELP);
+    if (positionals.length === 0 || positionals.some((name) => !name)) throw new Error(HELP);
     if (Boolean(values.apply) !== Boolean(values['repos-dir'])) {
       throw new Error('--applyと--repos-dirは同時に指定してください。');
     }
@@ -45,7 +46,7 @@ try {
     } catch (error) {
       throw new Error(`解析JSONを読み込めません: ${path}。--dataで入力を指定してください。`, { cause: error });
     }
-    const plan = createDownstreamReleasePlan(JSON.parse(source), positionals[0], { reconcile: values.reconcile });
+    const plan = createDownstreamReleasePlan(JSON.parse(source), positionals, { reconcile: values.reconcile });
     if (!plan.ready || (values.apply && !plan.applyReady)) {
       console.log(values.json ? JSON.stringify(plan, null, 2) : formatReleasePlan(plan));
       process.exitCode = 2;

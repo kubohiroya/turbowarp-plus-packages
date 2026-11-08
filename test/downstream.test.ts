@@ -107,6 +107,25 @@ test('peer proposals propagate with review required while collection failures st
   assert(failed.steps[1].issues.some(i => i.code === 'upstream-blocked'));
 });
 
+test('several roots share one plan and release a consumer of both roots once with both updates', () => {
+  const input = report(pkg('tool', [dep('other', '1.0.0')]), pkg('other'),
+    pkg('a', [dep('tool', '1.0.0'), dep('other', '1.0.0')]), pkg('b', [dep('other', '1.0.0')]),
+    pkg('c', [dep('a')]), pkg('unrelated'));
+  const plan = createDownstreamReleasePlan(input, ['tool', '@family/other']);
+  assert.equal(plan.target, 'tool, other');
+  assert.deepEqual(plan.targets, ['tool', 'other']);
+  assert.deepEqual(plan.order, ['other', 'tool', 'a', 'b', 'c']);
+  const a = plan.steps.find(s => s.repo === 'a')!;
+  assert.deepEqual(a.dependencyUpdates.map(u => u.name).sort(), ['@family/other', '@family/tool']);
+  assert.deepEqual(plan.publishTargets.map(t => t.name), ['@family/tool', '@family/a', '@family/b', '@family/c']);
+  assert.equal(plan.publishTargets.filter(t => t.name === '@family/a').length, 1);
+  // A single root keeps the previous shape.
+  assert.equal(createDownstreamReleasePlan(input, ['tool']).targets, undefined);
+  assert.deepEqual(createDownstreamReleasePlan(input, 'tool').order, ['tool', 'a', 'c']);
+  assert.throws(() => createDownstreamReleasePlan(input, ['tool', '@family/tool']), /重複/);
+  assert.throws(() => createDownstreamReleasePlan(input, []), /起点/);
+});
+
 test('private consumers are update-only and do not enter the publication list', () => {
   const consumer = pkg('a', [dep('tool', '1.0.0')]);
   consumer.manifest!.private = true;

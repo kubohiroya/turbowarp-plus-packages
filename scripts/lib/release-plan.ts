@@ -46,6 +46,8 @@ export interface ReleasePlan {
   reconcile?: true;
   snapshot: { generatedAt: string; sha256: string };
   target: string;
+  /** Present only when one downstream plan starts from several roots. */
+  targets?: string[];
   ready: boolean;
   applyReady: boolean;
   order: string[];
@@ -116,15 +118,20 @@ function familyGitReference(range: string, owner: string, repo: string): boolean
 
 /** Pure snapshot planning: no API requests, repository writes or release commands. */
 export function createReleasePlan(input: unknown, target: string, options: { reconcile?: boolean } = {}): ReleasePlan {
-  return createPlan(input, target, false, options.reconcile ?? false);
+  return createPlan(input, [target], false, options.reconcile ?? false);
 }
 
-/** Discover dependents first, then plan their updates in dependency order. */
-export function createDownstreamReleasePlan(input: unknown, target: string, options: { reconcile?: boolean } = {}): ReleasePlan {
-  return createPlan(input, target, true, options.reconcile ?? false);
+/**
+ * Discover dependents first, then plan their updates in dependency order.
+ * Several roots share one plan, so a consumer of more than one root is updated and released once.
+ */
+export function createDownstreamReleasePlan(
+  input: unknown, target: string | readonly string[], options: { reconcile?: boolean } = {},
+): ReleasePlan {
+  return createPlan(input, typeof target === 'string' ? [target] : target, true, options.reconcile ?? false);
 }
 
-function createPlan(input: unknown, target: string, downstream: boolean, reconcile: boolean): ReleasePlan {
+function createPlan(input: unknown, targets: readonly string[], downstream: boolean, reconcile: boolean): ReleasePlan {
   const report = snapshot(input);
   const repos = new Map<string, DashboardPackage>();
   const names = new Map<string, DashboardPackage>();
@@ -136,10 +143,16 @@ function createPlan(input: unknown, target: string, downstream: boolean, reconci
       names.set(name, pkg);
     }
   }
-  const matches = new Set([repos.get(target), names.get(target)].filter((p) => p !== undefined));
-  if (matches.size !== 1) throw new Error(`パッケージ名が不明または曖昧です: ${target}`);
-  const root = [...matches][0];
-  const affected = downstream ? new Set([root.repo]) : undefined;
+  if (targets.length === 0) throw new Error('起点のパッケージを指定してください。');
+  const roots: DashboardPackage[] = [];
+  for (const target of targets) {
+    const matches = new Set([repos.get(target), names.get(target)].filter((p) => p !== undefined));
+    if (matches.size !== 1) throw new Error(`パッケージ名が不明または曖昧です: ${target}`);
+    const root = [...matches][0];
+    if (roots.includes(root)) throw new Error(`起点が重複しています: ${target}`);
+    roots.push(root);
+  }
+  const affected = downstream ? new Set(roots.map((root) => root.repo)) : undefined;
   if (affected) {
     const dependents = new Map<string, Set<string>>();
     for (const pkg of report.packages) {
@@ -176,7 +189,7 @@ function createPlan(input: unknown, target: string, downstream: boolean, reconci
     done.add(pkg.repo);
     ordered.push(pkg);
   }
-  visit(root);
+  for (const root of roots) visit(root);
   if (affected) {
     for (const repo of [...affected].sort(compare)) visit(repos.get(repo)!);
   }
@@ -196,7 +209,8 @@ function createPlan(input: unknown, target: string, downstream: boolean, reconci
       generatedAt: report.generatedAt,
       sha256: createHash('sha256').update(JSON.stringify(report)).digest('hex'),
     },
-    target: root.repo,
+    target: roots.map((root) => root.repo).join(', '),
+    ...(roots.length > 1 ? { targets: roots.map((root) => root.repo) } : {}),
     ready: steps.every((step) => step.action !== 'blocked'),
     applyReady: steps.every((step) => step.action !== 'blocked' && !step.issues.some(issue => issue.requiresReview)),
     order: steps.map((step) => step.repo),

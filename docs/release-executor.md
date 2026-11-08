@@ -28,6 +28,10 @@ pnpm release --plan /tmp/release-plan.json --workspace /tmp/family-release \
 `release-preview.json`には全実効設定、package.json/workflowの参照SHAとSHA256、操作順、確認digestが入ります。
 `--resolved`はその内容を再利用し、repoから再解決しません。planか設定が変わればdigest検証が失敗します。
 
+`bump:downstream`には起点を複数指定できます（例：`bump:downstream vite-plugin-turbowarp-extension turbowarp-extension-data-editor --reconcile --json`）。
+複数の起点は1つの計画にまとまり、複数の起点に依存する対象も、すべての依存更新を含めて1回だけ更新・公開します。
+起点ごとに別の計画を順に実行すると、共通の依存元を起点の数だけ公開し直すことになるため、同時に進める起点はまとめてください。
+
 `--reconcile`はGitHub/npmの公開基点が一致しない場合も新しい版を計画し、依存元へ版を伝播します。
 既存タグを推測して復元する操作ではありません。通常版はminorを上げ、RC版は同じRC系列を維持するため、実行前に計画の対象と番号を確認してください。
 
