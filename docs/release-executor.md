@@ -41,7 +41,7 @@ pnpm release --plan /tmp/release-plan.json --workspace /tmp/family-release \
 
 ## 既存手順の解決
 
-- 準備は既存の`release:prepare` / `prepare:release`があれば使用し、なければ既存の`docs` / `build`を使用します。これらの名前を新設する要求はありません。
+- 準備は既存の`release:prepare` / `prepare:release`があれば使用し、なければ既存の`docs` / `build` / `samples:build`をこの順で使用します。サンプルSB3はbuildした拡張を埋め込み、多くのrepoの検証（`samples:check`）が古いサンプルを拒むためです。これらの名前を新設する要求はありません。
 - 検証は既存の`release:verify` → `verify:release` → `verify:full` → `check` → `verify`の順で選びます。まとめたコマンドがない場合は既存のtypecheck/lint/test/buildを使い、検証手順が不明ならverify例外を要求します。
 - 公開は既存の`release.yml`を読み、起動条件、汎用のnpm publish job、id-token権限を確認します。タグ起動と手動起動が併存していても、過去版専用jobを除外して汎用jobを選びます。
 - private repoには公開workflowもnpm公開設定も要求しません。既存の準備・検証手順だけを解決します。

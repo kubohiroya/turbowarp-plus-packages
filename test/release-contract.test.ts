@@ -157,14 +157,16 @@ test('discovery and saved dry-run work offline without modifying repo/workspace 
     git('init', '--quiet'); git('config', 'user.name', 'Test'); git('config', 'user.email', 'test@localhost');
     const existing = JSON.parse(manifest());
     delete existing.turbowarpRelease;
-    existing.scripts = { build: 'node prepare.js', check: 'node verify.js' };
+    existing.scripts = { build: 'node prepare.js', 'samples:build': 'node samples.js', check: 'node verify.js' };
     await writeFile(join(repo, 'package.json'), JSON.stringify(existing)); await writeFile(join(repo, '.github/workflows/release.yml'), workflow);
     git('add', '.'); git('commit', '--quiet', '-m', 'contract'); const sha = git('rev-parse', 'HEAD');
     const p = plan(sha), planFile = join(root, 'plan.json'), approved = join(root, 'approved.json');
     await writeFile(planFile, JSON.stringify(p));
     // Dirty working files are intentionally ignored by immutable-source discovery.
     await writeFile(join(repo, 'package.json'), '{}');
-    assert.deepEqual(resolveContracts(p, localContractReader(root)).repositories['family/tool'].prepare, [['corepack', 'pnpm', 'run', 'build']]);
+    // Samples are rebuilt after the extension they embed.
+    assert.deepEqual(resolveContracts(p, localContractReader(root)).repositories['family/tool'].prepare,
+      [['corepack', 'pnpm', 'run', 'build'], ['corepack', 'pnpm', 'run', 'samples:build']]);
     const before = git('status', '--porcelain');
     const args = ['--import', 'tsx', resolve('scripts/release.ts'), '--plan', planFile, '--workspace', join(root, 'execution')];
     const invoke = (extra: string[]) => spawnSync(process.execPath, [...args, ...extra], { encoding: 'utf8' });
