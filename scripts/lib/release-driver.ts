@@ -372,7 +372,9 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     await this.git(step, 'fetch', 'origin', entry.base!);
     await this.git(step, 'diff', '--exit-code', entry.commit!, entry.mergeCommit);
     await this.sourceVersion(step, entry.mergeCommit);
-    await this.waitForCommitChecks(step, entry.mergeCommit, 'main CI');
+    // PR CI already checked this tree on the same base. Wait for main CI only when the base moved during the merge.
+    const [, parent] = (await this.git(step, 'rev-list', '--parents', '-n', '1', entry.mergeCommit)).split(' ');
+    if (parent !== step.headSha) await this.waitForCommitChecks(step, entry.mergeCommit, 'main CI');
   }
 
   async tagged(step: PackagePlan, _profile: ReleaseProfile, entry: ExecutionEntry): Promise<void> {

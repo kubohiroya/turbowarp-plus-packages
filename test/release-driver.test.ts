@@ -152,6 +152,8 @@ for (const privatePackage of [false, true]) for (const interruption of ['none', 
         assert(pr);
         const merger = join(root, 'merger'); await git(['clone', remote, merger]);
         await git(['fetch', 'origin'], merger);
+        // Another push lands during the merge, so the PR CI no longer covers the merged commit's base.
+        if (interruption === 'main-ci') await git(['commit', '--allow-empty', '-m', 'concurrent push'], merger);
         await git(['merge', '--squash', pr.head.sha], merger);
         await git(['commit', '-m', 'squashed release'], merger);
         await git(['push', 'origin', 'main'], merger);
@@ -192,7 +194,8 @@ for (const privatePackage of [false, true]) for (const interruption of ['none', 
     if (!privatePackage) assert.equal(basename(state.entries.tool.extraArtifacts![0].path), 'candidate-1.1.0.sb3');
     assert.equal(tags.latest, privatePackage ? '1.0.0' : '1.1.0'); assert.equal(tags.next, privatePackage ? '1.0.0' : '1.1.0');
     assert.equal(events.filter(event => event === 'publish').length, privatePackage ? 0 : 1);
-    if (!privatePackage) assert(events.indexOf('main-ci') < events.indexOf('publish'));
+    if (interruption === 'main-ci') { if (!privatePackage) assert(events.indexOf('main-ci') < events.indexOf('publish')); }
+    else assert(!events.includes('main-ci'), 'an unchanged base must reuse the PR CI result');
     assert.equal(JSON.parse(await git(['--git-dir', remote, 'show', 'main:package.json'])).version, '1.1.0');
     if (!privatePackage) assert.equal(await git(['--git-dir', remote, 'rev-parse', 'v1.1.0^{commit}']), state.entries.tool.mergeCommit);
     assert.equal(await git(['--git-dir', remote, 'branch', '--list', state.entries.tool.branch!]), '');
