@@ -26,6 +26,33 @@
           "samples:build"
         ]
       ]
+    },
+    "kubohiroya/turbowarp-diagnostic-overlay": {
+      "prepare": [
+        [
+          "node",
+          "-e",
+          "const {execFileSync}=require('node:child_process');const fs=require('node:fs');const f='CHANGELOG.md';const before=JSON.parse(execFileSync('git',['show','HEAD:package.json'],{encoding:'utf8'}));const after=JSON.parse(fs.readFileSync('package.json','utf8'));let t=fs.readFileSync(f,'utf8');const first=/^## (\\[?)[0-9][^\\n]*$/mu.exec(t);if(!first)throw new Error(f+': no version heading to follow');if(t.includes('## '+first[1]+after.version+(first[1]?']':'')))process.exit(0);const lines=[];for(const field of ['dependencies','peerDependencies','devDependencies']){const label={dependencies:'実行時依存',peerDependencies:'peer依存',devDependencies:'ビルド依存'}[field];for(const[n,r]of Object.entries(after[field]??{})){const o=before[field]?.[n];if(o&&o!==r)lines.push('- '+label+' `'+n+'` を `'+o+'` から `'+r+'` へ更新。');}}if(!lines.length)throw new Error(f+': no dependency change to record');const date=new Date().toLocaleDateString('sv-SE');const head='## '+first[1]+after.version+(first[1]?']':'')+' - '+date;t=t.slice(0,first.index)+head+'\\n\\n### Changed\\n\\n'+lines.join('\\n')+'\\n\\n'+t.slice(first.index);fs.writeFileSync(f,t);"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "docs"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "build"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "samples:build"
+        ]
+      ]
     }
   },
   "reviewedRepositories": [
