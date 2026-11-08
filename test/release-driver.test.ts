@@ -49,6 +49,10 @@ for (const privatePackage of [false, true]) for (const interruption of ['none', 
     await git(['init', '--initial-branch=main'], source);
     await writeFile(join(source, 'package.json'), JSON.stringify({ name: '@family/tool', version: '1.0.0', private: privatePackage, engines: { node: '>=22' } }));
     await writeFile(join(source, 'index.js'), 'export const value = 1;\n');
+    // Pinned examples follow the release; other packages, longer versions and the changelog stay as they are.
+    const readme = 'pnpm add @family/tool@1.0.0\nhttps://cdn.example/npm/@family/tool@1.0.0/dist/tool.js\n@family/other@1.0.0 @family/tool@1.0.0-rc.1\n';
+    await writeFile(join(source, 'README.md'), readme);
+    await writeFile(join(source, 'CHANGELOG.md'), '## 1.0.0\n\n- @family/tool@1.0.0\n');
     await git(['add', '.'], source); await git(['commit', '-m', 'initial'], source);
     const sha = await git(['rev-parse', 'HEAD'], source);
     await git(['clone', '--bare', source, remote]);
@@ -167,8 +171,13 @@ for (const privatePackage of [false, true]) for (const interruption of ['none', 
       }
       throw new Error(`Unexpected command (network prohibited): ${command.join(' ')}`);
     };
+    // One case borrows objects from an existing local checkout, which must stay untouched.
+    const reference = !privatePackage && interruption === 'none' ? join(root, 'existing') : undefined;
+    if (reference) await git(['clone', remote, join(reference, 'tool')]);
+    const referenceHead = reference ? await git(['rev-parse', 'HEAD'], join(reference, 'tool')) : '';
     const execute = () => executeReleasePlan(plan, config, workspace,
-      (save, state) => new GithubNpmReleaseDriver(workspace, config, state, save, runner, async () => {}), executionDigest(plan, config));
+      (save, state) => new GithubNpmReleaseDriver(workspace, config, state, save, runner, async () => {},
+        { referenceDir: reference }), executionDigest(plan, config));
     if (interruption !== 'none') {
       const expected = interruption === 'verification' ? /injected verification failure/ : interruption === 'main-ci' ? /main CI/ : /injected cleanup network failure/;
       await assert.rejects(execute(), expected);
@@ -191,12 +200,20 @@ for (const privatePackage of [false, true]) for (const interruption of ['none', 
     }
     const state = await execute();
     assert.equal(state.entries.tool.phase, 'complete');
+    const alternates = join(workspace, 'checkouts/tool/.git/objects/info/alternates');
+    if (reference) {
+      assert.match(await readFile(alternates, 'utf8'), /existing\/tool\/\.git\/objects/);
+      assert.equal(await git(['rev-parse', 'HEAD'], join(reference, 'tool')), referenceHead);
+      assert.equal(await git(['status', '--porcelain'], join(reference, 'tool')), '');
+    } else await assert.rejects(readFile(alternates));
     if (!privatePackage) assert.equal(basename(state.entries.tool.extraArtifacts![0].path), 'candidate-1.1.0.sb3');
     assert.equal(tags.latest, privatePackage ? '1.0.0' : '1.1.0'); assert.equal(tags.next, privatePackage ? '1.0.0' : '1.1.0');
     assert.equal(events.filter(event => event === 'publish').length, privatePackage ? 0 : 1);
     if (interruption === 'main-ci') { if (!privatePackage) assert(events.indexOf('main-ci') < events.indexOf('publish')); }
     else assert(!events.includes('main-ci'), 'an unchanged base must reuse the PR CI result');
     assert.equal(JSON.parse(await git(['--git-dir', remote, 'show', 'main:package.json'])).version, '1.1.0');
+    assert.equal(await git(['--git-dir', remote, 'show', 'main:README.md']) + '\n', readme.replaceAll('@family/tool@1.0.0\n', '@family/tool@1.1.0\n').replace('@family/tool@1.0.0/dist', '@family/tool@1.1.0/dist'));
+    assert.equal(await git(['--git-dir', remote, 'show', 'main:CHANGELOG.md']), '## 1.0.0\n\n- @family/tool@1.0.0');
     if (!privatePackage) assert.equal(await git(['--git-dir', remote, 'rev-parse', 'v1.1.0^{commit}']), state.entries.tool.mergeCommit);
     assert.equal(await git(['--git-dir', remote, 'branch', '--list', state.entries.tool.branch!]), '');
     await execute();

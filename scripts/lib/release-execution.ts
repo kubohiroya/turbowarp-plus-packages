@@ -34,6 +34,11 @@ export interface ExecutionEntry {
   prUrl?: string;
   artifact?: string;
   shasum?: string;
+  /** SHA-256 of the uncompressed tar in the verified candidate; gzip output differs between platforms. */
+  contentSha256?: string;
+  /** SHA-1 and SHA-256 of the archive the release workflow built and published, when it packs on CI. */
+  publishedShasum?: string;
+  publishedSha256?: string;
   releaseUrl?: string;
   workflowRun?: number;
   dispatchStartedAt?: string;

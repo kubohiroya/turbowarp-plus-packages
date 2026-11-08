@@ -23,6 +23,10 @@ pnpm release --plan /tmp/release-plan.json --workspace /tmp/family-release \
   --resolved /tmp/release-preview.json --execute --confirm <digest>
 ```
 
+実行時に`--reference-dir ..`を付けると、専用checkoutのcloneが`<dir>/<repo名>`にある既存のcheckoutからオブジェクトを借ります（`git clone --reference-if-able`）。
+大きなrepoを丸ごとダウンロードし直さずに済み、ディスクもほとんど使いません。既存のcheckoutは読むだけで、ブランチ・作業ツリー・設定は変えません。
+借りたオブジェクトは既存のcheckoutに残っている必要があるので、実行中は既存のcheckoutで`git gc --prune=now`などを行わないでください。
+
 各repoは`--repos-dir/<repo名>`に配置します。dirtyな作業ファイルは読まず、`git show <planのheadSha>:<file>`で不変のソースを読みます。
 必要なSHAがローカルにない場合は、利用者がそのrepoをfetchしてから再試行します。dry-run自身はfetchしません。
 `release-preview.json`には全実効設定、package.json/workflowの参照SHAとSHA256、操作順、確認digestが入ります。
@@ -37,7 +41,7 @@ pnpm release --plan /tmp/release-plan.json --workspace /tmp/family-release \
 
 ## 既存手順の解決
 
-- 準備は既存の`release:prepare` / `prepare:release`があれば使用し、なければ既存の`docs` / `build`を使用します。これらの名前を新設する要求はありません。
+- 準備は既存の`release:prepare` / `prepare:release`があれば使用し、なければ既存の`docs` / `build` / `samples:build`をこの順で使用します。サンプルSB3はbuildした拡張を埋め込み、多くのrepoの検証（`samples:check`）が古いサンプルを拒むためです。これらの名前を新設する要求はありません。
 - 検証は既存の`release:verify` → `verify:release` → `verify:full` → `check` → `verify`の順で選びます。まとめたコマンドがない場合は既存のtypecheck/lint/test/buildを使い、検証手順が不明ならverify例外を要求します。
 - 公開は既存の`release.yml`を読み、起動条件、汎用のnpm publish job、id-token権限を確認します。タグ起動と手動起動が併存していても、過去版専用jobを除外して汎用jobを選びます。
 - private repoには公開workflowもnpm公開設定も要求しません。既存の準備・検証手順だけを解決します。
@@ -72,11 +76,13 @@ pnpm release --plan /tmp/release-plan.json --workspace /tmp/family-release \
 
 - packageManagerで指定されたnpm/pnpmを使用します。packageManagerがなく既存workflowが`npm ci`を使っていればnpmを選びます。それ以外でinstall手順を確定できない場合はinstall例外を要求します。
 - 準備スクリプトには`RELEASE_VERSION`と`RELEASE_PLAN_SHA`を渡します。版定数・文書・生成runtime・SB3のpin/凍結をrepo側で管理します。中断後に再実行でき、凍結済み成果物を勝手に再生成しない実装が必要です。
+- 準備の前に、executorはREADME（`README*.md`）と`docs/`・`site/`の`.md`・`.html`にある`<パッケージ名>@<旧版>`を新しい版へ置き換えます。family共通の「版を固定した導入例」を、各repoの`check-repo`が版から照合しているためです。後ろに版の続き（`-rc.1`など）が付く表記、ほかのパッケージ、CHANGELOGは変えません。ソースコードの版定数などは、これまでどおりrepoの準備スクリプトで管理します。
 - Git差分を使う生成物検証は、更新候補に対する検証としてrepo側で実装します。通常の開発用checkが古いHEADとの比較を要求する場合、そのままrelease:verifyへ流用しないでください。
 - 推定または任意の`publish.job`が指すjobには直接の`npm publish`または`pnpm publish`、`id-token: write`が必要です。固定の過去版、dry-run専用、長期npm tokenを使うjobを除外します。workflow名が存在するだけでは対応済みとみなしません。
 - workflowはjob単位ではなく全体が起動します。他の公開jobが選択イベントで必ずスキップされると確認できない場合は停止します。固定版jobを候補から除外しただけでは、そのworkflowを実行可能とは扱いません。
 - dispatchの必須inputは契約で全て指定します。`{version}`、`{tag}`、`{shasum}`を実際の公開版・タグ・検証済みtarball SHA1へ置換します。
 - タグ起動も`mode: tag-workflow`、`workflow: release.yml`、対象`job`で宣言できます。`v*`のpushタグ起動と汎用のnpm公開jobが必要です。
+- タグ起動のworkflowはCIでpackし、そのtarballをReleaseに添付してnpmへ公開します。gzipの出力はNode同梱のzlibで変わるため、手元とCIのtarballはバイト単位では一致しません（中のtarは一致します）。そのためexecutorは、npm用tarballを先にReleaseへ添付しません。公開後にnpmのtarballを取得し、展開したtarのSHA-256が検証済み候補と一致することを確かめ、そのtarballのSHA-1/SHA-256を実行記録に残してnpmとReleaseの照合に使います。dispatch起動は検証済みtarballそのものを公開するので、従来どおりバイト単位で照合します。
 - private repoは既存の準備・検証手順だけを使用します。`update-only`ではタグ・Release・npm公開をしません。
 - `artifacts`はcheckout内の追加Release添付物です。パス内の`{version}`を置換し、検証後のSHA256を記録します。checkout外参照や重複名を拒否します。
 
