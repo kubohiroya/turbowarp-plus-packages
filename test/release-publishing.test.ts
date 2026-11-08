@@ -170,8 +170,9 @@ test('an unchanged private package is checked by its source only, without npm or
     if (path === 'repos/family/tool') return JSON.stringify({ default_branch: 'main', archived: false, permissions: { push: true } });
     return JSON.stringify({ object: { type: 'commit', sha } });
   }, entry);
-  await execute.preflight(unchanged, profile, entry);
-  await execute.complete(unchanged, profile, entry);
+  for (const phase of ['preflight', 'prepared', 'pushed', 'merged', 'tagged', 'released', 'published', 'complete'] as const) {
+    await execute[phase](unchanged, profile, entry);
+  }
   assert.equal(entry.mergeCommit, undefined);
 });
 

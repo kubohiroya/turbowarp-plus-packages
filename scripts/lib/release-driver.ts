@@ -429,7 +429,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
   }
 
   async tagged(step: PackagePlan, _profile: ReleaseProfile, entry: ExecutionEntry): Promise<void> {
-    if (step.action === 'update-only') return;
+    if (step.action === 'update-only' || unpublishedReference(step)) return;
     assert(entry.mergeCommit);
     const existing = await this.tagSha(step);
     if (existing) assert.equal(existing, entry.mergeCommit, '既存タグは別のSHAです。移動・上書きしません。');
@@ -444,7 +444,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
   }
 
   async released(step: PackagePlan, profile: ReleaseProfile, entry: ExecutionEntry): Promise<void> {
-    if (step.action === 'update-only') return;
+    if (step.action === 'update-only' || unpublishedReference(step)) return;
     let release = await this.optional<GithubRelease>(`repos/${step.repository}/releases/tags/${tagOf(step)}`);
     if (!release) {
       await mkdir(this.artifacts(step), { recursive: true });
