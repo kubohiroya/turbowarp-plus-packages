@@ -1,0 +1,15 @@
+{
+  "repositories": {},
+  "reviewedRepositories": [
+    "kubohiroya/turbowarp-binary-data",
+    "kubohiroya/turbowarp-document-editor",
+    "kubohiroya/turbowarp-named-functions",
+    "kubohiroya/turbowarp-structured-data",
+    "kubohiroya/turbowarp-http-server",
+    "kubohiroya/turbowarp-sb3-save-format",
+    "kubohiroya/turbowarp-kamishibai-app",
+    "kubohiroya/turbowarp-plus-editor",
+    "kubohiroya/turbowarp-realtime-motion-capture",
+    "kubohiroya/turbowarp-webrtc-qrcode-pairing"
+  ]
+}
