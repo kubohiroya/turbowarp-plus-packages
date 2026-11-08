@@ -49,6 +49,10 @@ for (const privatePackage of [false, true]) for (const interruption of ['none', 
     await git(['init', '--initial-branch=main'], source);
     await writeFile(join(source, 'package.json'), JSON.stringify({ name: '@family/tool', version: '1.0.0', private: privatePackage, engines: { node: '>=22' } }));
     await writeFile(join(source, 'index.js'), 'export const value = 1;\n');
+    // Pinned examples follow the release; other packages, longer versions and the changelog stay as they are.
+    const readme = 'pnpm add @family/tool@1.0.0\nhttps://cdn.example/npm/@family/tool@1.0.0/dist/tool.js\n@family/other@1.0.0 @family/tool@1.0.0-rc.1\n';
+    await writeFile(join(source, 'README.md'), readme);
+    await writeFile(join(source, 'CHANGELOG.md'), '## 1.0.0\n\n- @family/tool@1.0.0\n');
     await git(['add', '.'], source); await git(['commit', '-m', 'initial'], source);
     const sha = await git(['rev-parse', 'HEAD'], source);
     await git(['clone', '--bare', source, remote]);
@@ -208,6 +212,8 @@ for (const privatePackage of [false, true]) for (const interruption of ['none', 
     if (interruption === 'main-ci') { if (!privatePackage) assert(events.indexOf('main-ci') < events.indexOf('publish')); }
     else assert(!events.includes('main-ci'), 'an unchanged base must reuse the PR CI result');
     assert.equal(JSON.parse(await git(['--git-dir', remote, 'show', 'main:package.json'])).version, '1.1.0');
+    assert.equal(await git(['--git-dir', remote, 'show', 'main:README.md']) + '\n', readme.replaceAll('@family/tool@1.0.0\n', '@family/tool@1.1.0\n').replace('@family/tool@1.0.0/dist', '@family/tool@1.1.0/dist'));
+    assert.equal(await git(['--git-dir', remote, 'show', 'main:CHANGELOG.md']), '## 1.0.0\n\n- @family/tool@1.0.0');
     if (!privatePackage) assert.equal(await git(['--git-dir', remote, 'rev-parse', 'v1.1.0^{commit}']), state.entries.tool.mergeCommit);
     assert.equal(await git(['--git-dir', remote, 'branch', '--list', state.entries.tool.branch!]), '');
     await execute();

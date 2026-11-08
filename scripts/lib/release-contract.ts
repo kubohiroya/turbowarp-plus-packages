@@ -80,7 +80,8 @@ export function profileFromContract(manifestText: string, workflowText: string, 
     install: manager?.[1] === 'pnpm'
       ? [command.concat('install', '--lockfile-only'), command.concat('install', '--frozen-lockfile')]
       : [command.concat('install', '--package-lock-only'), command.concat('ci')],
-    prepare: prepareName ? [command.concat('run', prepareName)] : ['docs', 'build'].filter(has).map(name => command.concat('run', name)),
+    // Sample SB3s embed the built extension, and the family's checks reject stale samples (samples:check).
+    prepare: prepareName ? [command.concat('run', prepareName)] : ['docs', 'build', 'samples:build'].filter(has).map(name => command.concat('run', name)),
     verify, artifacts: contract.artifacts ?? [],
   };
   if (exception.publish) assert(exception.publish.mode !== 'cli' && exception.publish.workflow === 'release.yml', '例外もTrusted Publisher・release.ymlが必須です。');
