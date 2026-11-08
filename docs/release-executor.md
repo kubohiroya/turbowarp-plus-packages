@@ -76,11 +76,13 @@ pnpm release --plan /tmp/release-plan.json --workspace /tmp/family-release \
 
 - packageManagerで指定されたnpm/pnpmを使用します。packageManagerがなく既存workflowが`npm ci`を使っていればnpmを選びます。それ以外でinstall手順を確定できない場合はinstall例外を要求します。
 - 準備スクリプトには`RELEASE_VERSION`と`RELEASE_PLAN_SHA`を渡します。版定数・文書・生成runtime・SB3のpin/凍結をrepo側で管理します。中断後に再実行でき、凍結済み成果物を勝手に再生成しない実装が必要です。
+- 準備の前に、executorはREADME（`README*.md`）と`docs/`・`site/`の`.md`・`.html`にある`<パッケージ名>@<旧版>`を新しい版へ置き換えます。family共通の「版を固定した導入例」を、各repoの`check-repo`が版から照合しているためです。後ろに版の続き（`-rc.1`など）が付く表記、ほかのパッケージ、CHANGELOGは変えません。ソースコードの版定数などは、これまでどおりrepoの準備スクリプトで管理します。
 - Git差分を使う生成物検証は、更新候補に対する検証としてrepo側で実装します。通常の開発用checkが古いHEADとの比較を要求する場合、そのままrelease:verifyへ流用しないでください。
 - 推定または任意の`publish.job`が指すjobには直接の`npm publish`または`pnpm publish`、`id-token: write`が必要です。固定の過去版、dry-run専用、長期npm tokenを使うjobを除外します。workflow名が存在するだけでは対応済みとみなしません。
 - workflowはjob単位ではなく全体が起動します。他の公開jobが選択イベントで必ずスキップされると確認できない場合は停止します。固定版jobを候補から除外しただけでは、そのworkflowを実行可能とは扱いません。
 - dispatchの必須inputは契約で全て指定します。`{version}`、`{tag}`、`{shasum}`を実際の公開版・タグ・検証済みtarball SHA1へ置換します。
 - タグ起動も`mode: tag-workflow`、`workflow: release.yml`、対象`job`で宣言できます。`v*`のpushタグ起動と汎用のnpm公開jobが必要です。
+- タグ起動のworkflowはCIでpackし、そのtarballをReleaseに添付してnpmへ公開します。gzipの出力はNode同梱のzlibで変わるため、手元とCIのtarballはバイト単位では一致しません（中のtarは一致します）。そのためexecutorは、npm用tarballを先にReleaseへ添付しません。公開後にnpmのtarballを取得し、展開したtarのSHA-256が検証済み候補と一致することを確かめ、そのtarballのSHA-1/SHA-256を実行記録に残してnpmとReleaseの照合に使います。dispatch起動は検証済みtarballそのものを公開するので、従来どおりバイト単位で照合します。
 - private repoは既存の準備・検証手順だけを使用します。`update-only`ではタグ・Release・npm公開をしません。
 - `artifacts`はcheckout内の追加Release添付物です。パス内の`{version}`を置換し、検証後のSHA256を記録します。checkout外参照や重複名を拒否します。
 
