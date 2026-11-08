@@ -156,6 +156,25 @@ test('existing publication source with the wrong package version cannot be regis
   await assert.rejects(execute.preflight(unchanged, profile, entry), /GitHubソース/u);
 });
 
+test('an unchanged private package is checked by its source only, without npm or tags', async () => {
+  const entry: ExecutionEntry = { phase: 'pending' };
+  const unchanged: PackagePlan = { ...step, action: 'none', nextVersion: null, publishedVersion: null };
+  const execute = driver(async command => {
+    if (command[0] === 'fixture-npm') {
+      assert.equal(command[1], 'view'); assert.equal(command[3], 'dist-tags', 'must not look up a release');
+      throw missing(command);
+    }
+    assert.equal(command[0], 'gh'); assert.equal(command[1], 'api');
+    const path = command.at(-1)!;
+    assert(!path.includes('/tags/') && !path.includes('/releases/'), 'must not look up a tag or Release');
+    if (path === 'repos/family/tool') return JSON.stringify({ default_branch: 'main', archived: false, permissions: { push: true } });
+    return JSON.stringify({ object: { type: 'commit', sha } });
+  }, entry);
+  await execute.preflight(unchanged, profile, entry);
+  await execute.complete(unchanged, profile, entry);
+  assert.equal(entry.mergeCommit, undefined);
+});
+
 test('completing an older release never downgrades a newer next tag', async () => {
   const entry = record();
   const unchanged: PackagePlan = { ...step, action: 'none', nextVersion: null, publishedVersion: '1.1.0' };

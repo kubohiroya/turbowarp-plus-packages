@@ -43,6 +43,8 @@ const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/gu, '\\$
 /** Documentation that names the package with a pinned version, in the family's README/docs convention. */
 const pinnedDocument = (file: string) => /^README[^/]*\.md$/u.test(file) ||
   /^(docs|site)\/.+\.(md|html)$/u.test(file);
+/** An unchanged private package has no npm release for its dependents to resolve, so only its source is checked. */
+const unpublishedReference = (step: PackagePlan) => step.action === 'none' && !step.publishedVersion;
 const versionOf = (step: PackagePlan) => step.nextVersion ?? step.publishedVersion ?? step.currentVersion!;
 const tagOf = (step: PackagePlan) => `v${versionOf(step)}`;
 interface RegistryVersion { name: string; version: string; gitHead?: string; dist: { shasum: string; attestations?: { provenance?: { predicateType: string } } } }
@@ -136,7 +138,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     }
     const head = await this.api<{ object: { sha: string } }>(`repos/${step.repository}/git/ref/heads/${encodeURIComponent(entry.base)}`);
     if (entry.phase === 'pending' && !entry.pr) assert.equal(head.object.sha, step.headSha, `${step.repo}: mainが解析時から変わりました。再計画が必要です。`);
-    const published = step.action === 'update-only' ? null : await this.registry(step, profile, versionOf(step));
+    const published = step.action === 'update-only' || unpublishedReference(step) ? null : await this.registry(step, profile, versionOf(step));
     if (step.action === 'publish' && published) {
       assert(entry.shasum && await this.matchesCandidate(step, profile, entry, published), `${step.repo}: 予定版はすでに公開済みです。上書きせず再計画してください。`);
     }
@@ -147,7 +149,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
         assert.equal(tagged, entry.mergeCommit, '既存タグが再開記録と異なります。移動・上書きしません。');
       }
     }
-    if (step.action === 'none') {
+    if (step.action === 'none' && !unpublishedReference(step)) {
       assert(published, `${step.repo}: 公開済み版を取得できません。`);
       const sha = await this.tagSha(step);
       assert(sha, `${step.repo}: npm公開版のタグがありません。--reconcileで新しい版と下流更新を計画してください。`);
@@ -533,7 +535,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
   }
 
   async complete(step: PackagePlan, profile: ReleaseProfile, entry: ExecutionEntry): Promise<void> {
-    if (step.action !== 'update-only') {
+    if (step.action !== 'update-only' && !unpublishedReference(step)) {
       const published = await this.registry(step, profile, versionOf(step));
       assert(published && published.dist.shasum === (packsOnCi(profile) && step.action === 'publish' ? entry.publishedShasum : entry.shasum), 'npm公開版のハッシュが不一致です。');
       if (profile.publish.mode !== 'cli' || profile.publish.provenance) {
