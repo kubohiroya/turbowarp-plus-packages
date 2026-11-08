@@ -167,8 +167,13 @@ for (const privatePackage of [false, true]) for (const interruption of ['none', 
       }
       throw new Error(`Unexpected command (network prohibited): ${command.join(' ')}`);
     };
+    // One case borrows objects from an existing local checkout, which must stay untouched.
+    const reference = !privatePackage && interruption === 'none' ? join(root, 'existing') : undefined;
+    if (reference) await git(['clone', remote, join(reference, 'tool')]);
+    const referenceHead = reference ? await git(['rev-parse', 'HEAD'], join(reference, 'tool')) : '';
     const execute = () => executeReleasePlan(plan, config, workspace,
-      (save, state) => new GithubNpmReleaseDriver(workspace, config, state, save, runner, async () => {}), executionDigest(plan, config));
+      (save, state) => new GithubNpmReleaseDriver(workspace, config, state, save, runner, async () => {},
+        { referenceDir: reference }), executionDigest(plan, config));
     if (interruption !== 'none') {
       const expected = interruption === 'verification' ? /injected verification failure/ : interruption === 'main-ci' ? /main CI/ : /injected cleanup network failure/;
       await assert.rejects(execute(), expected);
@@ -191,6 +196,12 @@ for (const privatePackage of [false, true]) for (const interruption of ['none', 
     }
     const state = await execute();
     assert.equal(state.entries.tool.phase, 'complete');
+    const alternates = join(workspace, 'checkouts/tool/.git/objects/info/alternates');
+    if (reference) {
+      assert.match(await readFile(alternates, 'utf8'), /existing\/tool\/\.git\/objects/);
+      assert.equal(await git(['rev-parse', 'HEAD'], join(reference, 'tool')), referenceHead);
+      assert.equal(await git(['status', '--porcelain'], join(reference, 'tool')), '');
+    } else await assert.rejects(readFile(alternates));
     if (!privatePackage) assert.equal(basename(state.entries.tool.extraArtifacts![0].path), 'candidate-1.1.0.sb3');
     assert.equal(tags.latest, privatePackage ? '1.0.0' : '1.1.0'); assert.equal(tags.next, privatePackage ? '1.0.0' : '1.1.0');
     assert.equal(events.filter(event => event === 'publish').length, privatePackage ? 0 : 1);

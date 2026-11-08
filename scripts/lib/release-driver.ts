@@ -55,6 +55,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     workspace: string, private readonly config: ExecutionConfig, private readonly state: ExecutionState,
     private readonly save: () => Promise<void>, private readonly run: Runner = runCommand,
     private readonly sleep: (milliseconds: number) => Promise<void> = ms => setTimeout(ms),
+    private readonly options: { referenceDir?: string } = {},
   ) { this.root = resolve(workspace); }
 
   private path(step: PackagePlan) { return join(this.root, 'checkouts', step.repo); }
@@ -172,7 +173,9 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
         owned = true;
       } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
       if (!owned) {
-        await this.run(['git', 'clone', '--no-checkout', `https://github.com/${step.repository}.git`, this.path(step)]);
+        // Borrow objects from an existing local checkout when one is present; it is only read, never changed.
+        const reference = this.options.referenceDir ? ['--reference-if-able', join(resolve(this.options.referenceDir), step.repo)] : [];
+        await this.run(['git', 'clone', '--no-checkout', ...reference, `https://github.com/${step.repository}.git`, this.path(step)]);
         await writeFile(marker, JSON.stringify({ digest: this.state.digest, repository: step.repository }));
         await this.git(step, 'checkout', '-b', entry.branch, step.headSha!);
       }

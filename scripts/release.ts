@@ -17,6 +17,8 @@ const HELP = `使い方: pnpm release --plan <plan.json> --workspace <専用dir>
 --config <file>              明示設定、またはdiscoverに対する例外
 --resolved <dry-run.json>    保存したdry-runの実効設定を再利用（再解決しない）
 --concurrency <n>            依存先が終わった対象を同時にn件まで進める（既定4。1で従来どおり直列）
+--reference-dir <dir>        <dir>/<repo名>に既存のcheckoutがあれば、専用checkoutのcloneでそのオブジェクトを借りる
+                             （git clone --reference-if-able。既存checkoutは読むだけで変更しない）
 --help                       この説明を表示
 
 実行時は専用checkoutで依存/version更新、install/prepare/verify、pack、commit/push、
@@ -29,7 +31,7 @@ try {
     plan: { type: 'string' }, config: { type: 'string' }, workspace: { type: 'string' },
     execute: { type: 'boolean' }, confirm: { type: 'string' }, help: { type: 'boolean' },
     discover: { type: 'boolean' }, 'repos-dir': { type: 'string' }, resolved: { type: 'string' },
-    concurrency: { type: 'string' },
+    concurrency: { type: 'string' }, 'reference-dir': { type: 'string' },
   } });
   if (values.help) console.log(HELP);
   else {
@@ -63,7 +65,8 @@ try {
     }, null, 2));
     else {
       const state = await executeReleasePlan(plan, config, values.workspace,
-        (save, state) => new GithubNpmReleaseDriver(values.workspace!, config, state, save), values.confirm!,
+        (save, state) => new GithubNpmReleaseDriver(values.workspace!, config, state, save, undefined, undefined,
+          { referenceDir: values['reference-dir'] }), values.confirm!,
         (repository, phase) => console.error(`[${repository}] ${phase}`), Number(values.concurrency ?? 4));
       console.log(JSON.stringify({ mode: 'complete', digest, state }, null, 2));
     }

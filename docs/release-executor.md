@@ -23,6 +23,10 @@ pnpm release --plan /tmp/release-plan.json --workspace /tmp/family-release \
   --resolved /tmp/release-preview.json --execute --confirm <digest>
 ```
 
+実行時に`--reference-dir ..`を付けると、専用checkoutのcloneが`<dir>/<repo名>`にある既存のcheckoutからオブジェクトを借ります（`git clone --reference-if-able`）。
+大きなrepoを丸ごとダウンロードし直さずに済み、ディスクもほとんど使いません。既存のcheckoutは読むだけで、ブランチ・作業ツリー・設定は変えません。
+借りたオブジェクトは既存のcheckoutに残っている必要があるので、実行中は既存のcheckoutで`git gc --prune=now`などを行わないでください。
+
 各repoは`--repos-dir/<repo名>`に配置します。dirtyな作業ファイルは読まず、`git show <planのheadSha>:<file>`で不変のソースを読みます。
 必要なSHAがローカルにない場合は、利用者がそのrepoをfetchしてから再試行します。dry-run自身はfetchしません。
 `release-preview.json`には全実効設定、package.json/workflowの参照SHAとSHA256、操作順、確認digestが入ります。
