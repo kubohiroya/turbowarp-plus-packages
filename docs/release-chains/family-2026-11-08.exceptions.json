@@ -1,5 +1,33 @@
 {
-  "repositories": {},
+  "repositories": {
+    "kubohiroya/turbowarp-camera-calibration": {
+      "prepare": [
+        [
+          "node",
+          "-e",
+          "const {execFileSync}=require('node:child_process');const fs=require('node:fs');const f='THIRD_PARTY_NOTICES.md';const v=r=>String(r).replace(/^[\\^~=]/,'');const before=JSON.parse(execFileSync('git',['show','HEAD:package.json'],{encoding:'utf8'})).dependencies??{};const after=JSON.parse(fs.readFileSync('package.json','utf8')).dependencies??{};let t=fs.readFileSync(f,'utf8');for(const[n,r]of Object.entries(after)){const o=before[n];if(!o||o===r)continue;const a='`'+v(o)+'`',b='`'+v(r)+'`';const c=t.split(a).length-1;if(c!==1)throw new Error(f+': '+n+' '+a+' found '+c+' times; expected exactly one');t=t.replace(a,b);}fs.writeFileSync(f,t);"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "docs"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "build"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "samples:build"
+        ]
+      ]
+    }
+  },
   "reviewedRepositories": [
     "kubohiroya/turbowarp-binary-data",
     "kubohiroya/turbowarp-document-editor",
