@@ -53,6 +53,22 @@
           "samples:build"
         ]
       ]
+    },
+    "kubohiroya/turbowarp-plus-editor": {
+      "prepare": [
+        [
+          "node",
+          "-e",
+          "const fs=require('node:fs');const {execFileSync}=require('node:child_process');const f='site/source.json';const name='@kubohiroya/turbowarp-document-editor';const pins=JSON.parse(fs.readFileSync(f,'utf8'));const range=JSON.parse(fs.readFileSync('package.json','utf8')).dependencies?.[name];if(!range||range.startsWith('git+')){if(pins.documentEditorSource==='npm')throw new Error(f+': npm pin but package.json uses Git');process.exit(0);}const lock=JSON.parse(fs.readFileSync('package-lock.json','utf8')).packages['node_modules/'+name];if(!lock||lock.version!==range||!/^sha512-/.test(lock.integrity??''))throw new Error('package-lock.json does not lock '+name+'@'+range+' with an integrity');const refs=execFileSync('git',['ls-remote','https://github.com/'+pins.documentEditorRepository+'.git','refs/tags/v'+range,'refs/tags/v'+range+'^{}'],{encoding:'utf8'}).trim().split('\\n').filter(Boolean).map(l=>l.split('\\t'));const ref=refs.find(r=>r[1].endsWith('^{}'))??refs[0];if(!ref||!/^[0-9a-f]{40}$/.test(ref[0]))throw new Error('tag v'+range+' not found in '+pins.documentEditorRepository);const out={};for(const[k,v]of Object.entries(pins)){if(k==='documentEditorIntegrity')continue;out[k]=v;if(k==='documentEditorSource')out.documentEditorIntegrity=lock.integrity;}Object.assign(out,{documentEditorRevision:ref[0],documentEditorVersion:range,documentEditorSource:'npm'});out.documentEditorIntegrity=lock.integrity;fs.writeFileSync(f,JSON.stringify(out,null,2)+'\\n');"
+        ],
+        [
+          "npx",
+          "--yes",
+          "npm@11.21.0",
+          "run",
+          "build"
+        ]
+      ]
     }
   },
   "reviewedRepositories": [
