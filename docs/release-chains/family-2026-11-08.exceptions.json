@@ -1,5 +1,29 @@
 {
   "repositories": {
+    "kubohiroya/turbowarp-bubble": {
+      "prepare": [
+        [
+          "corepack",
+          "pnpm",
+          "exec",
+          "prettier",
+          "--write",
+          "pnpm-workspace.yaml"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "build"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "samples:build"
+        ]
+      ]
+    },
     "kubohiroya/turbowarp-camera-calibration": {
       "prepare": [
         [
@@ -54,6 +78,24 @@
         ]
       ]
     },
+    "kubohiroya/turbowarp-photogrammetry-app": {
+      "prepare": [
+        [
+          "corepack",
+          "pnpm",
+          "exec",
+          "prettier",
+          "--write",
+          "pnpm-workspace.yaml"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "build"
+        ]
+      ]
+    },
     "kubohiroya/turbowarp-plus-editor": {
       "prepare": [
         [
@@ -65,6 +107,90 @@
           "npx",
           "--yes",
           "npm@11.21.0",
+          "run",
+          "build"
+        ]
+      ]
+    },
+    "kubohiroya/turbowarp-realtime-motion-capture-app": {
+      "prepare": [
+        [
+          "corepack",
+          "pnpm",
+          "exec",
+          "prettier",
+          "--write",
+          "pnpm-workspace.yaml"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "build"
+        ]
+      ]
+    },
+    "kubohiroya/turbowarp-sesame": {
+      "prepare": [
+        [
+          "corepack",
+          "pnpm",
+          "exec",
+          "prettier",
+          "--write",
+          "pnpm-workspace.yaml"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "docs"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "build"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "samples:build"
+        ]
+      ]
+    },
+    "kubohiroya/turbowarp-time-space-sync-app": {
+      "prepare": [
+        [
+          "corepack",
+          "pnpm",
+          "exec",
+          "prettier",
+          "--write",
+          "pnpm-workspace.yaml"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "build"
+        ]
+      ]
+    },
+    "kubohiroya/turbowarp-webrtc-qrcode-pairing-app": {
+      "prepare": [
+        [
+          "corepack",
+          "pnpm",
+          "exec",
+          "prettier",
+          "--write",
+          "pnpm-workspace.yaml"
+        ],
+        [
+          "corepack",
+          "pnpm",
           "run",
           "build"
         ]
