@@ -43,3 +43,21 @@ overrides:
     /"pages" for "hidden-site" may only be false/,
   );
 });
+
+test('an Editor catalog hold carries its reason and must give one', async () => {
+  const entries = (await loadCatalog(await catalog(`${BASE}
+overrides:
+  hidden-site:
+    editorCatalogHold: '  not ready for the Editor yet  '
+`))).entries;
+  assert.equal(entries.find((entry) => entry.repo === 'hidden-site')?.editorCatalogHold, 'not ready for the Editor yet');
+  assert.equal(entries.find((entry) => entry.repo === 'shown-site')?.editorCatalogHold, undefined);
+  await assert.rejects(
+    loadCatalog(await catalog(`${BASE}
+overrides:
+  hidden-site:
+    editorCatalogHold: ' '
+`)),
+    /"editorCatalogHold" for "hidden-site" must say why it is held/,
+  );
+});

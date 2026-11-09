@@ -546,6 +546,25 @@ test('an extension outside its dependency range is left out with everything depe
   assert.deepEqual(catalog.extensions.find(extension => extension.id === 'fresh')!.dependencies, ['source']);
 });
 
+test('a held extension is left out with its dependents even when every range is satisfied', () => {
+  const record = (name: string, dependencies: Record<string, string> = {}) => ({
+    entry: {id: name, name, package: `@owner/${name}`, version: '1.0.0', sha256: '1'.repeat(64),
+      url: `https://cdn.jsdelivr.net/npm/@owner/${name}@1.0.0/dist/${name}.js`, repository: `https://github.com/owner/${name}`, dependencies: []},
+    manifest: {name: `@owner/${name}`, version: '1.0.0', dependencies},
+  });
+  const records = [
+    record('base'),
+    record('held', {'@owner/base': '^1.0.0'}),
+    record('dependent', {'@owner/held': '^1.0.0'}),
+  ];
+  const {kept, excluded} = excludeIncompatible(records, new Map([['@owner/held', 'waiting for a review'], ['@owner/absent', 'not collected']]));
+  assert.deepEqual(kept.map(({entry}) => entry.id), ['base']);
+  assert.deepEqual(excluded, [
+    {package: '@owner/held', version: '1.0.0', reason: 'held: waiting for a review'},
+    {package: '@owner/dependent', version: '1.0.0', reason: '@owner/held is left out'},
+  ]);
+});
+
 test('collecting leaves out an incompatible extension instead of failing the build', async t => {
   const {report} = dependentPair();
   const responses: Record<string, unknown> = {

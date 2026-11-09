@@ -35,6 +35,10 @@ export async function loadCatalog(path = 'catalog.yaml'): Promise<Catalog> {
       if (override.pages !== undefined && override.pages !== false) {
         throw new Error(`${path}: "pages" for "${repo}" may only be false`);
       }
+      if (override.editorCatalogHold !== undefined &&
+        (typeof override.editorCatalogHold !== 'string' || !override.editorCatalogHold.trim())) {
+        throw new Error(`${path}: "editorCatalogHold" for "${repo}" must say why it is held`);
+      }
       entries.push({
         repo,
         category: category.id,
@@ -47,6 +51,7 @@ export async function loadCatalog(path = 'catalog.yaml'): Promise<Catalog> {
         description: override.description ?? null,
         descriptionJa: override.descriptionJa ?? null,
         ...(override.buildSource ? { buildSource: override.buildSource } : {}),
+        ...(override.editorCatalogHold ? { editorCatalogHold: override.editorCatalogHold.trim() } : {}),
       });
     }
   }

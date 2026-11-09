@@ -372,12 +372,16 @@ const manifestDependencies = (manifest: PublishedManifest) =>
  * dashboard its publication. The Editor loads a project's extensions
  * all-or-nothing, so an extension that cannot be satisfied is dropped together
  * with its dependents rather than listed with a broken dependency.
+ *
+ * `held` names extensions left out on purpose (catalog.yaml `editorCatalogHold`)
+ * with the reason. They are dropped the same way, dependents included.
  */
-export function excludeIncompatible(published: PublishedExtension[]): {
+export function excludeIncompatible(published: PublishedExtension[], held: ReadonlyMap<string, string> = new Map()): {
   kept: PublishedExtension[]; excluded: CatalogCollection['excluded'];
 } {
   const byPackage = new Map(published.map(record => [record.entry.package, record]));
-  const excluded = new Map<string, string>();
+  const excluded = new Map<string, string>(published.flatMap(({entry}) =>
+    held.has(entry.package) ? [[entry.package, `held: ${held.get(entry.package)}`] as const] : []));
   for (let changed = true; changed;) {
     changed = false;
     for (const {entry, manifest} of published) {
@@ -492,7 +496,9 @@ export async function collectEditorCatalog(report: DashboardReport, {allowPrerel
   const knownExtensions = new Set(report.packages.filter(pkg => pkg.unsandboxed !== undefined &&
     !['apps', 'toolchain'].includes(pkg.category)).flatMap(pkg => pkg.npm?.name ? [pkg.npm.name] : []));
   const categories = report.categories.map(({id, title, titleJa}) => ({id, title, ...(titleJa != null ? {titleJa} : {})}));
-  const {kept, excluded} = excludeIncompatible(published);
+  const held = new Map(report.packages.flatMap(pkg =>
+    pkg.editorCatalogHold && pkg.npm?.name ? [[pkg.npm.name, pkg.editorCatalogHold] as const] : []));
+  const {kept, excluded} = excludeIncompatible(published, held);
   return {
     catalog: assembleEditorCatalog(report.generatedAt, kept, knownExtensions, categories),
     state: {schemaVersion: 1, savedAt, failures,

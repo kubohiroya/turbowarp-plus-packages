@@ -328,6 +328,9 @@ categories:
 # site is not ours to show, instead of reporting it as down. Repositories
 # left at the default are reported as "unpublished" until they appear on npm,
 # which is intentional: that is a status worth seeing.
+# `editorCatalogHold: <reason>` keeps an extension (and whatever depends on it)
+# out of the Editor extension catalog even when its dependency ranges are met.
+# Remove the key to let it back in.
 overrides:
   turbowarp-plus-editor:
     buildSource: fixed-editor-gui
@@ -356,3 +359,7 @@ overrides:
     npm: false
   turbowarp-webrtc-qrcode-pairing-app:
     npm: false
+  turbowarp-openai-realtime-api:
+    editorCatalogHold: not returned to the Editor catalog yet; to be restored by an explicit decision
+  turbowarp-voice-chat:
+    editorCatalogHold: not returned to the Editor catalog yet; to be restored by an explicit decision
