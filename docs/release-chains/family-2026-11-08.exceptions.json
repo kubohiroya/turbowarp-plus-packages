@@ -11,6 +11,11 @@
           "pnpm-workspace.yaml"
         ],
         [
+          "node",
+          "-e",
+          "const {execFileSync}=require('node:child_process');const fs=require('node:fs');\nconst before=JSON.parse(execFileSync('git',['show','HEAD:package.json'],{encoding:'utf8'}));\nconst after=JSON.parse(fs.readFileSync('package.json','utf8'));\nif(before.version===after.version)process.exit(0);\nconst floor=r=>String(r).replace(/^[\\^~]/,'');\nconst pairs=[[`Bubble ${before.version}`,`Bubble ${after.version}`]];\nconst policy='repo-policy.json';\nfor(const field of ['dependencies','peerDependencies']){\n  for(const[name,to]of Object.entries(after[field]||{})){\n    const from=(before[field]||{})[name];const m=/^@kubohiroya\\/turbowarp-(.+)$/.exec(name);\n    if(!m||!from||from===to)continue;\n    const title=m[1].split('-').map(w=>w[0].toUpperCase()+w.slice(1)).join(' ');\n    if(!pairs.some(q=>q[0]===`${title} ${floor(from)}`))pairs.push([`${title} ${floor(from)}`,`${title} ${floor(to)}`],[`${name}@${floor(from)}/`,`${name}@${floor(to)}/`]);\n    if(fs.existsSync(policy)){\n      const t=fs.readFileSync(policy,'utf8');const o=`\"${name}\": \"${floor(from)}\"`;\n      if(t.includes(o))fs.writeFileSync(policy,t.split(o).join(`\"${name}\": \"${floor(to)}\"`));\n    }\n  }\n}\nfor(const f of ['README.md','README.ja.md','docs/block-manual.md','docs/block-manual.ja.md','docs/index.html','docs/ja/index.html']){\n  let t=fs.readFileSync(f,'utf8');for(const[o,n]of pairs)t=t.split(o).join(n);fs.writeFileSync(f,t);\n}\nconst f='src/extension.ts',t=fs.readFileSync(f,'utf8');\nconst old=`EXTENSION_VERSION = \"${before.version}\"`,next=`EXTENSION_VERSION = \"${after.version}\"`;\nif(!t.includes(next)){\n  const n=t.split(old).length-1;if(n!==1)throw new Error(`${f}: expected one ${old}, found ${n}`);\n  fs.writeFileSync(f,t.replace(old,next));\n}\nconsole.log('bubble version text:',pairs.map(p=>p.join(' -> ')).join(', '));"
+        ],
+        [
           "corepack",
           "pnpm",
           "run",
@@ -57,6 +62,33 @@
           "node",
           "-e",
           "const {execFileSync}=require('node:child_process');const fs=require('node:fs');const f='CHANGELOG.md';const before=JSON.parse(execFileSync('git',['show','HEAD:package.json'],{encoding:'utf8'}));const after=JSON.parse(fs.readFileSync('package.json','utf8'));let t=fs.readFileSync(f,'utf8');const first=/^## (\\[?)[0-9][^\\n]*$/mu.exec(t);if(!first)throw new Error(f+': no version heading to follow');if(t.includes('## '+first[1]+after.version+(first[1]?']':'')))process.exit(0);const lines=[];for(const field of ['dependencies','peerDependencies','devDependencies']){const label={dependencies:'実行時依存',peerDependencies:'peer依存',devDependencies:'ビルド依存'}[field];for(const[n,r]of Object.entries(after[field]??{})){const o=before[field]?.[n];if(o&&o!==r)lines.push('- '+label+' `'+n+'` を `'+o+'` から `'+r+'` へ更新。');}}if(!lines.length)throw new Error(f+': no dependency change to record');const date=new Date().toLocaleDateString('sv-SE');const head='## '+first[1]+after.version+(first[1]?']':'')+' - '+date;t=t.slice(0,first.index)+head+'\\n\\n### Changed\\n\\n'+lines.join('\\n')+'\\n\\n'+t.slice(first.index);fs.writeFileSync(f,t);"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "docs"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "build"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "samples:build"
+        ]
+      ]
+    },
+    "kubohiroya/turbowarp-extended-notification": {
+      "prepare": [
+        [
+          "node",
+          "-e",
+          "const {execFileSync}=require('node:child_process');const fs=require('node:fs');\nconst f='pnpm-workspace.yaml';let t=fs.readFileSync(f,'utf8');\nconst line=\"  'minimatch@>=7.0.0 <11.0.1': ^11.0.1\";\nif(!t.includes('minimatch@>=7.0.0 <11.0.1')){\n  if(/^overrides:\\n/m.test(t))t=t.replace(/^overrides:\\n/m,`overrides:\\n${line}\\n`);\n  else t=t.replace(/\\n?$/,`\\noverrides:\\n${line}\\n`);\n  fs.writeFileSync(f,t);\n}\nexecFileSync('corepack',['pnpm','install','--no-frozen-lockfile'],{stdio:'inherit'});"
         ],
         [
           "corepack",
