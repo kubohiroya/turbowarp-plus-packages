@@ -47,6 +47,8 @@ const pinnedDocument = (file: string) => /^README[^/]*\.md$/u.test(file) ||
   /^(docs|site)\/.+\.(md|html)$/u.test(file);
 /** An unchanged private package has no npm release for its dependents to resolve, so only its source is checked. */
 const unpublishedReference = (step: PackagePlan) => step.action === 'none' && !step.publishedVersion;
+/** How long the registry may keep serving old dist-tags after the release workflow has moved them. */
+const DIST_TAG_PROPAGATION_SECONDS = 300;
 const versionOf = (step: PackagePlan) => step.nextVersion ?? step.publishedVersion ?? step.currentVersion!;
 const tagOf = (step: PackagePlan) => `v${versionOf(step)}`;
 interface RegistryVersion { name: string; version: string; gitHead?: string; dist: { shasum: string; attestations?: { provenance?: { predicateType: string } } } }
@@ -390,8 +392,8 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     }
   }
 
-  private async wait<T>(read: () => Promise<T | null>, description: string): Promise<T> {
-    const attempts = Math.max(1, Math.ceil((this.config.workflowTimeoutSeconds ?? 3600) / 10));
+  private async wait<T>(read: () => Promise<T | null>, description: string, seconds = this.config.workflowTimeoutSeconds ?? 3600): Promise<T> {
+    const attempts = Math.max(1, Math.ceil(seconds / 10));
     for (let attempt = 0; attempt < attempts; attempt++) {
       const value = await read();
       if (value !== null) return value;
@@ -576,11 +578,13 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
       const before = await tags();
       assert([step.publishedVersion, versionOf(step)].includes(before.latest), '別のリリースがlatestを更新しました。上書きせず停止します。');
       assert(!semver.valid(before.next) || !semver.gt(before.next, versionOf(step)), 'nextが予定版より進んでいます。下げずに停止します。');
-      for (const tag of ['latest', 'next']) if (before[tag] !== versionOf(step)) {
-        assert(!this.config.trustedPublisherOnly, 'release.ymlでlatest/nextを同期してください。ローカルnpm dist-tagへフォールバックしません。');
-        await this.npm(profile, ['dist-tag', 'add', `${step.name}@${versionOf(step)}`, tag], undefined, true);
-      }
-      await this.wait(async () => { const current = await tags(); return current.latest === versionOf(step) && current.next === versionOf(step) ? true : null; }, 'latest/next同期');
+      const stale = ['latest', 'next'].filter(tag => before[tag] !== versionOf(step));
+      // With trusted publishing only, release.yml moves the tags, and the registry can serve the old ones
+      // for a while after the workflow ends. Wait for them instead of moving them from here.
+      if (!this.config.trustedPublisherOnly) for (const tag of stale) await this.npm(profile, ['dist-tag', 'add', `${step.name}@${versionOf(step)}`, tag], undefined, true);
+      const synced = async () => { const current = await tags(); return current.latest === versionOf(step) && current.next === versionOf(step) ? true : null; };
+      if (this.config.trustedPublisherOnly && stale.length) await this.wait(synced, 'latest/next同期。release.ymlでlatest/nextを同期してください。ローカルnpm dist-tagへフォールバックしません', DIST_TAG_PROPAGATION_SECONDS);
+      else await this.wait(synced, 'latest/next同期');
     }
     if (step.action !== 'none') {
       if (onBase(step, entry)) assert.equal(entry.mergeCommit, entry.commit);

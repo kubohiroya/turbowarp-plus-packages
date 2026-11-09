@@ -229,3 +229,24 @@ for (const mode of ['dirty-verification', 'changed-pack', 'same-pack']) test(`a 
     assert.deepEqual(await readdir(artifactDirectory), ['family-tool-1.1.0.tgz'], 'temporary pack directories must be removed');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+for (const syncedAfter of [2, Infinity]) test(`trusted publishing waits for release.yml to move the dist-tags (synced after ${syncedAfter} reads)`, async () => {
+  const entry = record();
+  const unchanged: PackagePlan = { ...step, action: 'none', nextVersion: null, publishedVersion: '1.1.0' };
+  let reads = 0;
+  const config: ExecutionConfig = { schemaVersion: 1, workflowTimeoutSeconds: 20, trustedPublisherOnly: true, repositories: {} };
+  const state: ExecutionState = { schemaVersion: 1, digest: 'c'.repeat(64), entries: { tool: entry } };
+  const execute = new GithubNpmReleaseDriver('/unused', config, state, async () => {}, async command => {
+    if (command[0] === 'fixture-npm') {
+      assert.equal(command[1], 'view', 'must not move dist-tags from the local machine');
+      if (command[3] !== 'dist-tags') return registry;
+      return ++reads > syncedAfter ? '{"latest":"1.1.0","next":"1.1.0"}' : '{"latest":"1.1.0","next":"1.0.0"}';
+    }
+    const path = command.at(-1)!;
+    if (path.includes('contents/')) return JSON.stringify({ encoding: 'base64', content: Buffer.from(JSON.stringify({ name: step.name, version: '1.1.0' })).toString('base64') });
+    if (path.includes('/releases/')) return '{"tag_name":"v1.1.0","draft":false,"assets":[]}';
+    return JSON.stringify({ object: { type: 'commit', sha } });
+  }, async () => {});
+  if (syncedAfter === Infinity) await assert.rejects(execute.complete(unchanged, profile, entry), /release\.ymlでlatest\/nextを同期/u);
+  else { await execute.complete(unchanged, profile, entry); assert.equal(reads, syncedAfter + 1); }
+});
