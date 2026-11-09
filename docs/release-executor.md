@@ -136,6 +136,10 @@ private更新はPR/CI/mergeまでです。既存タグや公開版を推測・�
 
 準備後は専用checkout内で候補commitを固定し、その内容に対して検証します。生成物とGit差分を比較する既存checkも候補を基準に実行し、検証成功とcleanを確認してからpushします。マージ後は、mergeの直前に確かめたbaseの上にsquashされたか（merge commitの親が計画の入力SHAか）を見ます。そうであれば、PRのCIが同じツリーを検証済みなので、main CIを待たずにタグ・公開・完了へ進みます。マージ中にbaseが進んでいた場合だけ、main CIの成功を待ちます。
 
+準備済みの版（計画の`prepared-version`）をすでにmainへmergeしてあり、準備しても差分が出ない場合は、入力SHAそのものを候補にします。
+作業ブランチのpush・PR・mergeは行いません。入力SHAがbaseに含まれることと、そのcommitのmain CIの成功を確かめてから、入力SHAにタグを付けて公開へ進みます。
+RC系列から安定版へ移す場合などに使います。mainの`version`を安定版にしてからcollectと計画をやり直してください。
+
 workspaceのstate.jsonにはdigest、実効設定、phase、commit、PR、merge、成果物、workflow run、エラーを保存します。
 途中失敗後も同じplan、preview、workspace、digestで再開します。完了済み上流を再照合し、同じworkflowを再dispatchしません。
 通常エラーではlockを解放します。強制終了でlockが残った場合は元プロセス停止を確認してからlockだけを削除します。
