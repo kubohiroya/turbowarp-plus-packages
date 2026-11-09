@@ -39,6 +39,8 @@ const hash = (bytes: Uint8Array) => createHash('sha1').update(bytes).digest('hex
 export const contentDigest = (archive: Uint8Array) => createHash('sha256').update(gunzipSync(archive)).digest('hex');
 /** A workflow that packs on CI publishes its own archive, so only the archive content can match the candidate. */
 const packsOnCi = (profile: ReleaseProfile) => profile.publish.mode === 'tag-workflow';
+/** Preparation changed nothing, so the input commit on the base is itself the release candidate. */
+const onBase = (step: PackagePlan, entry: ExecutionEntry) => Boolean(entry.commit) && entry.commit === step.headSha;
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 /** Documentation that names the package with a pinned version, in the family's README/docs convention. */
 const pinnedDocument = (file: string) => /^README[^/]*\.md$/u.test(file) ||
@@ -299,7 +301,12 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
       }
       // Freeze generated outputs before checks that require a clean Git tree.
       await this.git(step, 'add', '--all');
-      await this.git(step, 'commit', '-m', `chore(release): prepare ${step.name} ${versionOf(step)}`);
+      if (await this.git(step, 'status', '--porcelain')) {
+        await this.git(step, 'commit', '-m', `chore(release): prepare ${step.name} ${versionOf(step)}`);
+      } else {
+        // The base already holds the prepared release (a prepared version merged beforehand), so the input commit is the candidate.
+        assert.equal(await this.git(step, 'rev-parse', 'HEAD'), step.headSha, '準備で差分がないのにHEADが入力SHAと異なります。');
+      }
       entry.commit = await this.git(step, 'rev-parse', 'HEAD');
       await this.save();
     }
@@ -360,6 +367,8 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     assert(entry.branch?.startsWith('codex/release/') && entry.commit);
     assert.equal(await this.git(step, 'rev-parse', 'HEAD'), entry.commit);
     assert.equal(await this.git(step, 'status', '--porcelain'), '');
+    // A candidate already on the base needs no branch or PR.
+    if (onBase(step, entry)) return;
     const remote = await this.git(step, 'ls-remote', '--heads', 'origin', entry.branch!);
     assert(!remote || remote.split(/\s/u)[0] === entry.commit, 'remote作業ブランチが別のcommitを指しています。');
     if (!remote) await this.git(step, 'push', '--set-upstream', 'origin', `${entry.commit}:refs/heads/${entry.branch}`);
@@ -405,6 +414,16 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
 
   async merged(step: PackagePlan, _profile: ReleaseProfile, entry: ExecutionEntry): Promise<void> {
     if (step.action === 'none') return;
+    if (onBase(step, entry)) {
+      // No PR CI ran in this execution, so the base's own CI on the input commit stands in for it.
+      await this.git(step, 'fetch', 'origin', entry.base!);
+      await this.git(step, 'merge-base', '--is-ancestor', entry.commit!, `origin/${entry.base}`);
+      await this.waitForCommitChecks(step, entry.commit!, 'main CI');
+      entry.mergeCommit = entry.commit;
+      await this.save();
+      await this.sourceVersion(step, entry.mergeCommit!);
+      return;
+    }
     const get = () => this.api<PullRequest>(`repos/${step.repository}/pulls/${entry.pr}`);
     let pr = await get();
     assert.equal(pr.head.sha, entry.commit, 'PR headが変わりました。');
@@ -564,8 +583,11 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
       await this.wait(async () => { const current = await tags(); return current.latest === versionOf(step) && current.next === versionOf(step) ? true : null; }, 'latest/next同期');
     }
     if (step.action !== 'none') {
-      const pr = await this.api<PullRequest>(`repos/${step.repository}/pulls/${entry.pr}`);
-      assert(pr.merged && pr.merge_commit_sha === entry.mergeCommit && pr.head.sha === entry.commit, 'PRのmerge/headが変わっています。');
+      if (onBase(step, entry)) assert.equal(entry.mergeCommit, entry.commit);
+      else {
+        const pr = await this.api<PullRequest>(`repos/${step.repository}/pulls/${entry.pr}`);
+        assert(pr.merged && pr.merge_commit_sha === entry.mergeCommit && pr.head.sha === entry.commit, 'PRのmerge/headが変わっています。');
+      }
       assert.equal(await this.git(step, 'status', '--porcelain'), '', '未コミット変更があるためcheckout/branchを保持します。');
       await this.git(step, 'fetch', 'origin', entry.base!);
       await this.git(step, 'merge-base', '--is-ancestor', entry.mergeCommit!, `origin/${entry.base}`);

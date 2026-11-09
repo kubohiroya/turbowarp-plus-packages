@@ -39,7 +39,12 @@ for (const resumedMismatch of [false, true]) test(`pre-existing unpublished tags
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-for (const privatePackage of [false, true]) for (const interruption of ['none', 'verification', 'main-ci', 'cleanup']) test(`real Git lifecycle with resume (private=${privatePackage}, interruption=${interruption})`, async () => {
+const lifecycles = [
+  ...[false, true].flatMap(privatePackage => ['none', 'verification', 'main-ci', 'cleanup'].map(interruption => ({ privatePackage, interruption, prepared: false }))),
+  // The prepared release is already merged, so preparation changes nothing and the input commit is the candidate.
+  ...['none', 'verification'].map(interruption => ({ privatePackage: false, interruption, prepared: true })),
+];
+for (const { privatePackage, interruption, prepared } of lifecycles) test(`real Git lifecycle with resume (private=${privatePackage}, interruption=${interruption}, prepared=${prepared})`, async () => {
   const root = await mkdtemp(join(tmpdir(), 'release-real-git-'));
   const gitEnv = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_AUTHOR_NAME: 'Release Test', GIT_AUTHOR_EMAIL: 'release@example.invalid', GIT_COMMITTER_NAME: 'Release Test', GIT_COMMITTER_EMAIL: 'release@example.invalid' };
   const git = (args: string[], cwd?: string) => runCommand(['git', ...args], { cwd, env: gitEnv });
@@ -47,18 +52,20 @@ for (const privatePackage of [false, true]) for (const interruption of ['none', 
     const source = join(root, 'source'), remote = join(root, 'remote.git'), workspace = join(root, 'workspace');
     await mkdir(source);
     await git(['init', '--initial-branch=main'], source);
-    await writeFile(join(source, 'package.json'), JSON.stringify({ name: '@family/tool', version: '1.0.0', private: privatePackage, engines: { node: '>=22' } }));
+    await writeFile(join(source, 'package.json'), JSON.stringify({ name: '@family/tool', version: prepared ? '1.1.0' : '1.0.0', private: privatePackage, engines: { node: '>=22' } }, null, 2) + '\n');
+    if (prepared) await writeFile(join(source, 'candidate-1.1.0.sb3'), 'verified candidate');
     await writeFile(join(source, 'index.js'), 'export const value = 1;\n');
     // Pinned examples follow the release; other packages, longer versions and the changelog stay as they are.
     const readme = 'pnpm add @family/tool@1.0.0\nhttps://cdn.example/npm/@family/tool@1.0.0/dist/tool.js\n@family/other@1.0.0 @family/tool@1.0.0-rc.1\n';
-    await writeFile(join(source, 'README.md'), readme);
+    const pinned = readme.replaceAll('@family/tool@1.0.0\n', '@family/tool@1.1.0\n').replace('@family/tool@1.0.0/dist', '@family/tool@1.1.0/dist');
+    await writeFile(join(source, 'README.md'), prepared ? pinned : readme);
     await writeFile(join(source, 'CHANGELOG.md'), '## 1.0.0\n\n- @family/tool@1.0.0\n');
     await git(['add', '.'], source); await git(['commit', '-m', 'initial'], source);
     const sha = await git(['rev-parse', 'HEAD'], source);
     await git(['clone', '--bare', source, remote]);
     const step: PackagePlan = { repo: 'tool', repository: 'family/tool', name: '@family/tool', headSha: sha,
-      currentVersion: '1.0.0', publishedVersion: '1.0.0', nextVersion: '1.1.0', versionChange: 'minor',
-      sourceChanges: 'ahead', action: privatePackage ? 'update-only' : 'publish', reasons: ['commits-ahead'], issues: [], dependencyUpdates: [] };
+      currentVersion: prepared ? '1.1.0' : '1.0.0', publishedVersion: '1.0.0', nextVersion: '1.1.0', versionChange: prepared ? 'prepared' : 'minor',
+      sourceChanges: 'ahead', action: privatePackage ? 'update-only' : 'publish', reasons: prepared ? ['commits-ahead', 'prepared-version'] : ['commits-ahead'], issues: [], dependencyUpdates: [] };
     const plan: ReleasePlan = { schemaVersion: 1, mode: 'plan', ready: true, applyReady: true, target: 'tool',
       snapshot: { generatedAt: '2026-10-26T00:00:00Z', sha256: 'a'.repeat(64) }, order: ['tool'], steps: [step],
       publishTargets: privatePackage ? [] : [{ repository: step.repository, name: step.name!, version: '1.1.0', tag: 'v1.1.0', headSha: sha }] };
@@ -129,7 +136,7 @@ for (const privatePackage of [false, true]) for (const interruption of ['none', 
         if (path.includes('pulls?')) return JSON.stringify(pr ? [pr] : []);
         if (path.includes('/pulls/')) return JSON.stringify(pr);
         if (path.includes('/check-runs?')) {
-          const onMain = Boolean(pr?.merge_commit_sha && path.includes(pr.merge_commit_sha));
+          const onMain = Boolean(pr?.merge_commit_sha && path.includes(pr.merge_commit_sha)) || (prepared && path.includes(sha));
           if (onMain) events.push('main-ci');
           const conclusion = onMain && failMainCi ? 'failure' : 'success';
           if (onMain) failMainCi = false;
@@ -209,10 +216,14 @@ for (const privatePackage of [false, true]) for (const interruption of ['none', 
     if (!privatePackage) assert.equal(basename(state.entries.tool.extraArtifacts![0].path), 'candidate-1.1.0.sb3');
     assert.equal(tags.latest, privatePackage ? '1.0.0' : '1.1.0'); assert.equal(tags.next, privatePackage ? '1.0.0' : '1.1.0');
     assert.equal(events.filter(event => event === 'publish').length, privatePackage ? 0 : 1);
-    if (interruption === 'main-ci') { if (!privatePackage) assert(events.indexOf('main-ci') < events.indexOf('publish')); }
+    if (prepared) {
+      assert.equal(pr, null, 'a candidate already on the base needs no PR');
+      assert.equal(state.entries.tool.mergeCommit, sha, 'the input commit is tagged as it is');
+      assert(events.includes('main-ci') && events.indexOf('main-ci') < events.indexOf('publish'), 'without a PR, the base CI must pass before publication');
+    } else if (interruption === 'main-ci') { if (!privatePackage) assert(events.indexOf('main-ci') < events.indexOf('publish')); }
     else assert(!events.includes('main-ci'), 'an unchanged base must reuse the PR CI result');
     assert.equal(JSON.parse(await git(['--git-dir', remote, 'show', 'main:package.json'])).version, '1.1.0');
-    assert.equal(await git(['--git-dir', remote, 'show', 'main:README.md']) + '\n', readme.replaceAll('@family/tool@1.0.0\n', '@family/tool@1.1.0\n').replace('@family/tool@1.0.0/dist', '@family/tool@1.1.0/dist'));
+    assert.equal(await git(['--git-dir', remote, 'show', 'main:README.md']) + '\n', pinned);
     assert.equal(await git(['--git-dir', remote, 'show', 'main:CHANGELOG.md']), '## 1.0.0\n\n- @family/tool@1.0.0');
     if (!privatePackage) assert.equal(await git(['--git-dir', remote, 'rev-parse', 'v1.1.0^{commit}']), state.entries.tool.mergeCommit);
     assert.equal(await git(['--git-dir', remote, 'branch', '--list', state.entries.tool.branch!]), '');
