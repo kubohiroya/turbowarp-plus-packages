@@ -103,6 +103,9 @@ categories:
       - turbowarp-plus-editor-project-folder
       - turbowarp-plus-editor-git
       - turbowarp-plus-editor-auth
+      - turbowarp-plus-editor-host
+      - turbowarp-plus-editor-test-runtime
+      - turbowarp-plus-editor-test-runtime-blocks
 
   # Includes: DOM shell primitives, runtime adapters, and the title and
   #   application menu chrome and live reload control used to host the TurboWarp
