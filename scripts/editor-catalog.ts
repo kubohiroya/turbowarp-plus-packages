@@ -35,7 +35,7 @@ async function previousState(): Promise<CatalogState | undefined> {
 }
 
 const report: DashboardReport = JSON.parse(await readFile(join(root, 'data/dashboard.json'), 'utf8'));
-const { catalog, state, carriedOver } = await collectEditorCatalog(report, {
+const { catalog, state, carriedOver, excluded } = await collectEditorCatalog(report, {
   allowPrerelease: process.env.TW_PLUS_EDITOR_CATALOG_PRERELEASE === '1',
   previous: await previousState(),
 });
@@ -46,4 +46,7 @@ console.log(`wrote site/extensions-v1.json (${catalog.extensions.length} extensi
 for (const { package: name, attempts, error } of carriedOver) {
   const runs = attempts === 1 ? 'one failed run' : `${attempts} failed runs in a row`;
   console.warn(`  carried over ${name} from the previous run after ${runs}: ${error}`);
+}
+for (const { package: name, version, reason } of excluded) {
+  console.warn(`  left out ${name}@${version}: ${reason}`);
 }

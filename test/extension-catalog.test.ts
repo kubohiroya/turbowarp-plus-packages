@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { extensionHeader, extensionDocsURL, extensionAuthor, extensionDisplayName, catalogEntryPresentation, assembleEditorCatalog, publishedExtension, collectEditorCatalog, type CatalogState, type EditorExtension } from '../scripts/lib/extension-catalog.ts';
+import { extensionHeader, extensionDocsURL, extensionAuthor, extensionDisplayName, catalogEntryPresentation, assembleEditorCatalog, publishedExtension, collectEditorCatalog, excludeIncompatible, type CatalogState, type EditorExtension } from '../scripts/lib/extension-catalog.ts';
 import type {DashboardPackage, DashboardReport} from '../scripts/lib/types.ts';
 const entry = (id: string): EditorExtension => ({id, name: id, package: `@owner/${id}`, version: '1.2.3', url: `https://cdn.test/${id}.js`, sha256: '0'.repeat(64), repository: 'https://github.com/owner/repo', dependencies: []});
 
@@ -519,4 +519,51 @@ test('a recovered package clears its failure record', async t => {
   });
   assert.deepEqual(carriedOver, []);
   assert.deepEqual(state.failures, {});
+});
+
+test('an extension outside its dependency range is left out with everything depending on it', () => {
+  const record = (name: string, version: string, dependencies: Record<string, string> = {}, peerDependencies?: Record<string, string>) => ({
+    entry: {id: name, name, package: `@owner/${name}`, version, sha256: '1'.repeat(64),
+      url: `https://cdn.jsdelivr.net/npm/@owner/${name}@${version}/dist/${name}.js`, repository: `https://github.com/owner/${name}`, dependencies: []},
+    manifest: {name: `@owner/${name}`, version, dependencies, ...(peerDependencies ? {peerDependencies} : {})},
+  });
+  // A release in progress: source moved to 2.0.0, its direct dependent still asks for ^1.0.0.
+  const records = [
+    record('source', '2.0.0'),
+    record('stale', '1.0.0', {'@owner/source': '^1.0.0'}),
+    record('fresh', '1.0.0', {'@owner/source': '^2.0.0'}),
+    record('downstream', '1.0.0', {}, {'@owner/stale': '^1.0.0'}),
+    record('unrelated', '1.0.0', {'left-pad': '^1.0.0'}),
+  ];
+  const {kept, excluded} = excludeIncompatible(records);
+  assert.deepEqual(kept.map(({entry}) => entry.id), ['source', 'fresh', 'unrelated']);
+  assert.deepEqual(excluded, [
+    {package: '@owner/stale', version: '1.0.0', reason: 'requires @owner/source@^1.0.0, the catalog has 2.0.0'},
+    {package: '@owner/downstream', version: '1.0.0', reason: '@owner/stale is left out'},
+  ]);
+  // What is left assembles, even though the excluded packages are known extensions.
+  const catalog = assembleEditorCatalog('now', kept, new Set(records.map(({entry}) => entry.package)));
+  assert.deepEqual(catalog.extensions.find(extension => extension.id === 'fresh')!.dependencies, ['source']);
+});
+
+test('collecting leaves out an incompatible extension instead of failing the build', async t => {
+  const {report} = dependentPair();
+  const responses: Record<string, unknown> = {
+    'https://cdn.jsdelivr.net/npm/@owner/a@1.2.3/package.json': {name: '@owner/a', version: '1.2.3', dependencies: {'@owner/b': '^0.9.0'}},
+    'https://data.jsdelivr.com/v1/package/npm/@owner/a@1.2.3/flat': {files: [{name: '/dist/a.js'}]},
+    'https://cdn.jsdelivr.net/npm/@owner/a@1.2.3/dist/a.js': '// ID: a\n// Name: A\n',
+    'https://cdn.jsdelivr.net/npm/@owner/b@1.0.0/package.json': {name: '@owner/b', version: '1.0.0'},
+    'https://data.jsdelivr.com/v1/package/npm/@owner/b@1.0.0/flat': {files: [{name: '/dist/b.js'}]},
+    'https://cdn.jsdelivr.net/npm/@owner/b@1.0.0/dist/b.js': '// ID: b\n// Name: B\n',
+  };
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    assert.ok(Object.hasOwn(responses, url), `Unexpected request ${url}`);
+    const value = responses[url];
+    return new Response(typeof value === 'string' ? value : JSON.stringify(value));
+  });
+  const {catalog, state, excluded} = await collectEditorCatalog(report);
+  assert.deepEqual(catalog.extensions.map(extension => extension.id), ['b']);
+  assert.deepEqual(excluded.map(({package: name}) => name), ['@owner/a']);
+  // The fallback only holds what was published.
+  assert.deepEqual(state.published.map(({entry}) => entry.package), ['@owner/b']);
 });

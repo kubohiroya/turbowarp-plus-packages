@@ -300,8 +300,7 @@ export function assembleEditorCatalog(
     if (!/^[a-zA-Z0-9]+$/.test(entry.id)) throw new Error(`Invalid extension ID: ${entry.id}`);
     if (ids.has(entry.id)) throw new Error(`Duplicate extension ID: ${entry.id}`);
     ids.add(entry.id);
-    const dependencies = [...Object.entries({...manifest.dependencies, ...manifest.optionalDependencies}), ...Object.entries(manifest.peerDependencies ?? {})];
-    const dependencyIds = dependencies.flatMap(([name, range]) => {
+    const dependencyIds = manifestDependencies(manifest).flatMap(([name, range]) => {
       const dependency = byPackage.get(name);
       if (!dependency) {
         if (knownExtensions.has(name)) throw new Error(`Missing extension dependency: ${entry.package} requires ${name}`);
@@ -355,6 +354,51 @@ export interface CatalogCollection {
   /** Feed this back as `previous` on the next run. */
   state: CatalogState;
   carriedOver: {package: string; attempts: number; error: string}[];
+  /** Left out of this catalog because a dependency's selected version is outside the published range. */
+  excluded: {package: string; version: string; reason: string}[];
+}
+
+const manifestDependencies = (manifest: PublishedManifest) =>
+  [...Object.entries({...manifest.dependencies, ...manifest.optionalDependencies}), ...Object.entries(manifest.peerDependencies ?? {})];
+
+/**
+ * Leave out every extension whose dependency resolves to a version outside its
+ * published range, and everything that depends on one left out.
+ *
+ * A family release in progress publishes upstream packages before their
+ * dependents, and a stable catalog picks the previous stable release of a
+ * package whose `latest` is a prerelease. Either way one extension can require
+ * a version range the catalog does not hold. That used to cost the whole
+ * dashboard its publication. The Editor loads a project's extensions
+ * all-or-nothing, so an extension that cannot be satisfied is dropped together
+ * with its dependents rather than listed with a broken dependency.
+ */
+export function excludeIncompatible(published: PublishedExtension[]): {
+  kept: PublishedExtension[]; excluded: CatalogCollection['excluded'];
+} {
+  const byPackage = new Map(published.map(record => [record.entry.package, record]));
+  const excluded = new Map<string, string>();
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const {entry, manifest} of published) {
+      if (excluded.has(entry.package)) continue;
+      for (const [name, range] of manifestDependencies(manifest)) {
+        const dependency = byPackage.get(name);
+        const reason = excluded.has(name) ? `${name} is left out` :
+          dependency && !semver.satisfies(dependency.entry.version, range) ? `requires ${name}@${range}, the catalog has ${dependency.entry.version}` : undefined;
+        if (reason) {
+          excluded.set(entry.package, reason);
+          changed = true;
+          break;
+        }
+      }
+    }
+  }
+  return {
+    kept: published.filter(record => !excluded.has(record.entry.package)),
+    excluded: published.flatMap(({entry}) => excluded.has(entry.package) ?
+      [{package: entry.package, version: entry.version, reason: excluded.get(entry.package)!}] : []),
+  };
 }
 
 /**
@@ -448,10 +492,12 @@ export async function collectEditorCatalog(report: DashboardReport, {allowPrerel
   const knownExtensions = new Set(report.packages.filter(pkg => pkg.unsandboxed !== undefined &&
     !['apps', 'toolchain'].includes(pkg.category)).flatMap(pkg => pkg.npm?.name ? [pkg.npm.name] : []));
   const categories = report.categories.map(({id, title, titleJa}) => ({id, title, ...(titleJa != null ? {titleJa} : {})}));
+  const {kept, excluded} = excludeIncompatible(published);
   return {
-    catalog: assembleEditorCatalog(report.generatedAt, published, knownExtensions, categories),
+    catalog: assembleEditorCatalog(report.generatedAt, kept, knownExtensions, categories),
     state: {schemaVersion: 1, savedAt, failures,
-      published: published.map(record => ({...record, manifest: persistableManifest(record.manifest)}))},
+      published: kept.map(record => ({...record, manifest: persistableManifest(record.manifest)}))},
     carriedOver,
+    excluded,
   };
 }
