@@ -96,6 +96,11 @@ categories:
       - turbowarp-document-editor
       - turbowarp-sb3-save-format
       - turbowarp-script-transfer
+      - turbowarp-plus-editor-layout
+      - turbowarp-plus-editor-project-model
+      - turbowarp-plus-editor-project-folder
+      - turbowarp-plus-editor-git
+      - turbowarp-plus-editor-auth
 
   # Includes: DOM shell primitives, runtime adapters, and the title and
   #   application menu chrome and live reload control used to host the TurboWarp
