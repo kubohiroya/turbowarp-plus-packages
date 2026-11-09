@@ -163,6 +163,11 @@ ID・パッケージ重複、公開manifestの名前/版不一致、既知だが
 読み込むので、満たせない依存を持つ項目は載せても使えないからです。
 外した機能拡張は、依存先との範囲が揃った次のビルドで自動的に戻ります。
 
+範囲が揃っていても、まだカタログに載せない機能拡張は `catalog.yaml` の `overrides` に
+`editorCatalogHold: <理由>` を書いて保留します。保留したものも同じように外し、依存元も連鎖して外します。
+ログの理由は `held: <理由>` です。保留はダッシュボードの一覧やnpmの公開には影響しません。
+戻すときは `editorCatalogHold` を消します。理由が空の保留は `catalog.yaml` の読み込みエラーです。
+
 ## 取得に失敗したときのふるまい
 
 関連Issue: [#72](https://github.com/kubohiroya/turbowarp-plus-packages/issues/72)。

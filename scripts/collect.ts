@@ -325,6 +325,7 @@ async function main() {
       label: entry.label,
       category: entry.category,
       note: entry.note,
+      ...(entry.editorCatalogHold ? { editorCatalogHold: entry.editorCatalogHold } : {}),
       errors: [],
     };
 
