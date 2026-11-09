@@ -75,6 +75,7 @@ pnpm release --plan /tmp/release-plan.json --workspace /tmp/family-release \
 ```
 
 - packageManagerで指定されたnpm/pnpmを使用します。packageManagerがなく既存workflowが`npm ci`を使っていればnpmを選びます。それ以外でinstall手順を確定できない場合はinstall例外を要求します。
+- npmのlockfileは`npm install --package-lock-only --ignore-scripts`で更新し、`npm ci`で入れます。lockfileだけの更新でもrootの`prepare`などが走り、依存がない状態でbuildして失敗するためです。lifecycle scriptは`npm ci`で依存が揃ってから動きます。
 - 準備スクリプトには`RELEASE_VERSION`と`RELEASE_PLAN_SHA`を渡します。版定数・文書・生成runtime・SB3のpin/凍結をrepo側で管理します。中断後に再実行でき、凍結済み成果物を勝手に再生成しない実装が必要です。
 - 準備の前に、executorはREADME（`README*.md`）と`docs/`・`site/`の`.md`・`.html`にある`<パッケージ名>@<旧版>`を新しい版へ置き換えます。family共通の「版を固定した導入例」を、各repoの`check-repo`が版から照合しているためです。後ろに版の続き（`-rc.1`など）が付く表記、ほかのパッケージ、CHANGELOGは変えません。ソースコードの版定数などは、これまでどおりrepoの準備スクリプトで管理します。
 - Git差分を使う生成物検証は、更新候補に対する検証としてrepo側で実装します。通常の開発用checkが古いHEADとの比較を要求する場合、そのままrelease:verifyへ流用しないでください。

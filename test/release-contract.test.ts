@@ -198,3 +198,9 @@ test('an update-only step of a public package needs no publishing workflow', () 
   p.steps[0] = { ...p.steps[0], action: 'publish' };
   assert.throws(() => resolveContracts(p, read), /release\.yml must not be read/u);
 });
+
+test('the npm lockfile refresh never runs lifecycle scripts before the dependencies are installed', () => {
+  const npm = JSON.parse(manifest()); npm.packageManager = 'npm@11.21.0'; npm.scripts.prepare = 'npm run build';
+  const profile = profileFromContract(JSON.stringify(npm), workflow);
+  assert.deepEqual(profile.install, [['npx', '--yes', 'npm@11.21.0', 'install', '--package-lock-only', '--ignore-scripts'], ['npx', '--yes', 'npm@11.21.0', 'ci']]);
+});

@@ -79,7 +79,9 @@ export function profileFromContract(manifestText: string, workflowText: string, 
   const commands = {
     install: manager?.[1] === 'pnpm'
       ? [command.concat('install', '--lockfile-only'), command.concat('install', '--frozen-lockfile')]
-      : [command.concat('install', '--package-lock-only'), command.concat('ci')],
+      // A lockfile-only install still runs the root's lifecycle scripts, such as a `prepare` that builds,
+      // before anything is installed. Only `npm ci` runs them, with the dependencies in place.
+      : [command.concat('install', '--package-lock-only', '--ignore-scripts'), command.concat('ci')],
     // Sample SB3s embed the built extension, and the family's checks reject stale samples (samples:check).
     prepare: prepareName ? [command.concat('run', prepareName)] : ['docs', 'build', 'samples:build'].filter(has).map(name => command.concat('run', name)),
     verify, artifacts: contract.artifacts ?? [],
