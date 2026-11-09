@@ -98,6 +98,7 @@ categories:
       - turbowarp-script-transfer
       - turbowarp-plus-editor-layout
       - turbowarp-plus-editor-project-model
+      - turbowarp-plus-editor-windows
       - turbowarp-plus-editor-project-folder
       - turbowarp-plus-editor-git
       - turbowarp-plus-editor-auth
