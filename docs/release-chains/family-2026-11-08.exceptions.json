@@ -73,6 +73,8 @@
   },
   "reviewedRepositories": [
     "kubohiroya/turbowarp-binary-data",
+    "kubohiroya/turbowarp-bubble",
+    "kubohiroya/turbowarp-document-data",
     "kubohiroya/turbowarp-document-editor",
     "kubohiroya/turbowarp-named-functions",
     "kubohiroya/turbowarp-structured-data",
