@@ -92,7 +92,7 @@ repoへ適用する前に既存CI・Release添付物・初回公開・レジス�
 
 npm側はowner/repository/workflow=`release.yml`、workflowと同じEnvironment、直接`npm publish`権限を設定します。
 完了時はworkflowが`latest`と`next`を同じ版へ同期します。OIDCで同期するには`Allow npm dist-tag`も必要です。
-executorは公開版・tarballハッシュ・SLSA provenance・両タグを照合します。同期不足なら停止し、ローカル認証で代行しません。
+executorは公開版・tarballハッシュ・SLSA provenance・両タグを照合します。workflow完了後もレジストリが古いタグを返すことがあるため、両タグは最大5分待ちます。それでも揃わなければ停止し、ローカル認証で代行しません。
 
 ## 例外・明示config・移行
 

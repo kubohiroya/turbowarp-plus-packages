@@ -156,6 +156,26 @@ test('existing publication source with the wrong package version cannot be regis
   await assert.rejects(execute.preflight(unchanged, profile, entry), /GitHubソース/u);
 });
 
+test('an unchanged private package is checked by its source only, without npm or tags', async () => {
+  const entry: ExecutionEntry = { phase: 'pending' };
+  const unchanged: PackagePlan = { ...step, action: 'none', nextVersion: null, publishedVersion: null };
+  const execute = driver(async command => {
+    if (command[0] === 'fixture-npm') {
+      assert.equal(command[1], 'view'); assert.equal(command[3], 'dist-tags', 'must not look up a release');
+      throw missing(command);
+    }
+    assert.equal(command[0], 'gh'); assert.equal(command[1], 'api');
+    const path = command.at(-1)!;
+    assert(!path.includes('/tags/') && !path.includes('/releases/'), 'must not look up a tag or Release');
+    if (path === 'repos/family/tool') return JSON.stringify({ default_branch: 'main', archived: false, permissions: { push: true } });
+    return JSON.stringify({ object: { type: 'commit', sha } });
+  }, entry);
+  for (const phase of ['preflight', 'prepared', 'pushed', 'merged', 'tagged', 'released', 'published', 'complete'] as const) {
+    await execute[phase](unchanged, profile, entry);
+  }
+  assert.equal(entry.mergeCommit, undefined);
+});
+
 test('completing an older release never downgrades a newer next tag', async () => {
   const entry = record();
   const unchanged: PackagePlan = { ...step, action: 'none', nextVersion: null, publishedVersion: '1.1.0' };
@@ -208,4 +228,25 @@ for (const mode of ['dirty-verification', 'changed-pack', 'same-pack']) test(`a 
     assert.equal(await readFile(artifact, 'utf8'), 'original archive');
     assert.deepEqual(await readdir(artifactDirectory), ['family-tool-1.1.0.tgz'], 'temporary pack directories must be removed');
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+for (const syncedAfter of [2, Infinity]) test(`trusted publishing waits for release.yml to move the dist-tags (synced after ${syncedAfter} reads)`, async () => {
+  const entry = record();
+  const unchanged: PackagePlan = { ...step, action: 'none', nextVersion: null, publishedVersion: '1.1.0' };
+  let reads = 0;
+  const config: ExecutionConfig = { schemaVersion: 1, workflowTimeoutSeconds: 20, trustedPublisherOnly: true, repositories: {} };
+  const state: ExecutionState = { schemaVersion: 1, digest: 'c'.repeat(64), entries: { tool: entry } };
+  const execute = new GithubNpmReleaseDriver('/unused', config, state, async () => {}, async command => {
+    if (command[0] === 'fixture-npm') {
+      assert.equal(command[1], 'view', 'must not move dist-tags from the local machine');
+      if (command[3] !== 'dist-tags') return registry;
+      return ++reads > syncedAfter ? '{"latest":"1.1.0","next":"1.1.0"}' : '{"latest":"1.1.0","next":"1.0.0"}';
+    }
+    const path = command.at(-1)!;
+    if (path.includes('contents/')) return JSON.stringify({ encoding: 'base64', content: Buffer.from(JSON.stringify({ name: step.name, version: '1.1.0' })).toString('base64') });
+    if (path.includes('/releases/')) return '{"tag_name":"v1.1.0","draft":false,"assets":[]}';
+    return JSON.stringify({ object: { type: 'commit', sha } });
+  }, async () => {});
+  if (syncedAfter === Infinity) await assert.rejects(execute.complete(unchanged, profile, entry), /release\.ymlでlatest\/nextを同期/u);
+  else { await execute.complete(unchanged, profile, entry); assert.equal(reads, syncedAfter + 1); }
 });

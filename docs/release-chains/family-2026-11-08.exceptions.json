@@ -1,8 +1,240 @@
 {
-  "repositories": {},
+  "repositories": {
+    "kubohiroya/turbowarp-bubble": {
+      "prepare": [
+        [
+          "corepack",
+          "pnpm",
+          "exec",
+          "prettier",
+          "--write",
+          "pnpm-workspace.yaml"
+        ],
+        [
+          "node",
+          "-e",
+          "const {execFileSync}=require('node:child_process');const fs=require('node:fs');\nconst before=JSON.parse(execFileSync('git',['show','HEAD:package.json'],{encoding:'utf8'}));\nconst after=JSON.parse(fs.readFileSync('package.json','utf8'));\nif(before.version===after.version)process.exit(0);\nconst floor=r=>String(r).replace(/^[\\^~]/,'');\nconst pairs=[[`Bubble ${before.version}`,`Bubble ${after.version}`]];\nconst policy='repo-policy.json';\nfor(const field of ['dependencies','peerDependencies']){\n  for(const[name,to]of Object.entries(after[field]||{})){\n    const from=(before[field]||{})[name];const m=/^@kubohiroya\\/turbowarp-(.+)$/.exec(name);\n    if(!m||!from||from===to)continue;\n    const title=m[1].split('-').map(w=>w[0].toUpperCase()+w.slice(1)).join(' ');\n    if(!pairs.some(q=>q[0]===`${title} ${floor(from)}`))pairs.push([`${title} ${floor(from)}`,`${title} ${floor(to)}`],[`${name}@${floor(from)}/`,`${name}@${floor(to)}/`]);\n    if(fs.existsSync(policy)){\n      const t=fs.readFileSync(policy,'utf8');const o=`\"${name}\": \"${floor(from)}\"`;\n      if(t.includes(o))fs.writeFileSync(policy,t.split(o).join(`\"${name}\": \"${floor(to)}\"`));\n    }\n  }\n}\nfor(const f of ['README.md','README.ja.md','docs/block-manual.md','docs/block-manual.ja.md','docs/index.html','docs/ja/index.html']){\n  let t=fs.readFileSync(f,'utf8');for(const[o,n]of pairs)t=t.split(o).join(n);fs.writeFileSync(f,t);\n}\nconst f='src/extension.ts',t=fs.readFileSync(f,'utf8');\nconst old=`EXTENSION_VERSION = \"${before.version}\"`,next=`EXTENSION_VERSION = \"${after.version}\"`;\nif(!t.includes(next)){\n  const n=t.split(old).length-1;if(n!==1)throw new Error(`${f}: expected one ${old}, found ${n}`);\n  fs.writeFileSync(f,t.replace(old,next));\n}\nconsole.log('bubble version text:',pairs.map(p=>p.join(' -> ')).join(', '));"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "build"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "samples:build"
+        ]
+      ]
+    },
+    "kubohiroya/turbowarp-camera-calibration": {
+      "prepare": [
+        [
+          "node",
+          "-e",
+          "const {execFileSync}=require('node:child_process');const fs=require('node:fs');const f='THIRD_PARTY_NOTICES.md';const v=r=>String(r).replace(/^[\\^~=]/,'');const before=JSON.parse(execFileSync('git',['show','HEAD:package.json'],{encoding:'utf8'})).dependencies??{};const after=JSON.parse(fs.readFileSync('package.json','utf8')).dependencies??{};let t=fs.readFileSync(f,'utf8');for(const[n,r]of Object.entries(after)){const o=before[n];if(!o||o===r)continue;const a='`'+v(o)+'`',b='`'+v(r)+'`';const c=t.split(a).length-1;if(c!==1)throw new Error(f+': '+n+' '+a+' found '+c+' times; expected exactly one');t=t.replace(a,b);}fs.writeFileSync(f,t);"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "docs"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "build"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "samples:build"
+        ]
+      ]
+    },
+    "kubohiroya/turbowarp-diagnostic-overlay": {
+      "prepare": [
+        [
+          "node",
+          "-e",
+          "const {execFileSync}=require('node:child_process');const fs=require('node:fs');const f='CHANGELOG.md';const before=JSON.parse(execFileSync('git',['show','HEAD:package.json'],{encoding:'utf8'}));const after=JSON.parse(fs.readFileSync('package.json','utf8'));let t=fs.readFileSync(f,'utf8');const first=/^## (\\[?)[0-9][^\\n]*$/mu.exec(t);if(!first)throw new Error(f+': no version heading to follow');if(t.includes('## '+first[1]+after.version+(first[1]?']':'')))process.exit(0);const lines=[];for(const field of ['dependencies','peerDependencies','devDependencies']){const label={dependencies:'実行時依存',peerDependencies:'peer依存',devDependencies:'ビルド依存'}[field];for(const[n,r]of Object.entries(after[field]??{})){const o=before[field]?.[n];if(o&&o!==r)lines.push('- '+label+' `'+n+'` を `'+o+'` から `'+r+'` へ更新。');}}if(!lines.length)throw new Error(f+': no dependency change to record');const date=new Date().toLocaleDateString('sv-SE');const head='## '+first[1]+after.version+(first[1]?']':'')+' - '+date;t=t.slice(0,first.index)+head+'\\n\\n### Changed\\n\\n'+lines.join('\\n')+'\\n\\n'+t.slice(first.index);fs.writeFileSync(f,t);"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "docs"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "build"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "samples:build"
+        ]
+      ]
+    },
+    "kubohiroya/turbowarp-extended-notification": {
+      "prepare": [
+        [
+          "node",
+          "-e",
+          "const {execFileSync}=require('node:child_process');const fs=require('node:fs');\nconst f='pnpm-workspace.yaml';let t=fs.readFileSync(f,'utf8');\nconst line=\"  'minimatch@>=7.0.0 <11.0.1': ^11.0.1\";\nif(!t.includes('minimatch@>=7.0.0 <11.0.1')){\n  if(/^overrides:\\n/m.test(t))t=t.replace(/^overrides:\\n/m,`overrides:\\n${line}\\n`);\n  else t=t.replace(/\\n?$/,`\\noverrides:\\n${line}\\n`);\n  fs.writeFileSync(f,t);\n}\nexecFileSync('corepack',['pnpm','install','--no-frozen-lockfile'],{stdio:'inherit'});"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "docs"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "build"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "samples:build"
+        ]
+      ]
+    },
+    "kubohiroya/turbowarp-photogrammetry-app": {
+      "prepare": [
+        [
+          "corepack",
+          "pnpm",
+          "exec",
+          "prettier",
+          "--write",
+          "pnpm-workspace.yaml"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "build"
+        ]
+      ]
+    },
+    "kubohiroya/turbowarp-plus-editor": {
+      "prepare": [
+        [
+          "node",
+          "-e",
+          "const fs=require('node:fs');const {execFileSync}=require('node:child_process');const f='site/source.json';const name='@kubohiroya/turbowarp-document-editor';const pins=JSON.parse(fs.readFileSync(f,'utf8'));const range=JSON.parse(fs.readFileSync('package.json','utf8')).dependencies?.[name];if(!range||range.startsWith('git+')){if(pins.documentEditorSource==='npm')throw new Error(f+': npm pin but package.json uses Git');process.exit(0);}const lock=JSON.parse(fs.readFileSync('package-lock.json','utf8')).packages['node_modules/'+name];if(!lock||lock.version!==range||!/^sha512-/.test(lock.integrity??''))throw new Error('package-lock.json does not lock '+name+'@'+range+' with an integrity');const refs=execFileSync('git',['ls-remote','https://github.com/'+pins.documentEditorRepository+'.git','refs/tags/v'+range,'refs/tags/v'+range+'^{}'],{encoding:'utf8'}).trim().split('\\n').filter(Boolean).map(l=>l.split('\\t'));const ref=refs.find(r=>r[1].endsWith('^{}'))??refs[0];if(!ref||!/^[0-9a-f]{40}$/.test(ref[0]))throw new Error('tag v'+range+' not found in '+pins.documentEditorRepository);const out={};for(const[k,v]of Object.entries(pins)){if(k==='documentEditorIntegrity')continue;out[k]=v;if(k==='documentEditorSource')out.documentEditorIntegrity=lock.integrity;}Object.assign(out,{documentEditorRevision:ref[0],documentEditorVersion:range,documentEditorSource:'npm'});out.documentEditorIntegrity=lock.integrity;fs.writeFileSync(f,JSON.stringify(out,null,2)+'\\n');"
+        ],
+        [
+          "npx",
+          "--yes",
+          "npm@11.21.0",
+          "run",
+          "build"
+        ]
+      ]
+    },
+    "kubohiroya/turbowarp-realtime-motion-capture-app": {
+      "prepare": [
+        [
+          "corepack",
+          "pnpm",
+          "exec",
+          "prettier",
+          "--write",
+          "pnpm-workspace.yaml"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "build"
+        ]
+      ]
+    },
+    "kubohiroya/turbowarp-sesame": {
+      "prepare": [
+        [
+          "corepack",
+          "pnpm",
+          "exec",
+          "prettier",
+          "--write",
+          "pnpm-workspace.yaml"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "docs"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "build"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "samples:build"
+        ]
+      ]
+    },
+    "kubohiroya/turbowarp-time-space-sync-app": {
+      "prepare": [
+        [
+          "corepack",
+          "pnpm",
+          "exec",
+          "prettier",
+          "--write",
+          "pnpm-workspace.yaml"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "build"
+        ]
+      ]
+    },
+    "kubohiroya/turbowarp-webrtc-qrcode-pairing-app": {
+      "prepare": [
+        [
+          "corepack",
+          "pnpm",
+          "exec",
+          "prettier",
+          "--write",
+          "pnpm-workspace.yaml"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "build"
+        ]
+      ]
+    }
+  },
   "reviewedRepositories": [
     "kubohiroya/turbowarp-binary-data",
+    "kubohiroya/turbowarp-bubble",
+    "kubohiroya/turbowarp-document-data",
     "kubohiroya/turbowarp-document-editor",
+    "kubohiroya/turbowarp-document-source",
     "kubohiroya/turbowarp-named-functions",
     "kubohiroya/turbowarp-structured-data",
     "kubohiroya/turbowarp-http-server",
@@ -10,6 +242,7 @@
     "kubohiroya/turbowarp-kamishibai-app",
     "kubohiroya/turbowarp-plus-editor",
     "kubohiroya/turbowarp-realtime-motion-capture",
-    "kubohiroya/turbowarp-webrtc-qrcode-pairing"
+    "kubohiroya/turbowarp-webrtc-qrcode-pairing",
+    "kubohiroya/turbowarp-yaml-json"
   ]
 }
