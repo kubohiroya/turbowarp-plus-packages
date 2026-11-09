@@ -76,6 +76,7 @@
     "kubohiroya/turbowarp-bubble",
     "kubohiroya/turbowarp-document-data",
     "kubohiroya/turbowarp-document-editor",
+    "kubohiroya/turbowarp-document-source",
     "kubohiroya/turbowarp-named-functions",
     "kubohiroya/turbowarp-structured-data",
     "kubohiroya/turbowarp-http-server",
@@ -83,6 +84,7 @@
     "kubohiroya/turbowarp-kamishibai-app",
     "kubohiroya/turbowarp-plus-editor",
     "kubohiroya/turbowarp-realtime-motion-capture",
-    "kubohiroya/turbowarp-webrtc-qrcode-pairing"
+    "kubohiroya/turbowarp-webrtc-qrcode-pairing",
+    "kubohiroya/turbowarp-yaml-json"
   ]
 }
