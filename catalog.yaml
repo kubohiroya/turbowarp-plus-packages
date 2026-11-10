@@ -35,17 +35,19 @@ localProtocols: [file:, link:, workspace:, portal:, patch:]
 #   1. Is it a non-editor application deployed and used as-is?     -> apps
 #   2. Is it a guide, sample collection or documentation site?      -> docs
 #   3. Is it for building, packaging or previewing extensions?     -> toolchain
-#   4. Is it an editor distribution, the forked scratch-gui, or a
+#   4. Does it define the editor host interface or provide the
+#      minimal runtime used in package tests?                       -> editor-testing
+#   5. Is it an editor distribution, the forked scratch-gui, or a
 #      library that only the editor uses?                           -> foundation
-#   5. Does a packaged app use it to host the TurboWarp runtime in
+#   6. Does a packaged app use it to host the TurboWarp runtime in
 #      its own page, or is it the template such an app starts from? -> shell
-#   6. Is it a contract, API or adapter that extensions from several
+#   7. Is it a contract, API or adapter that extensions from several
 #      other categories build on, with no domain of its own?        -> contracts
-#   7. Is it a camera source or an optical code format that packages
+#   8. Is it a camera source or an optical code format that packages
 #      in other categories read through?                            -> camera
-#   8. Does it mostly expose one JavaScript library or one browser
+#   9. Does it mostly expose one JavaScript library or one browser
 #      API as blocks, adding little model of its own?               -> wraps
-#   9. Otherwise, pick by what the package is for, not by the medium
+#  10. Otherwise, pick by what the package is for, not by the medium
 #      it happens to use: a QR code that carries a WebRTC offer is
 #      networking, a QR code that is read from the camera is sensing.
 # Each category below lists what it includes and what it sends elsewhere.
@@ -82,7 +84,8 @@ categories:
   #   anything a packaged app uses outside the editor (-> shell), and the data
   #   editor contract that extensions build on, even though the editor bundles
   #   it (-> contracts): the editor distribution uses extensions, so a library
-  #   that extensions use cannot share its category.
+  #   that extensions use cannot share its category. The shared host interface
+  #   and test runtime belong in editor-testing.
   # Keep the foundation ID stable for existing JSON consumers.
   - id: foundation
     title: Editor
@@ -103,6 +106,16 @@ categories:
       - turbowarp-plus-editor-project-folder
       - turbowarp-plus-editor-git
       - turbowarp-plus-editor-auth
+
+  # Editor libraries and extension contracts both use the test runtime.
+  # Keep its host interface and pinned blocks here with the runtime so this
+  # category does not depend back on the editor distribution or its libraries.
+  - id: editor-testing
+    title: Editor Test Support
+    titleJa: エディターのテスト基盤
+    description: Editor host interface and minimal runtime for testing editor libraries and extensions.
+    descriptionJa: エディター用ライブラリや拡張のテストに使うホストの共通仕様と最小ランタイム。
+    packages:
       - turbowarp-plus-editor-host
       - turbowarp-plus-editor-test-runtime
       - turbowarp-plus-editor-test-runtime-blocks
