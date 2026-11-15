@@ -1,6 +1,6 @@
-# TurboWarp-Plus-Editorの移行計画（段階4〜6）
+# TurboWarp-Plus-Editorの移行計画（段階4〜7）
 
-[TurboWarp-Plus-Editorの構成・責務・ライセンス](editor-architecture.ja.md)の「移行の進め方」のうち、段階4〜6の進め方を具体的に定めます。あわせて、「ライセンスの切り分け」の規則4に従い、フォークのファイルごとに由来を確かめた結果を記録します。
+[TurboWarp-Plus-Editorの構成・責務・ライセンス](editor-architecture.ja.md)の「移行の進め方」のうち、段階4〜6の進め方を具体的に定めます。段階7では、plus-editorの中に置いた `packages/editor-*` をfamilyのパッケージへ移す進め方を定めます。あわせて、「ライセンスの切り分け」の規則4に従い、フォークのファイルごとに由来を確かめた結果を記録します。
 
 この文書は計画です。決定事項は正本（editor-architecture.ja.md）に書き、ここには書きません。ここで「案」と書いたものは、まだ決めていません。
 
@@ -321,6 +321,85 @@ plus-editor側は、どの手順も `site/plus-integration.js` を触ります�
 
 フォークがfamilyのnpm依存から外れるので、plus-packagesの `bump:downstream` の連鎖からフォークがなくなります。上流への追従はplus-editorの `release.yml` に集まります（正本の「再編で得られるもの」3）。連鎖の定義からフォークを外す変更は、段階6のPRと同時に行います。
 
+## 段階7 plus-editorの `packages/editor-*` をfamilyへ移す
+
+正本は、独自拡張の実装本体をfamilyの別パッケージ（MPL-2.0）に置き、plus-editorには置かないと決めています。ところがplus-editorの中には、npmに出さないGPL-3.0のワークスペースが5つあり、新しい機能の置き場所になってきました。段階7では、これらをfamilyのパッケージへ移し、plus-editorの `packages/` をなくします。
+
+### 読んだもの（2026-11-15）
+
+| 対象 | 版 |
+|---|---|
+| turbowarp-plus-editor | `origin/main` の `0d76493`（#598） |
+| workbench | 0.14.0 |
+| windows | 0.1.0 |
+| project-model | 0.1.2 |
+| git | 0.20.1 |
+| script-transfer | 0.1.5 |
+
+### 今の形
+
+| ワークスペース | パッケージ名 | できた時 | ソース | テスト |
+|---|---|---|---|---|
+| `packages/editor-backpack` | `@kubohiroya/turbowarp-editor-backpack` | #183（2026-11-05） | 約300行 | 約30行 |
+| `packages/editor-surfaces` | `@kubohiroya/turbowarp-editor-surfaces` | #183（2026-11-05） | 約220行 | 約140行 |
+| `packages/editor-transfer` | `@kubohiroya/turbowarp-editor-transfer` | #183（2026-11-05） | 約150行 | 約30行 |
+| `packages/editor-ui` | `@kubohiroya/turbowarp-plus-editor-ui` | #236（2026-11-06） | 約6,600行 | 約800行 |
+| `packages/editor-views` | `@kubohiroya/turbowarp-plus-editor-views` | #196（2026-11-05） | 約5,700行 | 約800行 |
+
+5つとも `private: true` で、`GPL-3.0-or-later` です。plus-editorは `file:packages/…` で依存しています。2026-11-08以降も、#354・#429・#489・#499・#509・#537・#549・#550・#563・#564・#568・#591などで新しいファイルが足され続けています。
+
+移しやすさについて、次のことを確かめました。
+
+- 5つとも、importするのはReact・自分のファイル・npmのfamilyのパッケージ（git・project-model・script-transfer）だけです。plus-editorの `site/` や、GUIの内部モジュールはimportしていません。vm・workspace・ScratchBlocksは呼び出し側から受け取っています。
+- GUIの内部に触れているのは、`editor-views/script-layout-view.ts` が `[class*="gui_blocks-wrapper_"]` を探す1か所だけです。
+- `editor-ui` の中で、`project-file-dialogs.ts` と `project-repository-creation.ts` がお互いの型をimportしています（GitHubのアカウントとリポジトリの下書き）。
+- コミットの作者は、すべて `Hiroya Kubo <hiroya@cuc.ac.jp>` です。
+
+### 行き先（案）
+
+| 移すもの | 行き先 | 理由・手当て |
+|---|---|---|
+| `editor-surfaces`・`editor-transfer`、`editor-ui` の `icon-menu-button`・`dialog-actions` | windows（`./surfaces`・`./transfer` などのsubpath） | 依存を持たない一番下の層。ほかの行き先がこれに依存する |
+| `editor-ui` の `project-search`・`project-search-replace`・`project-search-connections` | project-model | UIを持たない作品の読み取りと編集で、project-modelの役割と同じ |
+| `editor-ui` の `project-publication`・`project-publication-dialog`・`project-commit-dialog`・`project-repository-creation`・`cloudflare-publication` と、その単体テスト | git | 今も `pull-request-queue` をimportしている。GitHubの型もここへ移し、`project-file-dialogs` との相互のimportをなくす |
+| `editor-views` の全体、`editor-ui` の `detached-block-palette`・`palette-category-reorder`・`palette-category-search`・`palette-dropdown-resize`・`block-argument-text` | 新規 `turbowarp-plus-editor-code-views` | コードの編集画面とブロックパレットは1つの機能のまとまり。`gui_blocks-wrapper_` を探す処理は、hostから要素を受け取る口に置き換える |
+| `editor-backpack`、`editor-ui` の `project-file-menu`・`project-file-dialogs`・`project-load-progress`・`project-size-approval`・`project-search-box`・`edit-menu`・`info-menu`・`stage-controls`・`busy-cursor`・`browser-tab-title` | workbench | workbenchはファイルメニューとレイアウトを持っている |
+| `editor-ui` の `web-fonts`・`web-font-dialogs`・`paint-fonts-button` | 新規 `turbowarp-plus-editor-fonts` | Packagerへのフォントの受け渡し（`withPackagerFontFallbacks`）も持ち、workbenchとは関心が違う |
+
+新しいリポジトリは、`catalog.yaml` の `foundation` に加えます。
+
+### 手順
+
+各手順は、「パッケージ側に移してリリースする」「plus-editorで版を固定し、`packages/` から消す」の2つのPRで閉じます。
+
+| # | 内容 | 前提 |
+|---|---|---|
+| 7a | plus-editorの `packages/` に新しいファイルを足すのを止める。AGENTS.mdに規則として書く | なし |
+| 7b | 移すファイルの由来を確かめる。GUIのコードを写したものはMPL-2.0にできないので、規則4と同じ方法で記録する | なし |
+| 7c | windowsに移す | 7b |
+| 7d | project-modelに移す | 7b |
+| 7e | gitに移す | 7c（`dialog-actions`） |
+| 7f | code-viewsを作って移す | 7c（`icon-menu-button`） |
+| 7g | fontsを作って移す | 7b |
+| 7h | workbenchに移す | 7c・7d・7e |
+| 7i | plus-editorから `packages/` の後始末を消す | 7c〜7h |
+
+7dと7gは、7cと並行して進められます。7eと7fは、7cの後なら並行して進められます。
+
+### plus-editorで変えるもの
+
+- `package.json` の `file:packages/…` を、npmに公開したパッケージの正確な版に置き換える。
+- `site/`・`scripts/site/` のimportの指定を書き換える。約40ファイルで、多くは `editor-ui` を使うところ。
+- パッケージの振る舞いを確かめる単体テストは、パッケージと一緒に移す。`test/busy-cursor.test.ts`・`test/stage-controls.test.ts`・`test/project-search.test.ts`・`test/gui-integration/unit/plus/web-fonts.test.ts`・`test/extension-host/project-size-gate.test.ts`・`test/gui-integration/stage-code-prewarm.test.ts` が対象。plus-editorには、結合を確かめるテストだけを残す。
+- 7iで、`tsconfig.json` の `packages/**` の行、`.github/workflows/ci.yml` の `packages/editor-*/test` の実行、`npm test` の `packages/*/test/*.test.ts` を外す。
+
+どの手順も、plus-editorでは行数が減るPRになります。
+
+### E2Eで確かめること
+
+- 手順ごとに、移した機能に関わる既存のE2Eが、移す前のコミットと同じ件数で通ること。
+- 7fと7hでは、コードの別窓・バックパックの別窓・ファイルメニューからの保存と公開を、開発時にローカルで確かめる。
+
 ## 本家の取り込みとの関係
 
 本家の未取り込みは18コミット（`54043cc` まで）です。本家とフォークの両方が変更したファイルは、`package.json`、`package-lock.json`、`src/addons/api.js`、`src/containers/tw-security-manager.jsx`、`test/unit/components/controls.test.jsx`、`webpack.config.js` の6つで、正本の記載と変わっていません。
@@ -332,4 +411,7 @@ plus-editor側は、どの手順も `site/plus-integration.js` を触ります�
 
 1. **ローダーをOFFにしたときの旧経路を残すか。** 起動URLの `twPlusExtensionLoader=0` でローダーを切ると、Plus一覧は `tw-plus-extension-loader.js` と `tw-plus-extension-permissions.js` でVMに直接読み込みます。旧フラグ `twPlusExtensions=1` も同じ経路です。正本は「ローダーが扱う拡張の入口は一覧だけ」と決めていますが、ローダーを切った場合の扱いは書いていません。残すなら5dでsecurity-dialog側に移し、残さないなら5dで削除します。
 2. **単一HTMLを受け取った人に、カタログにない拡張をどう尋ねるか。** security-dialogの画面をランタイムの束に入れる（ReactとCSSが要る）か、その束では今の簡単な画面に相当するものをsecurity-dialogから出すか。段階4-4の前に決めます。
-3. **著作権者の確認。** コミットの作者はすべて `Hiroya Kubo <hiroya@cuc.ac.jp>` で、kubohiroyaのアカウントと同じ人と見ています。所属先のメールアドレスで書かれているので、所属先の規程上、著作権がkubohiroya個人にあることを、MPL-2.0で公開する前に本人が確かめてください。
+3. **著作権者の確認。** コミットの作者はすべて `Hiroya Kubo <hiroya@cuc.ac.jp>` で、kubohiroyaのアカウントと同じ人と見ています。所属先のメールアドレスで書かれているので、所属先の規程上、著作権がkubohiroya個人にあることを、MPL-2.0で公開する前に本人が確かめてください。段階7で移すplus-editorの `packages/editor-*` も同じで、GPL-3.0からMPL-2.0に付け替える前に確かめます。
+4. **新しいリポジトリを2つ作るか。** 段階7の案では、code-viewsとfontsを新しく作ります。作らない場合、fontsはworkbenchに、code-viewsはworkbenchのsubpathになり、workbenchが大きくなります。7fと7gの前に決めます。
+5. **Cloudflareへの公開をgitに入れるか。** `cloudflare-publication` はGitとは別の公開の手段です。gitに入れるか、公開の手段をまとめるパッケージを別に作るかを、7eの前に決めます。
+6. **リポジトリの作成が二重になっていないか。** plus-editorの `project-repository-creation` と、project-starterの `createGitHubPublisher` は、どちらもGitHubにリポジトリを作ります。重なっているなら、7eで1つにまとめます。
