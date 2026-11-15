@@ -374,15 +374,15 @@ plus-editor側は、どの手順も `site/plus-integration.js` を触ります�
 
 | # | 内容 | 前提 |
 |---|---|---|
-| 7a | plus-editorの `packages/` に新しいファイルを足すのを止める。AGENTS.mdに規則として書く | なし |
+| 7a | plus-editorの `packages/` に新しいファイルを足すのを止める。AGENTS.mdに規則として書く（済。kubohiroya/turbowarp-plus-editor#601） | なし |
 | 7b | 移すファイルの由来を確かめる。GUIのコードを写したものはMPL-2.0にできないので、規則4と同じ方法で記録する（済。下の「由来の監査（7b）」） | なし |
-| 7c | windowsに移す | 7b |
-| 7d | project-modelに移す | 7b |
-| 7e | gitに移す | 7c（`dialog-actions`） |
-| 7f | code-viewsを作って移す | 7c（`icon-menu-button`） |
-| 7g | fontsを作って移す | 7b |
-| 7h | workbenchに移す | 7c・7d・7e |
-| 7i | plus-editorから `packages/` の後始末を消す | 7c〜7h |
+| 7c | windowsに移す（済。下の「移送の結果（7c〜7i）」） | 7b |
+| 7d | project-modelに移す（済） | 7b |
+| 7e | gitに移す（済） | 7c（`dialog-actions`） |
+| 7f | code-viewsを作って移す（済） | 7c（`icon-menu-button`） |
+| 7g | fontsを作って移す（済） | 7b |
+| 7h | workbenchに移す（plus-editor側はレビュー中） | 7c・7d・7e |
+| 7i | plus-editorから `packages/` の後始末を消す（7hと同じPR。レビュー中） | 7c〜7h |
 
 7dと7gは、7cと並行して進められます。7eと7fは、7cの後なら並行して進められます。
 
@@ -449,6 +449,33 @@ plus-editor側は、どの手順も `site/plus-integration.js` を触ります�
 - 手順ごとに、移した機能に関わる既存のE2Eが、移す前のコミットと同じ件数で通ること。
 - 7fと7hでは、コードの別窓・バックパックの別窓・ファイルメニューからの保存と公開を、開発時にローカルで確かめる。
 
+### 移送の結果（7c〜7i）
+
+2026-11-15に、7c〜7iを順に進めました。各手順は計画どおり、パッケージ側のPRとplus-editor側のPRの2つで閉じました。
+
+| # | 行き先と版 | パッケージ側 | plus-editor側 | 主な点 |
+|---|---|---|---|---|
+| 7c | windows 0.2.0 | kubohiroya/turbowarp-plus-editor-windows#1 | kubohiroya/turbowarp-plus-editor#606 | `IconMenuButton`・`dialogAction(s)` は `.`、surfaces・transferは `./surfaces`・`./transfer`。アイコンメニューのCSSモジュールはグローバルな `tw-icon-menu*` にした。`tw-plus-dialog-actions` は名前で使われているので変えていない |
+| 7d | project-model 0.2.0 | kubohiroya/turbowarp-plus-editor-project-model#4 | kubohiroya/turbowarp-plus-editor#608 | 検索・置換・接続を同名のsubpathに。検索ボックスによるproject-modelの関数の再exportをやめた |
+| 7e | git 0.21.0 | kubohiroya/turbowarp-plus-editor-git#52 | kubohiroya/turbowarp-plus-editor#611 | パネルの `PreparedPublication` を公開の型にまとめ、`PublicationBridge` は `PullRequestMergePort` を継承する。GitHubの型を `project-repository-creation` に移し、`project-file-dialogs` との相互のimportをなくした。windowsはpeer dependency |
+| 7f | code-views 0.1.0（新規） | kubohiroya/turbowarp-plus-editor-code-views の最初のコミット | kubohiroya/turbowarp-plus-editor#613 | GUIのクラス名を探す箇所は、ホストの `presentationElements` から要素を受け取り、`data-code-*` の印で選ぶ形にした。型チェックは元のplus-editorと同じく `strict` を切っている（`strict` では461件） |
+| 7g | fonts 0.1.0（新規） | kubohiroya/turbowarp-plus-editor-fonts の最初のコミット | kubohiroya/turbowarp-plus-editor#614 | `strict` で通るように型を付けた。VMの実際の `FontManager` と組み合わせるテストはplus-editorに残した |
+| 7h・7i | workbench 0.16.0 | kubohiroya/turbowarp-plus-editor-workbench#86 | kubohiroya/turbowarp-plus-editor#615（レビュー中） | デバッガーのボタンは、ホストが付ける `data-tw-stage-button*` の印で扱う。GUIの設定項目の画像を暗くする規則はplus-editorの `site/project-tools/dialog.css` に残した。Octiconsのライセンス文をworkbenchの `NOTICE` に置いた。`packages/` がなくなるので、7iの後始末（tsconfig・`npm test`・CIの `views-unit`・`backpack-unit` と検証計画の規則・AGENTS.md・文書）を同じPRで行った |
+
+どの手順でも、plus-editorでは型チェック・単体テスト・Editor本体のwebpackのビルドが通ることを確かめました。CSSモジュールは、family の書き方に合わせてグローバルな `tw-` のクラスにし、plus-editorはwebpackでそのスタイルシートをCSSモジュールから外しています。webpack 4はpackageの `exports` を読まないので、新しいパッケージはmanifestのexportsからaliasを作り、漏れが出ないようにしました。
+
+#### わかったこと
+
+- **新しいパッケージの最初の公開は手で行う。** npmのTrusted Publisherは、すでにあるパッケージにしか設定できません。windowsも、0.1.0は手で公開されていて、Trusted Publisherが無く、`release.yml` は404で失敗していました（設定後に再実行して0.2.0を公開）。code-viewsとfontsは、0.1.0を手で公開してからTrusted Publisherを設定しました。手で公開した版にはprovenanceが付きません。
+- **npmは `0.0.0-stage` の版を受け付けないことがある。** code-viewsで `0.0.0-stage` を公開しようとすると、403「You cannot publish using the version」で断られました。ただし、ほぼ同時に走った別の実行では公開されていて、code-viewsには `0.0.0-stage` と `0.1.0` の両方があります（`latest` は0.1.0）。仮の版を経ずに、最初から0.1.0を公開するほうが確実です。
+- **リリースの方式はリポジトリごとに違う。** windows・project-model・code-views・fonts・workbenchはmainへのpushで公開し、gitは `v<版>` のタグのpushで公開します。
+
+#### 残っていること
+
+- **E2Eと画面での確認。** 計画では、7fと7hでコードの別窓・バックパックの別窓・ファイルメニューからの保存と公開を、開発時にローカルで確かめることにしていました。まだ行っていません。Packagerの組み立ても、ローカルでは `TW_PLUS_PACKAGER_ROOT` が無く走らせていないので、CIのsite-buildで確かめます。
+- **code-viewsの型。** `strict` を切ったまま移しました。強めるのは別の作業です。
+- **workbenchの既存の `editor.css`。** 今回の移送とは別に、以前から `gui_blocks-wrapper_`・`sprite-selector_add-button_` などGUIのクラス名を使っています。規則2に合わせるなら、別に手当てが要ります。
+
 ## 本家の取り込みとの関係
 
 本家の未取り込みは18コミット（`54043cc` まで）です。本家とフォークの両方が変更したファイルは、`package.json`、`package-lock.json`、`src/addons/api.js`、`src/containers/tw-security-manager.jsx`、`test/unit/components/controls.test.jsx`、`webpack.config.js` の6つで、正本の記載と変わっていません。
@@ -462,5 +489,8 @@ plus-editor側は、どの手順も `site/plus-integration.js` を触ります�
 2. **単一HTMLを受け取った人に、カタログにない拡張をどう尋ねるか。** security-dialogの画面をランタイムの束に入れる（ReactとCSSが要る）か、その束では今の簡単な画面に相当するものをsecurity-dialogから出すか。段階4-4の前に決めます。
 3. **著作権者の確認。** コミットの作者はすべて `Hiroya Kubo <hiroya@cuc.ac.jp>` で、kubohiroyaのアカウントと同じ人と見ています。所属先のメールアドレスで書かれているので、所属先の規程上、著作権がkubohiroya個人にあることを、MPL-2.0で公開する前に本人が確かめてください。段階7で移すplus-editorの `packages/editor-*` も同じで、GPL-3.0からMPL-2.0に付け替える前に確かめます。
 4. **新しいリポジトリを2つ作るか。** 段階7の案では、code-viewsとfontsを新しく作ります。作らない場合、fontsはworkbenchに、code-viewsはworkbenchのsubpathになり、workbenchが大きくなります。7fと7gの前に決めます。
+   - **決定：** 2つとも新しく作りました（kubohiroya/turbowarp-plus-editor-code-views・kubohiroya/turbowarp-plus-editor-fonts）。
 5. **Cloudflareへの公開をgitに入れるか。** `cloudflare-publication` はGitとは別の公開の手段です。gitに入れるか、公開の手段をまとめるパッケージを別に作るかを、7eの前に決めます。
+   - **決定：** 案のとおり、gitの `./cloudflare-publication` に入れました。
 6. **リポジトリの作成が二重になっていないか。** plus-editorの `project-repository-creation` と、project-starterの `createGitHubPublisher` は、どちらもGitHubにリポジトリを作ります。重なっているなら、7eで1つにまとめます。
+   - **7eでの結論：** 1つにしていません。project-starterの `createGitHubPublisher` は、Nodeで一時ディレクトリに作品を展開し、トークンでGitHub APIを直接呼びます。gitの `createProjectRepositoryWorkflow` は、ブラウザーで動き、GitHubへの操作をホストのprovider（Desktop・Cloudflare）に任せ、IndexedDBの記録で再開します。目的は同じですが、共有するコードは無く、実行環境と境界が違います。リポジトリに入れる中身は、plus-editorがproject-starterの `./seed` を使っています。
