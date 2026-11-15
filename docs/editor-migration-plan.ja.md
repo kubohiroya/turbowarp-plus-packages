@@ -381,8 +381,8 @@ plus-editor側は、どの手順も `site/plus-integration.js` を触ります�
 | 7e | gitに移す（済） | 7c（`dialog-actions`） |
 | 7f | code-viewsを作って移す（済） | 7c（`icon-menu-button`） |
 | 7g | fontsを作って移す（済） | 7b |
-| 7h | workbenchに移す（plus-editor側はレビュー中） | 7c・7d・7e |
-| 7i | plus-editorから `packages/` の後始末を消す（7hと同じPR。レビュー中） | 7c〜7h |
+| 7h | workbenchに移す（済） | 7c・7d・7e |
+| 7i | plus-editorから `packages/` の後始末を消す（済。7hと同じPR） | 7c〜7h |
 
 7dと7gは、7cと並行して進められます。7eと7fは、7cの後なら並行して進められます。
 
@@ -451,7 +451,7 @@ plus-editor側は、どの手順も `site/plus-integration.js` を触ります�
 
 ### 移送の結果（7c〜7i）
 
-2026-11-15に、7c〜7iを順に進めました。各手順は計画どおり、パッケージ側のPRとplus-editor側のPRの2つで閉じました。
+2026-11-15に、7c〜7iを順に進め、すべてmainに入りました。plus-editorの `packages/` はなくなりました。各手順は計画どおり、パッケージ側のPRとplus-editor側のPRの2つで閉じました。
 
 | # | 行き先と版 | パッケージ側 | plus-editor側 | 主な点 |
 |---|---|---|---|---|
@@ -460,7 +460,7 @@ plus-editor側は、どの手順も `site/plus-integration.js` を触ります�
 | 7e | git 0.21.0 | kubohiroya/turbowarp-plus-editor-git#52 | kubohiroya/turbowarp-plus-editor#611 | パネルの `PreparedPublication` を公開の型にまとめ、`PublicationBridge` は `PullRequestMergePort` を継承する。GitHubの型を `project-repository-creation` に移し、`project-file-dialogs` との相互のimportをなくした。windowsはpeer dependency |
 | 7f | code-views 0.1.0（新規） | kubohiroya/turbowarp-plus-editor-code-views の最初のコミット | kubohiroya/turbowarp-plus-editor#613 | GUIのクラス名を探す箇所は、ホストの `presentationElements` から要素を受け取り、`data-code-*` の印で選ぶ形にした。型チェックは元のplus-editorと同じく `strict` を切っている（`strict` では461件） |
 | 7g | fonts 0.1.0（新規） | kubohiroya/turbowarp-plus-editor-fonts の最初のコミット | kubohiroya/turbowarp-plus-editor#614 | `strict` で通るように型を付けた。VMの実際の `FontManager` と組み合わせるテストはplus-editorに残した |
-| 7h・7i | workbench 0.16.0 | kubohiroya/turbowarp-plus-editor-workbench#86 | kubohiroya/turbowarp-plus-editor#615（レビュー中） | デバッガーのボタンは、ホストが付ける `data-tw-stage-button*` の印で扱う。GUIの設定項目の画像を暗くする規則はplus-editorの `site/project-tools/dialog.css` に残した。Octiconsのライセンス文をworkbenchの `NOTICE` に置いた。`packages/` がなくなるので、7iの後始末（tsconfig・`npm test`・CIの `views-unit`・`backpack-unit` と検証計画の規則・AGENTS.md・文書）を同じPRで行った |
+| 7h・7i | workbench 0.16.0 | kubohiroya/turbowarp-plus-editor-workbench#86 | kubohiroya/turbowarp-plus-editor#615 | デバッガーのボタンは、ホストが付ける `data-tw-stage-button*` の印で扱う。GUIの設定項目の画像を暗くする規則はplus-editorの `site/project-tools/dialog.css` に残した。Octiconsのライセンス文をworkbenchの `NOTICE` に置いた。`packages/` がなくなるので、7iの後始末（tsconfig・`npm test`・CIの `views-unit`・`backpack-unit` と検証計画の規則・AGENTS.md・文書）を同じPRで行った |
 
 どの手順でも、plus-editorでは型チェック・単体テスト・Editor本体のwebpackのビルドが通ることを確かめました。CSSモジュールは、family の書き方に合わせてグローバルな `tw-` のクラスにし、plus-editorはwebpackでそのスタイルシートをCSSモジュールから外しています。webpack 4はpackageの `exports` を読まないので、新しいパッケージはmanifestのexportsからaliasを作り、漏れが出ないようにしました。
 
@@ -472,7 +472,7 @@ plus-editor側は、どの手順も `site/plus-integration.js` を触ります�
 
 #### 残っていること
 
-- **E2Eと画面での確認。** 計画では、7fと7hでコードの別窓・バックパックの別窓・ファイルメニューからの保存と公開を、開発時にローカルで確かめることにしていました。まだ行っていません。Packagerの組み立ても、ローカルでは `TW_PLUS_PACKAGER_ROOT` が無く走らせていないので、CIのsite-buildで確かめます。
+- **E2Eと画面での確認。** 計画では、7fと7hでコードの別窓・バックパックの別窓・ファイルメニューからの保存と公開を、開発時にローカルで確かめることにしていました。まだ行っていません。Packagerの組み立ては、ローカルでは `TW_PLUS_PACKAGER_ROOT` が無く走らせていませんが、#615 のマージ後のmainのCI（`7947047`）で、Editorの組み立てとともに通りました。
 - **code-viewsの型。** `strict` を切ったまま移しました。強めるのは別の作業です。
 - **workbenchの既存の `editor.css`。** 今回の移送とは別に、以前から `gui_blocks-wrapper_`・`sprite-selector_add-button_` などGUIのクラス名を使っています。規則2に合わせるなら、別に手当てが要ります。
 
