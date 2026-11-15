@@ -155,3 +155,54 @@ workflow失敗時は原因を修正し、記録したrunの失敗jobを再実行
 
 テストは標準/例外/未対応契約、SHA固定、変更検知、offline dry-run、再開、依存順、二重公開防止、CI失敗、ハッシュ照合を対象とします。
 テスト中は実レジストリに公開しません。
+
+## 本家追従（TurboWarp Plus Editor）
+
+`upstream:sync` は、TurboWarp Plus Editor が固定するフォークと Packager を本家の最新へ追従させる候補を作り、CI と同じ順で検証して報告します。フォーク（`kubohiroya/scratch-gui`・`kubohiroya/scratch-vm`）にも plus-editor にもコードを足さない方針なので、手順はこのリポジトリが持ち、各リポジトリは `--repos-dir` の checkout から worktree を切って操作します。
+
+```sh
+# 候補を作って検証し、報告する。push も PR 作成もしない。
+npm run upstream:sync -- --repos-dir ..
+
+# 衝突を解決したあと・失敗を直したあとは、同じ id で続きから。
+npm run upstream:sync -- --repos-dir .. --id 2026-11-15
+
+# 検証が全件成功した候補を、1件ずつ確認しながら push して PR を作る。
+npm run upstream:sync -- --repos-dir .. --id 2026-11-15 --publish
+```
+
+1回の実行で行うこと:
+
+1. **取り込み**: scratch-vm → scratch-gui の順に、フォーク develop から `chore/upstream/merge-<id>` を切り、本家 develop を `--no-ff` でマージします。本家に遅れが無いフォークはマージしません。取得は URL から `refs/upstream-sync/*` へ行い、checkout のリモート設定は変えません。`<repos-dir>/<repo名>` に checkout が無いもの（scratch-vm など）は `<作業dir>/repos/` へ clone して使い回します。
+2. **Packager**: 本家 `TurboWarp/packager` の master を候補にし、その SHA を `<作業dir>/<id>/packager` に浅く取得します。
+3. **固定値**: plus-editor の main から `chore/upstream/sync-<id>` を切り、`site/source.json` の `guiRevision` / `vmRevision` / `vmBaseRevision` / `packagerRevision` を書き換えてローカルにコミットします。`vmRevision` は GUI の `package.json` が依存する scratch-vm、`vmBaseRevision` はその VM に含まれる本家 develop の最新コミット（merge-base）です。Packager の SHA は `scripts/site/build-plus-scaffolding.cts`・`build-plus-packager.cts`・`docs/extension-loader-integration.md` も直書きで照合しているので、追跡されているファイルの旧値を同じ新値に揃え、書き換えたファイルを報告の「注意」に出します。
+4. **検証**: 各手順を1回だけ走らせ、ログを `<作業dir>/<id>/logs/` に残します。
+   - scratch-vm（取り込んだときだけ）: `npm ci`、`npm test`
+   - scratch-gui: `npm ci`、`scripts/prepublish.mjs`、`test:lint`、`test:unit`
+   - plus-editor: `npm ci`、`typecheck`、`test`、`test:package`、`test:e2e:infrastructure`、GUI を `E2E_GUI_ROOT` に置いた `test:extension-host` / `test:gui-integration` / `test:script-transfer` / `test:project-tools`、`build:pages`（`TW_PLUS_PACKAGER_ROOT` 付き）
+   - `--e2e` を付けたときだけ、ブラウザーを使う scratch-gui の `test:integration` と plus-editor の `test:e2e` も走らせます。実マウスを動かす E2E は走らせず、`TW_PLUS_NATIVE_INPUT` / `E2E_NATIVE` は各手順の環境から外します。
+5. **報告**: `<作業dir>/<id>/report.md`（標準出力にも出す）に、取り込んだ範囲（遅れ・先行・本家側の変更ファイル数）、衝突したファイル、固定値の変更、各手順の成否と失敗した手順の出力末尾、次の手順をまとめます。`--json` で状態全体を出せます。
+
+作業dirの既定は `<repos-dir>/.upstream-sync`、id の既定は実行日です。終了コードは、0 が「検証まで成功」または「追従するもの無し」、1 がエラー、2 が衝突・検証失敗・未完了です。
+
+### 衝突と再開
+
+マージが衝突したら、worktree（`<作業dir>/<id>/scratch-gui` など）を残して止まり、衝突したファイルを報告します。その worktree で解決して `git commit` したあと、同じ `--id` で再実行すると続きから進みます。検証の手順は「入力（各 worktree の先頭 SHA）が同じで前回成功したもの」を走らせ直しません。失敗を直してコミットすれば、入力が変わった手順だけが走ります。同じテストを回数で確かめることはしません。
+
+`--merge-only` は取り込みと固定値の書き換えまでで止め、検証しません。本家の遅れと衝突の見通しだけを知りたいときに使います。
+
+### push・PR・リリース
+
+`--publish` は、検証が全件成功した候補だけを対象に、次の順で1件ずつ `[y/N]` の確認を取ります。断るとそこで止まり、再実行すると済んだ操作を飛ばして続きから進みます。
+
+1. scratch-vm を取り込んだ場合: 追従ブランチを push し、PR を作ります。続けて scratch-gui の `package.json` / `package-lock.json` を push した VM に固定し直してコミットし、plus-editor の固定値を更新して、変わった入力の検証をやり直します。VM の SHA は push するまで GUI の lock に書けないので、この順になります。
+2. scratch-gui の追従ブランチを push し、PR を作ります。
+3. plus-editor の `chore/upstream/sync-<id>` を push し、報告を本文にした PR を作ります。
+
+そのあとは手作業です。
+
+- フォークの PR は **マージコミット**（`gh pr merge --merge`）で develop に入れます。squash や rebase では、固定した SHA が develop から辿れなくなります。
+- plus-editor の PR の CI が通ったらマージします。CI は固定した SHA のフォークと Packager を取得して、同じ検証とビルドを行います。
+- リリースは plus-editor の `package.json` の version を上げ、`v<version>` タグを push します。Release workflow が `scripts/ci/release-verification.ts` で、検証に成功したリビジョンだけを公開します。
+
+ファミリーの npm パッケージの更新は、この手順に含めません。`bump` / `bump:downstream` で別に計画します。
