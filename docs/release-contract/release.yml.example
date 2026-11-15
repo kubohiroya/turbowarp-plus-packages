@@ -6,10 +6,6 @@ on:
         description: Verified release version (without v)
         required: true
         type: string
-      shasum:
-        description: SHA1 of the verified Release tarball
-        required: true
-        type: string
 permissions:
   contents: read
 concurrency:
@@ -23,30 +19,23 @@ jobs:
       contents: read
       id-token: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - run: npm install --global npm@11.21.0 semver@7.7.2
-      - name: Download verified artifact
+      - name: Check the release source
         env:
-          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
-          SHASUM: ${{ inputs.shasum }}
-          REPOSITORY: ${{ github.repository }}
         run: |
-          node -e 'if (!/^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/.test(process.env.VERSION) || !/^[a-f0-9]{40}$/.test(process.env.SHASUM)) throw Error("Invalid release inputs")'
-          mkdir artifact
-          gh release download "v$VERSION" --repo "$REPOSITORY" --pattern '*.tgz' --dir artifact
-          test "$(find artifact -maxdepth 1 -name '*.tgz' | wc -l)" -eq 1
-          artifact="$(find artifact -maxdepth 1 -name '*.tgz')"
-          echo "$SHASUM  $artifact" | sha1sum --check
-          tar -xOf "$artifact" package/package.json > package-metadata.json
-          node -e 'const p=require("./package-metadata.json");if(p.version!==process.env.VERSION || p.private || !p.name.startsWith("@kubohiroya/")) throw Error("Unexpected package identity")'
-          # Fetch the tagged metadata independently before publishing anything.
-          gh api "repos/$REPOSITORY/contents/package.json?ref=v$VERSION" --jq .content | base64 --decode > tagged-package.json
-          node -e 'const a=require("./package-metadata.json"),b=require("./tagged-package.json");if(a.name!==b.name || a.version!==b.version) throw Error("Tag/package mismatch")'
-          echo "TARBALL=$artifact" >> "$GITHUB_ENV"
-      - name: Publish verified tarball and synchronize channels
+          node -e 'if (!/^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/.test(process.env.VERSION)) throw Error("Invalid release version")'
+          node -e 'const p=require("./package.json");if(p.version!==process.env.VERSION || p.private || !p.name.startsWith("@kubohiroya/")) throw Error("Unexpected package identity")'
+          # The release tag must point at the commit this run publishes from.
+          test "$(git rev-list -n 1 "v$VERSION")" = "$GITHUB_SHA"
+      - run: npm ci
+      - name: Publish from the checkout and synchronize channels
         env:
           VERSION: ${{ inputs.version }}
         run: |
@@ -54,7 +43,7 @@ jobs:
           node <<'NODE'
           const {execFileSync}=require('node:child_process');
           const semver=require(process.env.SEMVER_PATH);
-          const name=require('./package-metadata.json').name;
+          const name=require('./package.json').name;
           const version=process.env.VERSION;
           const read=()=>JSON.parse(execFileSync('npm',['view',name,'dist-tags','--json','--prefer-online'],{encoding:'utf8'}));
           const before=read();
@@ -63,10 +52,11 @@ jobs:
           }
           require('node:fs').writeFileSync('before-tags.json', JSON.stringify(before));
           NODE
-          npm publish "$TARBALL" --access public --tag next --provenance
+          # npm packs this checkout itself and records its commit as gitHead; no tarball is handled here.
+          npm publish --access public --tag next --provenance
           node <<'NODE'
           const {execFileSync}=require('node:child_process');
-          const name=require('./package-metadata.json').name;
+          const name=require('./package.json').name;
           const version=process.env.VERSION;
           const before=require('./before-tags.json');
           const read=()=>JSON.parse(execFileSync('npm',['view',name,'dist-tags','--json','--prefer-online'],{encoding:'utf8'}));

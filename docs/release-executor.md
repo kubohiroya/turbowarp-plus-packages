@@ -69,8 +69,7 @@ pnpm release --plan /tmp/release-plan.json --workspace /tmp/family-release \
       "workflow": "release.yml",
       "job": "publish",
       "inputs": {
-        "version": "{version}",
-        "shasum": "{shasum}"
+        "version": "{version}"
       }
     }
   }
@@ -83,19 +82,19 @@ pnpm release --plan /tmp/release-plan.json --workspace /tmp/family-release \
 - Git差分を使う生成物検証は、更新候補に対する検証としてrepo側で実装します。通常の開発用checkが古いHEADとの比較を要求する場合、そのままrelease:verifyへ流用しないでください。
 - 推定または任意の`publish.job`が指すjobには直接の`npm publish`または`pnpm publish`、`id-token: write`が必要です。固定の過去版、dry-run専用、長期npm tokenを使うjobを除外します。workflow名が存在するだけでは対応済みとみなしません。
 - workflowはjob単位ではなく全体が起動します。他の公開jobが選択イベントで必ずスキップされると確認できない場合は停止します。固定版jobを候補から除外しただけでは、そのworkflowを実行可能とは扱いません。
-- dispatchの必須inputは契約で全て指定します。`{version}`、`{tag}`、`{shasum}`を実際の公開版・タグ・検証済みtarball SHA1へ置換します。
+- dispatchの必須inputは契約で全て指定します。`{version}`と`{tag}`を実際の公開版・タグへ置換します。tarballのハッシュ（`{shasum}`）はworkflowへ渡しません。そのような契約は解決時に拒否します。
 - タグ起動も`mode: tag-workflow`、`workflow: release.yml`、対象`job`で宣言できます。`v*`のpushタグ起動と汎用のnpm公開jobが必要です。
-- タグ起動のworkflowはCIでpackし、そのtarballをReleaseに添付してnpmへ公開します。gzipの出力はNode同梱のzlibで変わるため、手元とCIのtarballはバイト単位では一致しません（中のtarは一致します）。そのためexecutorは、npm用tarballを先にReleaseへ添付しません。公開後にnpmのtarballを取得し、展開したtarのSHA-256が検証済み候補と一致することを確かめ、そのtarballのSHA-1/SHA-256を実行記録に残してnpmとReleaseの照合に使います。dispatch起動は検証済みtarballそのものを公開するので、従来どおりバイト単位で照合します。
+- executorはtarballを作らず、取得も比較もしません。npmへの公開はworkflow（CLI方式ではnpm自身）が自分のcheckoutから行います。公開後は、npmがその版に記録した`gitHead`（公開元のcommit）が、このリリースのcommit（workflow方式ではリリースPRのマージcommit、CLI方式では検証した候補commit）と一致することを確かめます。npm用のtarballはGitHub Releaseにも添付しません。
 - private repoは既存の準備・検証手順だけを使用します。`update-only`ではタグ・Release・npm公開をしません。
 - `artifacts`はcheckout内の追加Release添付物です。パス内の`{version}`を置換し、検証後のSHA256を記録します。checkout外参照や重複名を拒否します。
 
-`release-contract/release.yml.example`は検証済みRelease tarballをOIDCで公開するdispatch用の草案です。
+`release-contract/release.yml.example`は、リリースタグが指すcommitのcheckoutからOIDCで公開するdispatch用の草案です。tarballは扱いません。
 repoへ適用する前に既存CI・Release添付物・初回公開・レジストリ反映待ち・再実行手順との整合を確認してください。
 このファイルを作成しただけで、対象repoのworkflowを変更したことにはなりません。
 
 npm側はowner/repository/workflow=`release.yml`、workflowと同じEnvironment、直接`npm publish`権限を設定します。
 完了時はworkflowが`latest`と`next`を同じ版へ同期します。OIDCで同期するには`Allow npm dist-tag`も必要です。
-executorは公開版・tarballハッシュ・SLSA provenance・両タグを照合します。workflow完了後もレジストリが古いタグを返すことがあるため、両タグは最大5分待ちます。それでも揃わなければ停止し、ローカル認証で代行しません。
+executorは公開版・公開元commit（`gitHead`）・SLSA provenance・両タグを照合します。workflow完了後もレジストリが古いタグを返すことがあるため、両タグは最大5分待ちます。それでも揃わなければ停止し、ローカル認証で代行しません。
 
 ## 例外・明示config・移行
 
@@ -124,13 +123,10 @@ peer/Git/RC変更は従来どおり明示レビューが必要です。レビュ
 ## 実行・再開・完了条件
 
 全対象のmain SHA、契約、npm、Node engine、workflowをpreflightします。
-依存先の検証・PR/CI/Squash Merge・タグ/Release・公開・provenance/ハッシュ/latest/next照合が完了するまで依存元へ進みません。
+依存先の検証・PR/CI/Squash Merge・タグ/Release・公開・provenance/公開元commit/latest/next照合が完了するまで依存元へ進みません。
 依存しあわない対象は並列に進みます。同時に進める数は`--concurrency <n>`で指定します（既定4、`1`で計画の順に直列）。1つが失敗すると新しい対象は始めず、進行中の対象を区切りまで進めてから停止します。並列数は実行結果を変えないので、digestには含めません。
 
-不要な対象は取りやめます。依存の更新だけで計画に入った対象（`reasons`が`dependency-update`だけ）について、次のどちらかなら、push・PR・タグ・公開をせずにその対象を終えます。理由は`state.json`の`cancelled`に残り、再開しても取りやめたままです。
-
-- 準備してpackした公開物が、npmに出ている版と、利用者に届く中身で同じとき。`package.json`の`version`と`devDependencies`だけが違う場合です（devDependenciesだけの更新など）。
-- 依存先がすべて取りやめになり、更新するものが残らないとき。
+不要な対象は取りやめます。依存の更新だけで計画に入った対象（`reasons`が`dependency-update`だけ）で、依存先がすべて取りやめになり、更新するものが残らないときは、push・PR・タグ・公開をせずにその対象を終えます。理由は`state.json`の`cancelled`に残り、再開しても取りやめたままです。公開済みの版と中身が同じかどうかは、tarballを比べないと分からないので判定しません。
 
 取りやめた対象への依存の更新は、依存元では外します。依存元の今の範囲は、出ている版を受け入れるからです。自分の変更がある対象（`commits-ahead`など）は取りやめません。
 private更新はPR/CI/mergeまでです。既存タグや公開版を推測・上書きしません。

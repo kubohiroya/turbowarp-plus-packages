@@ -1,15 +1,14 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
-import { gunzipSync } from 'node:zlib';
 import semver from 'semver';
 import type { Command, ExecutionConfig, ExecutionEntry, ExecutionState, ReleaseDriver, ReleaseProfile } from './release-execution.ts';
 import type { PackagePlan } from './release-plan.ts';
 import { profileFromContract } from './release-contract.ts';
-import { effectiveUpdates, onlyDependencyUpdate, samePublishedContent } from './release-unneeded.ts';
+import { effectiveUpdates, onlyDependencyUpdate } from './release-unneeded.ts';
 
 export class CommandFailure extends Error {
   constructor(readonly command: Command, readonly stdout: string, readonly stderr: string, readonly status: number | null) {
@@ -34,11 +33,6 @@ export const runCommand: Runner = (command, options = {}) => new Promise((resolv
 
 const absent = (error: unknown) => error instanceof CommandFailure &&
   (/HTTP 404|\(404\)|"status":\s*"404"/u.test(error.stderr) || /\bE404\b/u.test(error.stdout + error.stderr));
-const hash = (bytes: Uint8Array) => createHash('sha1').update(bytes).digest('hex');
-/** The uncompressed tar is identical on every platform; the gzip stream is not. */
-export const contentDigest = (archive: Uint8Array) => createHash('sha256').update(gunzipSync(archive)).digest('hex');
-/** A workflow that packs on CI publishes its own archive, so only the archive content can match the candidate. */
-const packsOnCi = (profile: ReleaseProfile) => profile.publish.mode === 'tag-workflow';
 /** Preparation changed nothing, so the input commit on the base is itself the release candidate. */
 const onBase = (step: PackagePlan, entry: ExecutionEntry) => Boolean(entry.commit) && entry.commit === step.headSha;
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
@@ -51,18 +45,15 @@ const unpublishedReference = (step: PackagePlan) => step.action === 'none' && !s
 const DIST_TAG_PROPAGATION_SECONDS = 300;
 const versionOf = (step: PackagePlan) => step.nextVersion ?? step.publishedVersion ?? step.currentVersion!;
 const tagOf = (step: PackagePlan) => `v${versionOf(step)}`;
-interface RegistryVersion { name: string; version: string; gitHead?: string; dist: { shasum: string; attestations?: { provenance?: { predicateType: string } } } }
+interface RegistryVersion { name: string; version: string; gitHead?: string; dist: { attestations?: { provenance?: { predicateType: string } } } }
+/**
+ * The commit a release publishes from. npm records it as `gitHead` when publishing from a Git checkout, so the
+ * registry tells where a version came from without fetching or comparing any tarball.
+ */
+const sourceOf = (profile: ReleaseProfile, entry: ExecutionEntry) => profile.publish.mode === 'cli' ? entry.commit : entry.mergeCommit;
 interface PullRequest { number: number; html_url: string; state: string; merged: boolean; merge_commit_sha: string | null; head: { sha: string }; base: { ref: string } }
 interface GithubRelease { id: number; tag_name: string; html_url: string; draft: boolean; assets: { name: string; size: number; browser_download_url: string; digest?: string }[] }
 
-/** npm 11 returns an array; npm 12 returns a map keyed by package name. */
-export function parsePackResult(source: string, name: string, version: string): { filename: string; shasum: string } {
-  const result = JSON.parse(source);
-  const pack = Array.isArray(result) ? (result.length === 1 ? result[0] : null) : result[name];
-  assert(pack?.name === name && pack.version === version && typeof pack.filename === 'string' &&
-    basename(pack.filename) === pack.filename && /^[a-f0-9]{40}$/u.test(pack.shasum), 'npm pack結果が計画と一致しません。');
-  return pack;
-}
 
 export class GithubNpmReleaseDriver implements ReleaseDriver {
   private readonly root: string;
@@ -86,7 +77,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
   private async registry(step: PackagePlan, profile: ReleaseProfile, version: string): Promise<RegistryVersion | null> {
     try {
       const value = JSON.parse(await this.npm(profile, ['view', `${step.name}@${version}`, '--json', '--prefer-online', '--fetch-retries=0', '--fetch-timeout=15000'])) as RegistryVersion;
-      assert(value.name === step.name && value.version === version && /^[a-f0-9]{40}$/u.test(value.dist?.shasum), 'npmの版・名前・ハッシュが不正です。');
+      assert(value.name === step.name && value.version === version, 'npmの版・名前が不正です。');
       return value;
     } catch (error) { if (absent(error)) return null; throw error; }
   }
@@ -144,7 +135,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     if (entry.phase === 'pending' && !entry.pr) assert.equal(head.object.sha, step.headSha, `${step.repo}: mainが解析時から変わりました。再計画が必要です。`);
     const published = step.action === 'update-only' || unpublishedReference(step) ? null : await this.registry(step, profile, versionOf(step));
     if (step.action === 'publish' && published) {
-      assert(entry.shasum && await this.matchesCandidate(step, profile, entry, published), `${step.repo}: 予定版はすでに公開済みです。上書きせず再計画してください。`);
+      assert(this.fromSource(profile, entry, published), `${step.repo}: 予定版はすでに公開済みです。上書きせず再計画してください。`);
     }
     if (step.action === 'publish') {
       const tagged = await this.tagSha(step);
@@ -159,9 +150,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
       assert(sha, `${step.repo}: npm公開版のタグがありません。--reconcileで新しい版と下流更新を計画してください。`);
       await this.sourceVersion(step, sha);
       assert(!entry.mergeCommit || entry.mergeCommit === sha, '再開記録のタグSHAと異なります。');
-      assert(!entry.shasum || entry.shasum === published.dist.shasum, '再開記録のnpmハッシュと異なります。');
       entry.mergeCommit = sha;
-      entry.shasum = published.dist.shasum;
     }
     if (entry.phase === 'pending' && step.action !== 'update-only') {
       let latest: string | null = null;
@@ -215,10 +204,6 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
       }
       else if (entry.phase === 'pending') assert.equal(await this.git(step, 'rev-parse', 'HEAD'), step.headSha, 'checkoutのHEADが変わりました。');
       if (entry.phase !== 'pending') assert.equal(await this.git(step, 'status', '--porcelain'), '', '再開checkoutに未コミット変更があります。');
-      if (entry.artifact) {
-        assert.equal(dirname(await realpath(entry.artifact)), await realpath(this.artifacts(step)), '実行記録のtarballが成果物dir外を参照しています。');
-        assert.equal(hash(await readFile(entry.artifact)), entry.shasum, '実行記録のtarballが変わりました。');
-      }
     }
   }
 
@@ -227,26 +212,10 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     return effectiveUpdates(step, cancelled);
   }
 
-  /**
-   * Whether the registry serves the verified candidate. A workflow that packs on CI compresses differently,
-   * so its archive is fetched and compared by uncompressed content, and its own hashes are recorded.
-   */
-  private async matchesCandidate(step: PackagePlan, profile: ReleaseProfile, entry: ExecutionEntry, published: RegistryVersion): Promise<boolean> {
-    if (!packsOnCi(profile)) return published.dist.shasum === entry.shasum;
-    if (entry.publishedShasum) return published.dist.shasum === entry.publishedShasum;
-    assert(entry.artifact, '検証済みtarballの記録がありません。');
-    const expected = entry.contentSha256 ?? contentDigest(await readFile(entry.artifact));
-    const directory = await mkdtemp(join(this.artifacts(step), '.published-'));
-    try {
-      const result = parsePackResult(await this.npm(profile, ['pack', `${step.name}@${versionOf(step)}`, '--ignore-scripts', '--json', '--pack-destination', directory], directory), step.name!, versionOf(step));
-      const bytes = await readFile(join(directory, result.filename));
-      assert.equal(hash(bytes), published.dist.shasum, '取得したnpm tarballが公開記録と異なります。');
-      if (contentDigest(bytes) !== expected) return false;
-      entry.contentSha256 = expected;
-      entry.publishedShasum = published.dist.shasum;
-      entry.publishedSha256 = createHash('sha256').update(bytes).digest('hex');
-      return true;
-    } finally { await rm(directory, { recursive: true, force: true }); }
+  /** Whether npm says the version was published from the release's own commit. */
+  private fromSource(profile: ReleaseProfile, entry: ExecutionEntry, published: RegistryVersion): boolean {
+    const source = sourceOf(profile, entry);
+    return Boolean(source) && published.gitHead === source;
   }
 
   /** Move pinned `<name>@<previous version>` references in tracked documentation to the release version. */
@@ -262,21 +231,6 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     }
   }
 
-  /** Compare the candidate tarball with the published one; equal content means publishing is unnecessary. */
-  private async unchangedFromPublished(step: PackagePlan, profile: ReleaseProfile, artifact: string): Promise<boolean> {
-    const directory = await mkdtemp(join(this.artifacts(step), '.compare-'));
-    try {
-      const output = await this.npm(profile, ['pack', `${step.name}@${step.publishedVersion}`, '--ignore-scripts', '--json', '--pack-destination', directory], directory);
-      const result = JSON.parse(output);
-      const filename = (Array.isArray(result) ? result[0] : result)?.filename;
-      assert(typeof filename === 'string' && basename(filename) === filename, '公開済みtarballを特定できません。');
-      for (const [name, source] of [['candidate', artifact], ['published', join(directory, filename)]]) {
-        await mkdir(join(directory, name));
-        await this.run(['tar', '-xzf', source, '-C', join(directory, name)]);
-      }
-      return await samePublishedContent(join(directory, 'candidate', 'package'), join(directory, 'published', 'package'));
-    } finally { await rm(directory, { recursive: true, force: true }); }
-  }
 
   async prepared(step: PackagePlan, profile: ReleaseProfile, entry: ExecutionEntry): Promise<void> {
     if (step.action === 'none') return;
@@ -320,28 +274,6 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     assert.equal(await this.git(step, 'status', '--porcelain'), '', '検証後に未コミット変更があります。');
     if (step.action === 'publish') {
       await mkdir(this.artifacts(step), { recursive: true });
-      const temporary = await mkdtemp(join(this.artifacts(step), '.pack-'));
-      try {
-        const result = parsePackResult(await this.npm(profile, ['pack', '--ignore-scripts', '--json', '--pack-destination', temporary], cwd), step.name!, versionOf(step));
-        const bytes = await readFile(join(temporary, result.filename));
-        const packedHash = hash(bytes);
-        assert.equal(packedHash, result.shasum);
-        assert(!entry.shasum || entry.shasum === packedHash, '再開時のtarballが検証済み成果物と異なります。');
-        const artifact = join(this.artifacts(step), result.filename);
-        assert(!entry.artifact || entry.artifact === artifact, '再開時のtarball保存先が実行記録と異なります。');
-        try { await writeFile(artifact, bytes, { flag: 'wx' }); }
-        catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-          assert.equal(hash(await readFile(artifact)), packedHash, '保存済みtarballが異なります。上書きしません。');
-        }
-        entry.artifact = artifact;
-        entry.shasum = packedHash;
-        if (packsOnCi(profile)) entry.contentSha256 = contentDigest(bytes);
-      } finally { await rm(temporary, { recursive: true, force: true }); }
-      if (onlyDependencyUpdate(step) && step.publishedVersion && await this.unchangedFromPublished(step, profile, entry.artifact)) {
-        entry.cancelled = `公開済みの${step.publishedVersion}と、利用者に届く中身が同じです（変わるのはversionとdevDependenciesだけ）。`;
-        return;
-      }
       if (!entry.extraArtifacts) {
         const extraArtifacts: NonNullable<ExecutionEntry['extraArtifacts']> = [];
         for (const file of profile.artifacts ?? []) {
@@ -350,7 +282,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
           const rel = relative(await realpath(cwd), source);
           assert(rel && !rel.startsWith('..') && !rel.startsWith('/'), '成果物がcheckout外を参照しています。');
           const destination = join(this.artifacts(step), basename(filename));
-          assert(destination !== entry.artifact && !extraArtifacts.some(asset => asset.path === destination), '添付物の名前が重複しています。');
+          assert(!extraArtifacts.some(asset => asset.path === destination), '添付物の名前が重複しています。');
           const bytes = await readFile(source);
           await writeFile(destination, bytes);
           extraArtifacts.push({ path: destination, sha256: createHash('sha256').update(bytes).digest('hex') });
@@ -471,7 +403,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
       await mkdir(this.artifacts(step), { recursive: true });
       const notes = join(this.root, 'notes', step.repo, 'release-notes.md');
       await mkdir(dirname(notes), { recursive: true });
-      await writeFile(notes, `${step.name} ${versionOf(step)}\n\nSource: ${entry.mergeCommit}\nPlan: ${this.state.digest}\nnpm archive SHA1: ${entry.shasum}\n\n公開後の修正は別番号で発行し、この版・タグは上書きしません。\n`);
+      await writeFile(notes, `${step.name} ${versionOf(step)}\n\nSource: ${entry.mergeCommit}\nPlan: ${this.state.digest}\n\n公開後の修正は別番号で発行し、この版・タグは上書きしません。\n`);
       const args = ['gh', 'release', 'create', tagOf(step), '--repo', step.repository, '--verify-tag', '--title', `${step.name} ${versionOf(step)}`, '--notes-file', notes];
       if (semver.prerelease(versionOf(step))) args.push('--prerelease');
       try { await this.run(args); }
@@ -483,9 +415,8 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     assert(!release.draft && release.tag_name === tagOf(step), '公開Releaseを確認できません。');
     entry.releaseUrl = release.html_url;
     if (step.action === 'publish') {
-      assert(entry.artifact && entry.shasum && hash(await readFile(entry.artifact)) === entry.shasum, '検証済みtarballが変わりました。');
-      // A workflow that packs on CI attaches its own archive; attaching ours first would conflict with it.
-      const assets = packsOnCi(profile) ? [] : [entry.artifact];
+      // The npm package itself is published by npm only; the release carries the repository's other artifacts.
+      const assets: string[] = [];
       for (const asset of entry.extraArtifacts ?? []) {
         assert.equal(dirname(await realpath(asset.path)), await realpath(this.artifacts(step)), '保存済み成果物がdir外を参照しています。');
         assert.equal(createHash('sha256').update(await readFile(asset.path)).digest('hex'), asset.sha256, '保存済み成果物が変更されました。');
@@ -506,21 +437,22 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
   async published(step: PackagePlan, profile: ReleaseProfile, entry: ExecutionEntry): Promise<void> {
     if (step.action !== 'publish') return;
     const old = await this.registry(step, profile, versionOf(step));
-    if (old) assert(await this.matchesCandidate(step, profile, entry, old), '公開済み版の内容が異なります。');
+    if (old) assert(this.fromSource(profile, entry, old), '公開済み版がこのリリースのコミットから公開されていません。');
     if (profile.publish.mode === 'cli') {
       if (!old && !entry.publishStartedAt) {
         entry.publishStartedAt = new Date().toISOString();
         await this.save();
-        const args = ['publish', entry.artifact!, '--access=public', '--tag=next'];
+        // npm packs and publishes the verified checkout itself; no tarball is made or handled here.
+        const args = ['publish', '--access=public', '--tag=next'];
         if (profile.publish.provenance) args.push('--provenance');
-        await this.npm(profile, args, undefined, true);
+        await this.npm(profile, args, this.path(step), true);
         entry.publishAccepted = true;
         await this.save();
       }
       // An interrupted publish has an unknown outcome. Never submit the version twice.
       if (!old && entry.publishStartedAt && !entry.publishAccepted) {
         const visible = await this.wait(() => this.registry(step, profile, versionOf(step)), '中断されたnpm公開の結果確認');
-        assert.equal(visible.dist.shasum, entry.shasum);
+        assert(this.fromSource(profile, entry, visible), '中断された公開の版が、このリリースのコミットから公開されていません。');
       }
     } else {
       const path = `repos/${step.repository}/actions/workflows/${profile.publish.workflow}/runs?per_page=100`;
@@ -535,7 +467,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
         entry.dispatchStartedAt = new Date().toISOString();
         await this.save();
         const args = ['gh', 'workflow', 'run', profile.publish.workflow, '--repo', step.repository, '--ref', entry.base!];
-        for (const [key, value] of Object.entries(profile.publish.inputs ?? {})) args.push('-f', `${key}=${value.replaceAll('{version}', versionOf(step)).replaceAll('{tag}', tagOf(step)).replaceAll('{shasum}', entry.shasum!)}`);
+        for (const [key, value] of Object.entries(profile.publish.inputs ?? {})) args.push('-f', `${key}=${value.replaceAll('{version}', versionOf(step)).replaceAll('{tag}', tagOf(step))}`);
         await this.run(args);
       }
       const run = await this.wait(async () => {
@@ -555,14 +487,16 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
       entry.workflowRun = run.id;
     }
     const published = await this.wait(() => this.registry(step, profile, versionOf(step)), 'npm反映');
-    assert(await this.matchesCandidate(step, profile, entry, published), '公開tarballが検証済み成果物と異なります。下流は実行しません。');
+    assert(this.fromSource(profile, entry, published), '公開版がこのリリースのコミットから公開されていません。下流は実行しません。');
     await this.save();
   }
 
   async complete(step: PackagePlan, profile: ReleaseProfile, entry: ExecutionEntry): Promise<void> {
     if (step.action !== 'update-only' && !unpublishedReference(step)) {
       const published = await this.registry(step, profile, versionOf(step));
-      assert(published && published.dist.shasum === (packsOnCi(profile) && step.action === 'publish' ? entry.publishedShasum : entry.shasum), 'npm公開版のハッシュが不一致です。');
+      assert(published, 'npm公開版を取得できません。');
+      // An unchanged upstream is known by its tag and source below; a new version must come from this release.
+      if (step.action === 'publish') assert(this.fromSource(profile, entry, published), 'npm公開版がこのリリースのコミットから公開されていません。');
       if (profile.publish.mode !== 'cli' || profile.publish.provenance) {
         assert.equal(published.dist.attestations?.provenance?.predicateType, 'https://slsa.dev/provenance/v1', 'provenanceを確認できません。');
       }
@@ -571,8 +505,6 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
       const release = await this.api<GithubRelease>(`repos/${step.repository}/releases/tags/${tagOf(step)}`);
       assert(!release.draft && release.tag_name === tagOf(step));
       if (step.action === 'publish') {
-        const npmArchive = release.assets.find(asset => asset.name === basename(entry.artifact!));
-        assert.equal(npmArchive?.digest, `sha256:${packsOnCi(profile) ? entry.publishedSha256 : createHash('sha256').update(await readFile(entry.artifact!)).digest('hex')}`, 'GitHub Release成果物のハッシュが不一致です。');
         for (const file of (entry.extraArtifacts ?? []).map(asset => asset.path)) {
           const asset = release.assets.find(asset => asset.name === basename(file));
           assert.equal(asset?.digest, `sha256:${createHash('sha256').update(await readFile(file)).digest('hex')}`, 'GitHub Release成果物のハッシュが不一致です。');

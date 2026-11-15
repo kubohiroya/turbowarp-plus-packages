@@ -10,41 +10,20 @@ import type { Runner } from '../scripts/lib/release-driver.ts';
 import type { ExecutionConfig, ExecutionEntry, ExecutionState, ReleaseProfile } from '../scripts/lib/release-execution.ts';
 import type { PackagePlan } from '../scripts/lib/release-plan.ts';
 
-const sha = 'a'.repeat(40), shasum = 'b'.repeat(40);
+const sha = 'a'.repeat(40);
 const step: PackagePlan = { repo: 'tool', repository: 'family/tool', name: '@family/tool', headSha: sha,
   currentVersion: '1.0.0', publishedVersion: '1.0.0', nextVersion: '1.1.0', versionChange: 'minor', action: 'publish',
   sourceChanges: 'ahead', reasons: ['commits-ahead'], dependencyUpdates: [], issues: [] };
 const profile: ReleaseProfile = { npm: ['fixture-npm'], install: [['fixture-install']], verify: [['fixture-verify']], publish: { mode: 'cli', provenance: false } };
-const registry = JSON.stringify({ name: step.name, version: '1.1.0', dist: { shasum } });
+// npm records the commit a version was published from as gitHead.
+const registry = JSON.stringify({ name: step.name, version: '1.1.0', gitHead: sha, dist: {} });
+const elsewhere = JSON.stringify({ name: step.name, version: '1.1.0', gitHead: 'e'.repeat(40), dist: {} });
 const missing = (command: string[]) => new CommandFailure(command, '{"error":{"code":"E404"}}', 'E404', 1);
-const record = (): ExecutionEntry => ({ phase: 'released', mergeCommit: sha, shasum, artifact: '/unused/test.tgz', base: 'main' });
+const record = (): ExecutionEntry => ({ phase: 'released', commit: sha, mergeCommit: sha, base: 'main' });
 function driver(run: Runner, entry: ExecutionEntry, save = async () => {}, root = '/unused') {
   const config: ExecutionConfig = { schemaVersion: 1, workflowTimeoutSeconds: 20, repositories: {} };
   const state: ExecutionState = { schemaVersion: 1, digest: 'c'.repeat(64), entries: { tool: entry } };
   return new GithubNpmReleaseDriver(root, config, state, save, run, async () => {});
-}
-
-/**
- * A release workflow that packs on CI: the candidate and the CI archive hold the same tar,
- * but gzip compresses it differently, so the registry serves different bytes.
- */
-async function ciPacked(content = 'package/package.json contents') {
-  const root = await mkdtemp(join(tmpdir(), 'ci-packed-'));
-  const tar = Buffer.from(content);
-  const candidate = gzipSync(tar, { level: 9 }), ci = gzipSync(Buffer.from('package/package.json contents'), { level: 1 });
-  await mkdir(join(root, 'artifacts', 'tool'), { recursive: true });
-  const artifact = join(root, 'artifacts', 'tool', 'family-tool-1.1.0.tgz');
-  await writeFile(artifact, candidate);
-  const sha1 = (bytes: Uint8Array) => createHash('sha1').update(bytes).digest('hex');
-  const entry: ExecutionEntry = { phase: 'released', mergeCommit: sha, shasum: sha1(candidate), artifact, base: 'main' };
-  const registry = JSON.stringify({ name: step.name, version: '1.1.0', dist: { shasum: sha1(ci) } });
-  /** Answers `npm pack <spec>` with the CI archive, as the registry would. */
-  const pack = async (command: string[]) => {
-    const directory = command[command.indexOf('--pack-destination') + 1];
-    await writeFile(join(directory, 'family-tool-1.1.0.tgz'), ci);
-    return JSON.stringify([{ name: step.name, version: '1.1.0', filename: 'family-tool-1.1.0.tgz', shasum: sha1(ci) }]);
-  };
-  return { root, entry, registry, pack, ci, cleanup: () => rm(root, { recursive: true, force: true }) };
 }
 
 test('accepted CLI publication waits through registry delay without publishing again', async () => {
@@ -71,54 +50,41 @@ test('an interrupted CLI publish is never blindly retried', async () => {
   assert.equal(submits, 1);
 });
 
-test('tag workflow selection ignores runs for main and accepts the CI archive by content', async () => {
-  const fixture = await ciPacked(); const { entry } = fixture; let reads = 0;
-  try {
-    const configured: ReleaseProfile = { ...profile, publish: { mode: 'tag-workflow', workflow: 'release.yml' } };
-    const execute = driver(async command => {
-      if (command[0] === 'fixture-npm' && command[1] === 'pack') return fixture.pack(command);
-      if (command[0] === 'fixture-npm') { if (++reads === 1) throw missing(command); return fixture.registry; }
-      assert.equal(command[1], 'api');
-      return JSON.stringify({ workflow_runs: [
-        { id: 40, head_sha: sha, head_branch: 'main', event: 'push', status: 'completed', conclusion: 'failure' },
-        { id: 42, head_sha: sha, head_branch: 'v1.1.0', event: 'push', status: 'completed', conclusion: 'success' },
-      ] });
-    }, entry, async () => {}, fixture.root);
-    await execute.published(step, configured, entry);
-    assert.equal(entry.workflowRun, 42);
-    assert.notEqual(entry.publishedShasum, entry.shasum, 'the CI archive compresses differently');
-    assert.equal(entry.publishedShasum, createHash('sha1').update(fixture.ci).digest('hex'));
-    assert.equal(entry.publishedSha256, createHash('sha256').update(fixture.ci).digest('hex'));
-  } finally { await fixture.cleanup(); }
+test('tag workflow selection ignores runs for main and accepts the version npm says came from the release commit', async () => {
+  const entry = record(); let reads = 0;
+  const configured: ReleaseProfile = { ...profile, publish: { mode: 'tag-workflow', workflow: 'release.yml' } };
+  const execute = driver(async command => {
+    assert.notEqual(command[1], 'pack', 'no tarball is made or fetched');
+    if (command[0] === 'fixture-npm') { if (++reads === 1) throw missing(command); return registry; }
+    assert.equal(command[1], 'api');
+    return JSON.stringify({ workflow_runs: [
+      { id: 40, head_sha: sha, head_branch: 'main', event: 'push', status: 'completed', conclusion: 'failure' },
+      { id: 42, head_sha: sha, head_branch: 'v1.1.0', event: 'push', status: 'completed', conclusion: 'success' },
+    ] });
+  }, entry);
+  await execute.published(step, configured, entry);
+  assert.equal(entry.workflowRun, 42);
 });
 
-test('a CI archive with different content stops the chain', async () => {
-  const fixture = await ciPacked('package/package.json that differs from the CI archive'); const { entry } = fixture; entry.workflowRun = 42;
-  try {
-    const configured: ReleaseProfile = { ...profile, publish: { mode: 'tag-workflow', workflow: 'release.yml' } };
-    let reads = 0;
-    const execute = driver(async command => {
-      if (command[0] === 'fixture-npm' && command[1] === 'pack') return fixture.pack(command);
-      if (command[0] === 'fixture-npm') { if (++reads === 1) throw missing(command); return fixture.registry; }
-      return JSON.stringify({ workflow_runs: [
-        { id: 42, head_sha: sha, head_branch: 'v1.1.0', event: 'push', status: 'completed', conclusion: 'success' },
-      ] });
-    }, entry, async () => {}, fixture.root);
-    await assert.rejects(execute.published(step, configured, entry), /検証済み成果物と異なります/u);
-    assert.equal(entry.publishedShasum, undefined);
-  } finally { await fixture.cleanup(); }
+test('a version npm says came from another commit stops the chain', async () => {
+  const entry = record(); entry.workflowRun = 42; let reads = 0;
+  const configured: ReleaseProfile = { ...profile, publish: { mode: 'tag-workflow', workflow: 'release.yml' } };
+  const execute = driver(async command => {
+    if (command[0] === 'fixture-npm') { if (++reads === 1) throw missing(command); return elsewhere; }
+    return JSON.stringify({ workflow_runs: [
+      { id: 42, head_sha: sha, head_branch: 'v1.1.0', event: 'push', status: 'completed', conclusion: 'success' },
+    ] });
+  }, entry);
+  await assert.rejects(execute.published(step, configured, entry), /このリリースのコミットから公開されていません/u);
 });
 
 test('a visible npm version cannot hide a failed publication workflow', async () => {
-  const fixture = await ciPacked(); const { entry } = fixture; entry.workflowRun = 42;
-  try {
-    const configured: ReleaseProfile = { ...profile, publish: { mode: 'tag-workflow', workflow: 'release.yml' } };
-    const execute = driver(async command => command[0] === 'fixture-npm' && command[1] === 'pack' ? fixture.pack(command) :
-      command[0] === 'fixture-npm' ? fixture.registry : JSON.stringify({ workflow_runs: [
-        { id: 42, head_sha: sha, head_branch: 'v1.1.0', event: 'push', status: 'completed', conclusion: 'failure' },
-      ] }), entry, async () => {}, fixture.root);
-    await assert.rejects(execute.published(step, configured, entry), /公開workflow失敗/u);
-  } finally { await fixture.cleanup(); }
+  const entry = record(); entry.workflowRun = 42;
+  const configured: ReleaseProfile = { ...profile, publish: { mode: 'tag-workflow', workflow: 'release.yml' } };
+  const execute = driver(async command => command[0] === 'fixture-npm' ? registry : JSON.stringify({ workflow_runs: [
+    { id: 42, head_sha: sha, head_branch: 'v1.1.0', event: 'push', status: 'completed', conclusion: 'failure' },
+  ] }), entry);
+  await assert.rejects(execute.published(step, configured, entry), /公開workflow失敗/u);
 });
 
 test('resuming a dispatched workflow does not dispatch or publish twice', async () => {
@@ -192,41 +158,26 @@ test('completing an older release never downgrades a newer next tag', async () =
   await assert.rejects(execute.complete(unchanged, profile, entry), /下げず/u);
 });
 
-for (const mode of ['dirty-verification', 'changed-pack', 'same-pack']) test(`a saved candidate preserves its frozen archive (${mode})`, async () => {
+for (const mode of ['dirty-verification', 'clean']) test(`a saved candidate is verified again without packing (${mode})`, async () => {
   const root = await mkdtemp(join(tmpdir(), 'release-candidate-'));
   try {
     const cwd = join(root, 'checkouts', step.repo);
     await mkdir(cwd, { recursive: true });
     await writeFile(join(cwd, 'package.json'), JSON.stringify({ name: step.name, version: '1.1.0' }));
-    const originalHash = createHash('sha1').update('original archive').digest('hex');
-    const artifactDirectory = join(root, 'artifacts', step.repo);
-    const artifact = join(artifactDirectory, 'family-tool-1.1.0.tgz');
-    await mkdir(artifactDirectory, { recursive: true });
-    await writeFile(artifact, 'original archive');
-    const entry: ExecutionEntry = { phase: 'pending', commit: sha, artifact, shasum: originalHash };
+    const entry: ExecutionEntry = { phase: 'pending', commit: sha };
     const state: ExecutionState = { schemaVersion: 1, digest: 'c'.repeat(64), entries: { tool: entry } };
-    let verified = 0, packed = 0;
+    let verified = 0;
     const run: Runner = async command => {
       if (command[0] === 'fixture-verify') { verified++; return ''; }
       if (command[0] === 'git' && command[1] === 'rev-parse') return sha;
       if (command[0] === 'git' && command[1] === 'status') return mode === 'dirty-verification' ? ' M generated.js' : '';
-      assert.equal(command[1], 'pack', 'resume must not rerun preparation, push, or publish');
-      packed++;
-      const directory = command[command.indexOf('--pack-destination') + 1];
-      assert.notEqual(directory, artifactDirectory, 'packing must never overwrite a frozen archive');
-      const filename = 'family-tool-1.1.0.tgz';
-      const bytes = mode === 'same-pack' ? 'original archive' : 'changed archive';
-      await writeFile(join(directory, filename), bytes);
-      return JSON.stringify([{ name: step.name, version: '1.1.0', filename, shasum: createHash('sha1').update(bytes).digest('hex') }]);
+      assert.fail(`resume must not pack, prepare, push or publish: ${command.join(' ')}`);
     };
     const execute = new GithubNpmReleaseDriver(root, { schemaVersion: 1, repositories: {} }, state, async () => {}, run);
-    if (mode === 'same-pack') await execute.prepared(step, profile, entry);
-    else await assert.rejects(execute.prepared(step, profile, entry), mode === 'dirty-verification' ? /未コミット/ : /tarball/);
+    if (mode === 'clean') await execute.prepared(step, profile, entry);
+    else await assert.rejects(execute.prepared(step, profile, entry), /未コミット/);
     assert.equal(verified, 1);
-    assert.equal(packed, mode === 'dirty-verification' ? 0 : 1);
-    assert.equal(entry.shasum, originalHash, 'a failed retry must preserve the approved archive hash');
-    assert.equal(await readFile(artifact, 'utf8'), 'original archive');
-    assert.deepEqual(await readdir(artifactDirectory), ['family-tool-1.1.0.tgz'], 'temporary pack directories must be removed');
+    assert.deepEqual(await readdir(join(root, 'artifacts', step.repo)).catch(() => []), [], 'no archive is written');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

@@ -77,8 +77,7 @@ for (const { privatePackage, interruption, prepared, withoutNext = false } of li
     } } };
     let pr: { number: number; html_url: string; state: string; merged: boolean; merge_commit_sha: string | null; head: { sha: string }; base: { ref: string } } | null = null;
     let release: { id: number; tag_name: string; html_url: string; draft: boolean; assets: { name: string; digest: string }[] } | null = null;
-    let published: { name: string; version: string; dist: { shasum: string } } | null = null;
-    let packed = '';
+    let published: { name: string; version: string; gitHead: string; dist: object } | null = null;
     const tags: { latest: string; next?: string } = withoutNext ? { latest: '1.0.0' } : { latest: '1.0.0', next: '1.0.0' };
     const events: string[] = [];
     let failVerification = interruption === 'verification';
@@ -114,18 +113,13 @@ for (const { privatePackage, interruption, prepared, withoutNext = false } of li
           if (!published) throw missing(command);
           return JSON.stringify(published);
         }
-        if (command[1] === 'pack') {
-          const directory = command[command.indexOf('--pack-destination') + 1];
-          await mkdir(directory, { recursive: true });
-          const bytes = Buffer.from(await readFile(join(options!.cwd!, 'package.json')));
-          const filename = 'family-tool-1.1.0.tgz';
-          await writeFile(join(directory, filename), bytes);
-          packed = createHash('sha1').update(bytes).digest('hex');
-          return JSON.stringify({ '@family/tool': { name: '@family/tool', version: '1.1.0', filename, shasum: packed } });
-        }
+        assert.notEqual(command[1], 'pack', 'no tarball is made');
         if (command[1] === 'publish') {
-          assert.equal(createHash('sha1').update(await readFile(command[2])).digest('hex'), packed);
-          events.push('publish'); published = { name: '@family/tool', version: '1.1.0', dist: { shasum: packed } }; return '';
+          // npm publishes the checkout itself and records its commit as gitHead.
+          assert(!command.some(arg => arg.endsWith('.tgz')), 'no tarball is published');
+          assert.equal(JSON.parse(await readFile(join(options!.cwd!, 'package.json'), 'utf8')).version, '1.1.0');
+          const gitHead = await git(['rev-parse', 'HEAD'], options!.cwd);
+          events.push('publish'); published = { name: '@family/tool', version: '1.1.0', gitHead, dist: {} }; return '';
         }
         if (command[1] === 'dist-tag') {
           const tag = command[4] as 'latest' | 'next'; tags[tag] = '1.1.0'; return '';
@@ -215,7 +209,10 @@ for (const { privatePackage, interruption, prepared, withoutNext = false } of li
       assert.equal(await git(['rev-parse', 'HEAD'], join(reference, 'tool')), referenceHead);
       assert.equal(await git(['status', '--porcelain'], join(reference, 'tool')), '');
     } else await assert.rejects(readFile(alternates));
-    if (!privatePackage) assert.equal(basename(state.entries.tool.extraArtifacts![0].path), 'candidate-1.1.0.sb3');
+    if (!privatePackage) {
+      assert.equal(basename(state.entries.tool.extraArtifacts![0].path), 'candidate-1.1.0.sb3');
+      assert.deepEqual(release!.assets.map(asset => asset.name), ['candidate-1.1.0.sb3'], 'the release carries no npm archive');
+    }
     assert.equal(tags.latest, privatePackage ? '1.0.0' : '1.1.0');
     assert.equal(tags.next, withoutNext ? undefined : privatePackage ? '1.0.0' : '1.1.0', 'no `next` is created for a package without one');
     assert.equal(events.filter(event => event === 'publish').length, privatePackage ? 0 : 1);

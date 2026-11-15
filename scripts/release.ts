@@ -21,8 +21,8 @@ const HELP = `使い方: pnpm release --plan <plan.json> --workspace <専用dir>
                              （git clone --reference-if-able。既存checkoutは読むだけで変更しない）
 --help                       この説明を表示
 
-実行時は専用checkoutで依存/version更新、install/prepare/verify、pack、commit/push、
-PR/CI/Squash Merge、タグ/Release、npm公開、provenance/ハッシュ/latest/next照合を対象ごとに実行。
+実行時は専用checkoutで依存/version更新、install/prepare/verify、commit/push、
+PR/CI/Squash Merge、タグ/Release、npm公開（tarballは扱わない）、provenance/公開元commit/latest/next照合を対象ごとに実行。
 依存先の完了確認前にはその対象へ進みません。依存しあわない対象は並列に進みます。state.jsonと成果物をworkspaceへ保存します。
 既存の利用者checkoutは変更しません。外部公開は--execute指定時のみ行います。`;
 
