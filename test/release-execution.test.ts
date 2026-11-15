@@ -8,7 +8,6 @@ import { fileURLToPath } from 'node:url';
 import { executeReleasePlan, executionDigest, PHASES, runByDependencies } from '../scripts/lib/release-execution.ts';
 import type { ExecutionConfig, ExecutionEntry, ReleaseDriver } from '../scripts/lib/release-execution.ts';
 import type { ReleasePlan, PackagePlan } from '../scripts/lib/release-plan.ts';
-import { parsePackResult } from '../scripts/lib/release-driver.ts';
 import { releaseVersionsMatch } from '../scripts/lib/release-version.ts';
 
 export function fixture(): { plan: ReleasePlan; config: ExecutionConfig } {
@@ -34,7 +33,7 @@ function fakeDriver(events: string[], fail?: string): ReleaseDriver {
   const record = (phase: string) => async (step: PackagePlan, _profile: unknown, entry: ExecutionEntry) => {
     events.push(`${step.repo}:${phase}`);
     if (`${step.repo}:${phase}` === fail) throw new Error('injected failure');
-    if (phase === 'prepared') entry.shasum = 'a'.repeat(40);
+    if (phase === 'prepared') entry.commit = 'a'.repeat(40);
   };
   return Object.fromEntries(['preflight', ...PHASES.slice(1)].map(phase => [phase, record(phase)])) as unknown as ReleaseDriver;
 }
@@ -110,15 +109,6 @@ test('a changed config cannot reuse an old journal and concurrent runs do not st
     await assert.rejects(executeReleasePlan(plan, config, root, () => fakeDriver([]), executionDigest(plan, config)), /進行中/u);
     assert((await readdir(root)).includes('.execution-lock'));
   } finally { await rm(root, { recursive: true, force: true }); }
-});
-
-test('npm11 and npm12 pack JSON identify exactly one planned artifact', () => {
-  const pack = { name: '@family/a', version: '1.0.0', filename: 'family-a-1.0.0.tgz', shasum: 'a'.repeat(40) };
-  assert.equal(parsePackResult(JSON.stringify([pack]), pack.name, pack.version).filename, pack.filename);
-  assert.equal(parsePackResult(JSON.stringify({ [pack.name]: pack }), pack.name, pack.version).filename, pack.filename);
-  assert.throws(() => parsePackResult(JSON.stringify([pack, pack]), pack.name, pack.version));
-  assert.throws(() => parsePackResult(JSON.stringify([{ ...pack, filename: '../other.tgz' }]), pack.name, pack.version));
-  assert.throws(() => parsePackResult(JSON.stringify([pack]), pack.name, '2.0.0'));
 });
 
 test('release tag comparison preserves RC identifiers and rejects arbitrary tag fragments', () => {

@@ -141,11 +141,13 @@ export function profileFromContract(manifestText: string, workflowText: string, 
     const declared = events.workflow_dispatch?.inputs ?? {};
     if (inputs === undefined) {
       inputs = {};
-      for (const [name, placeholder] of Object.entries({ version: '{version}', tag: '{tag}', shasum: '{shasum}' })) {
+      // The workflow publishes from its own checkout; no tarball hash is handed to it.
+      for (const [name, placeholder] of Object.entries({ version: '{version}', tag: '{tag}' })) {
         if (Object.hasOwn(declared, name)) inputs[name] = placeholder;
       }
     }
     assert(Object.values(object(inputs)).every(value => typeof value === 'string'), 'workflow inputsが不正です。');
+    assert(Object.values(object(inputs)).every(value => !(value as string).includes('{shasum}')), 'tarballのハッシュはworkflowへ渡しません。{shasum}を使わない公開手順にしてください。');
     assert(Object.keys(inputs).every(key => Object.hasOwn(declared, key)), '未定義のworkflow inputがあります。');
     assert(Object.entries(declared).every(([key, value]: [string, any]) => !value.required || value.default !== undefined || Object.hasOwn(inputs!, key)), '必須workflow inputを推定できません。publish.inputs例外を指定してください。');
   }

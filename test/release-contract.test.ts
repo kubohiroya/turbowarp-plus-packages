@@ -11,14 +11,13 @@ import type { ReleasePlan, PackagePlan } from '../scripts/lib/release-plan.ts';
 
 const manifest = (privatePackage = false) => JSON.stringify({ name: '@family/tool', version: '1.0.0', private: privatePackage, packageManager: 'pnpm@11.11.0',
   scripts: { 'release:prepare': 'node prepare.js', 'release:verify': 'node verify.js' },
-  turbowarpRelease: { schemaVersion: 1, publish: { mode: 'dispatch-workflow', workflow: 'release.yml', job: 'publish', inputs: { version: '{version}', shasum: '{shasum}' } } },
+  turbowarpRelease: { schemaVersion: 1, publish: { mode: 'dispatch-workflow', workflow: 'release.yml', job: 'publish', inputs: { version: '{version}' } } },
 });
 const workflow = `name: Release
 on:
   workflow_dispatch:
     inputs:
       version: { required: true, type: string }
-      shasum: { required: true, type: string }
 permissions: { contents: read }
 jobs:
   publish:
@@ -232,4 +231,13 @@ test('a dispatch workflow that also runs on a push to a branch records that bran
   // A job kept to dispatches does not publish on a push.
   const guarded = pushAndDispatch.replace('    runs-on:', "    if: github.event_name == 'workflow_dispatch'\n    runs-on:");
   assert.equal('pushBranches' in profileFromContract(npmManifest, guarded).publish, false);
+});
+
+test('a workflow is never handed a tarball hash', () => {
+  const declared = workflow.replace('      version: { required: true, type: string }\n', '      version: { required: true, type: string }\n      shasum: { type: string }\n');
+  const withHash = JSON.stringify({ ...JSON.parse(manifest()), turbowarpRelease: { schemaVersion: 1,
+    publish: { mode: 'dispatch-workflow', workflow: 'release.yml', job: 'publish', inputs: { version: '{version}', shasum: '{shasum}' } } } });
+  assert.throws(() => profileFromContract(withHash, declared), /tarballのハッシュはworkflowへ渡しません/u);
+  // An optional shasum input that the contract does not name is left out.
+  assert.deepEqual((profileFromContract(manifest(), declared).publish as { inputs?: Record<string, string> }).inputs, { version: '{version}' });
 });
