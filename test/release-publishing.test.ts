@@ -281,3 +281,31 @@ test('a version the merge push already published is accepted on resume', async (
   await execute.published(step, configured, entry);
   assert.equal(entry.workflowRun, 42);
 });
+
+test('a workflow on the merge push that packs its own checkout is accepted by content', async () => {
+  const fixture = await ciPacked(); const { entry } = fixture; let reads = 0;
+  try {
+    const configured: ReleaseProfile = { ...profile, publish: { mode: 'dispatch-workflow', workflow: 'release.yml', inputs: {}, pushBranches: ['main'] } };
+    const execute = driver(async command => {
+      if (command[0] === 'fixture-npm' && command[1] === 'pack') return fixture.pack(command);
+      if (command[0] === 'fixture-npm') { if (++reads === 1) throw missing(command); return fixture.registry; }
+      assert.deepEqual(command.slice(0, 2), ['gh', 'api']);
+      return JSON.stringify({ workflow_runs: [{ id: 42, head_sha: sha, head_branch: 'main', event: 'push', status: 'completed', conclusion: 'success' }] });
+    }, entry, async () => {}, fixture.root);
+    await execute.published(step, configured, entry);
+    assert.notEqual(entry.publishedShasum, entry.shasum, 'the CI archive compresses differently');
+    assert.equal(entry.publishedShasum, createHash('sha1').update(fixture.ci).digest('hex'));
+  } finally { await fixture.cleanup(); }
+});
+
+test('a dispatched workflow handed the candidate must publish those exact bytes', async () => {
+  const fixture = await ciPacked(); const { entry } = fixture; entry.workflowRun = 42; entry.dispatchStartedAt = '2026-10-26T00:00:00Z'; entry.dispatchHeadSha = sha;
+  try {
+    const configured: ReleaseProfile = { ...profile, publish: { mode: 'dispatch-workflow', workflow: 'release.yml', inputs: { shasum: '{shasum}' } } };
+    const execute = driver(async command => command[0] === 'fixture-npm' && command[1] === 'pack' ? fixture.pack(command) :
+      command[0] === 'fixture-npm' ? fixture.registry : JSON.stringify({ workflow_runs: [
+        { id: 42, head_sha: sha, head_branch: 'main', event: 'workflow_dispatch', created_at: '2026-10-26T00:00:01Z', status: 'completed', conclusion: 'success' },
+      ] }), entry, async () => {}, fixture.root);
+    await assert.rejects(execute.published(step, configured, entry), /内容が異なります|検証済み成果物と異なります/u);
+  } finally { await fixture.cleanup(); }
+});

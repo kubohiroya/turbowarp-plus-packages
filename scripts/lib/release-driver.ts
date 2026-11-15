@@ -39,6 +39,12 @@ const hash = (bytes: Uint8Array) => createHash('sha1').update(bytes).digest('hex
 export const contentDigest = (archive: Uint8Array) => createHash('sha256').update(gunzipSync(archive)).digest('hex');
 /** A workflow that packs on CI publishes its own archive, so only the archive content can match the candidate. */
 const packsOnCi = (profile: ReleaseProfile) => profile.publish.mode === 'tag-workflow';
+/**
+ * A dispatched workflow that is not handed the candidate (no `shasum` input) packs its own checkout. The same
+ * files then come out with other gzip bytes, so the published tarball is checked by its contents.
+ */
+const repacksOnCi = (profile: ReleaseProfile) => packsOnCi(profile) ||
+  (profile.publish.mode === 'dispatch-workflow' && !Object.hasOwn(profile.publish.inputs ?? {}, 'shasum'));
 /** Preparation changed nothing, so the input commit on the base is itself the release candidate. */
 const onBase = (step: PackagePlan, entry: ExecutionEntry) => Boolean(entry.commit) && entry.commit === step.headSha;
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
@@ -232,7 +238,12 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
    * so its archive is fetched and compared by uncompressed content, and its own hashes are recorded.
    */
   private async matchesCandidate(step: PackagePlan, profile: ReleaseProfile, entry: ExecutionEntry, published: RegistryVersion): Promise<boolean> {
-    if (!packsOnCi(profile)) return published.dist.shasum === entry.shasum;
+    if (!repacksOnCi(profile)) return published.dist.shasum === entry.shasum;
+    // The workflow happened to compress the files the same way: the very bytes that were verified.
+    if (!packsOnCi(profile) && published.dist.shasum === entry.shasum) {
+      entry.publishedShasum = entry.shasum;
+      return true;
+    }
     if (entry.publishedShasum) return published.dist.shasum === entry.publishedShasum;
     assert(entry.artifact, '検証済みtarballの記録がありません。');
     const expected = entry.contentSha256 ?? contentDigest(await readFile(entry.artifact));
@@ -336,7 +347,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
         }
         entry.artifact = artifact;
         entry.shasum = packedHash;
-        if (packsOnCi(profile)) entry.contentSha256 = contentDigest(bytes);
+        if (repacksOnCi(profile)) entry.contentSha256 = contentDigest(bytes);
       } finally { await rm(temporary, { recursive: true, force: true }); }
       if (onlyDependencyUpdate(step) && step.publishedVersion && await this.unchangedFromPublished(step, profile, entry.artifact)) {
         entry.cancelled = `公開済みの${step.publishedVersion}と、利用者に届く中身が同じです（変わるのはversionとdevDependenciesだけ）。`;
@@ -562,7 +573,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
   async complete(step: PackagePlan, profile: ReleaseProfile, entry: ExecutionEntry): Promise<void> {
     if (step.action !== 'update-only' && !unpublishedReference(step)) {
       const published = await this.registry(step, profile, versionOf(step));
-      assert(published && published.dist.shasum === (packsOnCi(profile) && step.action === 'publish' ? entry.publishedShasum : entry.shasum), 'npm公開版のハッシュが不一致です。');
+      assert(published && published.dist.shasum === (repacksOnCi(profile) && step.action === 'publish' ? entry.publishedShasum : entry.shasum), 'npm公開版のハッシュが不一致です。');
       if (profile.publish.mode !== 'cli' || profile.publish.provenance) {
         assert.equal(published.dist.attestations?.provenance?.predicateType, 'https://slsa.dev/provenance/v1', 'provenanceを確認できません。');
       }

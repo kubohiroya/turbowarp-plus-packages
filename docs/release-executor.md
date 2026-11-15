@@ -47,6 +47,7 @@ pnpm release --plan /tmp/release-plan.json --workspace /tmp/family-release \
 - 手動起動の汎用jobが既定ブランチへのpushでも動く場合（`on.push.branches`）、その対象ブランチを`publish.pushBranches`に記録します。リリースPRのマージがそのpushで公開を始めるため、実行器は手動起動せず、マージコミットのpushで始まった実行を待ちます。手動起動を重ねると、同じ版の公開を競って遅れた側がE409で失敗するためです。
 - npmの依存の準備は`install --package-lock-only --ignore-scripts`の後に`ci`を実行します。npmはlockfileだけの更新でもパッケージ自身の`prepare`を実行し、依存がないままビルドが走るためです。`prepare`は続く`ci`と準備手順で実行されます。
 - 公開後の確認では、npmの`latest`が新しい版を指すことを確かめます。`next`は、そのパッケージにすでに`next`があるときだけ同じ版を待ちます。`next`を使わずに`latest`へ公開するパッケージでは、存在しない`next`を待ち続けないためです。
+- 手動起動のworkflowに検証済みの候補（`shasum`入力）を渡さない場合、workflowは自分のcheckoutからパックし直します。同じファイルでもgzipの圧縮結果が変わるため、npmに上がったtarballは展開した中身で候補と照合します。`shasum`を渡す場合は、これまでどおりバイト単位で一致を求めます。
 - private repoには公開workflowもnpm公開設定も要求しません。既存の準備・検証手順だけを解決します。
 - ローカルに入力SHAがない場合は「GitHub側は未確認」と表示します。古い入力SHAにファイルがないことを、GitHub最新版にもない証拠として扱いません。
 
