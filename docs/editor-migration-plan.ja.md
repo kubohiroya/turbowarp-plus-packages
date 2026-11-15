@@ -351,7 +351,7 @@ plus-editor側は、どの手順も `site/plus-integration.js` を触ります�
 移しやすさについて、次のことを確かめました。
 
 - 5つとも、importするのはReact・自分のファイル・npmのfamilyのパッケージ（git・project-model・script-transfer）だけです。plus-editorの `site/` や、GUIの内部モジュールはimportしていません。vm・workspace・ScratchBlocksは呼び出し側から受け取っています。
-- GUIの内部に触れているのは、`editor-views/script-layout-view.ts` が `[class*="gui_blocks-wrapper_"]` を探す1か所だけです。
+- GUIの内部モジュールはimportしていませんが、GUIのCSSモジュールのクラス名を探すところが5ファイルにあります（下の「由来の監査（7b）」）。
 - `editor-ui` の中で、`project-file-dialogs.ts` と `project-repository-creation.ts` がお互いの型をimportしています（GitHubのアカウントとリポジトリの下書き）。
 - コミットの作者は、すべて `Hiroya Kubo <hiroya@cuc.ac.jp>` です。
 
@@ -375,7 +375,7 @@ plus-editor側は、どの手順も `site/plus-integration.js` を触ります�
 | # | 内容 | 前提 |
 |---|---|---|
 | 7a | plus-editorの `packages/` に新しいファイルを足すのを止める。AGENTS.mdに規則として書く | なし |
-| 7b | 移すファイルの由来を確かめる。GUIのコードを写したものはMPL-2.0にできないので、規則4と同じ方法で記録する | なし |
+| 7b | 移すファイルの由来を確かめる。GUIのコードを写したものはMPL-2.0にできないので、規則4と同じ方法で記録する（済。下の「由来の監査（7b）」） | なし |
 | 7c | windowsに移す | 7b |
 | 7d | project-modelに移す | 7b |
 | 7e | gitに移す | 7c（`dialog-actions`） |
@@ -385,6 +385,55 @@ plus-editor側は、どの手順も `site/plus-integration.js` を触ります�
 | 7i | plus-editorから `packages/` の後始末を消す | 7c〜7h |
 
 7dと7gは、7cと並行して進められます。7eと7fは、7cの後なら並行して進められます。
+
+### 由来の監査（7b）
+
+#### 方法
+
+対象は、plus-editor `origin/main` の `311812d`（#601）にある `packages/editor-*` の91ファイルです。内訳は、ソースが82ファイル（13,249行）、テストが9ファイル（1,790行）です。`LICENSE` と `package.json` は除きました。
+
+1. 作者：ファイルごとに `git log --follow --format='%an <%ae>'` で集めた。改名の前の履歴も含めた。コミットの `Co-authored-by` も集めた。
+2. 出どころ：`--follow` で、`packages/` の外から移ってきたファイルを探し、元のファイルまでたどった。
+3. 写し（行単位）：空白を除いて30文字以上の行が、次の比較対象に同じ形であるかを数えた。引用符と行末の `;`・`,` だけをそろえた比べ方でも数えた。
+   | 比較対象 | 版 | ライセンス |
+   |---|---|---|
+   | scratch-guiフォーク `src`・`test` | `e9d05e0`（plus-editorの `guiRevision`） | GPL-3.0 |
+   | scratch-blocks `core`・`blocks_vertical`・`blocks_common` | TurboWarpの `develop-builds` | GPL-3.0 |
+   | scratch-paint `src` | TurboWarpの `develop` | GPL-3.0 |
+   | scratch-vmフォーク `src` | `c7ed7b2` | MPL-2.0 |
+   | scratch-render `src` | TurboWarpの `develop` | MPL-2.0 |
+   | dockview-core・dockview の配布物 | 8.8.3 | MIT |
+4. 写し（かたまり）：12文字以上の行が、比較対象の1つのファイルで3行以上続けて同じ順に現れる箇所を探した。
+5. アイコン：SVGのパスのデータを、どこから来たか1つずつ確かめた。
+6. GUIの内部への依存：GUIのCSSモジュールのクラス名を探すところ、GUIが定義するCSS変数、scratch-blocksのDOMのクラス名を数えた。
+
+#### 結果の要約
+
+- **作者は `Hiroya Kubo <hiroya@cuc.ac.jp>` だけでした。** `packages/` に触れたコミットは127件です。そのうち17件に、`Co-authored-by: Claude Opus 5`（4件）と `Claude Opus 5.5`（13件）があります。AIの補助の記録で、別の著作権者ではありません。
+- **`packages/` の外から来たファイルは4つです。** `stage-controls.ts`・`stage-controls-view.tsx`・`stage-controls.css` は、plus-editorの `site/stage-controls*`（#65・#159）を経て来ました。元はフォークの新規ファイル `tw-stage-controls.js` と、フォークが `controls.jsx` に足した描画です。`stage-controls-view.tsx` の初版（#159の `site/stage-controls/view.jsx`）を、本家 `06b2edf` の `controls.jsx`・`controls.css` と比べました。一致したのは `import React from 'react'` の1行だけでした。`icon-menu-button.css` は、plus-editorの `site/editor-layout/stage-display-menu.css`（#212）から来ました。
+- **行単位で一致したのは76行で、どれも1行だけの定型でした。** `import assert from 'node:assert/strict'`、`document.createElement('button')`、`vm.runtime.getTargetForStage()`、`ScratchBlocks.Events.disable()` のような、APIを呼ぶ1行です。2行以上続けて一致する箇所はありません。
+- **3行以上のかたまりは、コードでは0件でした。** CSSでは8件ありましたが、どれも `display: flex; align-items: center;` のような汎用の宣言の並びでした。一致した相手も、`fonts-modal.css`・`debugger/style.css` など無関係のファイルです。
+- **scratch-blocksのTurboWarp版はGPL-3.0です。** scratch-blocksの振る舞いを置き換えるファイル（`block-argument-text.ts`・`native-field-svg.ts`・`parent-field-mirror.ts`・`detached-block-palette.ts` など）も、scratch-blocksのソースと一致する行のかたまりはありませんでした。ただし、行単位の比較は、名前を変えて書き直した写しを見つけられません。
+- **アイコン：** `editor-ui/src/info-menu.tsx` の2つ（mark-github-16・law-16）は、GitHub Octicons（MIT）から取ったものです。plus-editorの `NOTICE` に記載があります。ほかのアイコン（`detached-block-palette-view.tsx`・`dialog-actions.css`・`info-menu.tsx` の新しいタブのアイコン）は、本家にない単純な図形です。
+
+**GPLのコードを写したファイルは見つかりませんでした。** 「判断が必要なこと」3の確認が済めば、91ファイルすべてをMPL-2.0にできます。
+
+#### 移すときに手当てするもの
+
+| ファイル | 手当て | 行き先 |
+|---|---|---|
+| `editor-ui/src/info-menu.tsx` | Octiconsのライセンス文（MIT）を、移す先のパッケージの `NOTICE` に写す | workbench |
+| `editor-ui/src/info-menu.css` | `settings-menu_check_`・`settings-menu_expand-caret_` を探すのをやめ、hostから要素か属性を受け取る | workbench |
+| `editor-ui/src/stage-controls-view.tsx`・`stage-controls.css` | `stage-header_stage-button`・`stage-header_stage-button-icon`・`button_content` を探すのをやめ、hostからボタンを受け取る | workbench |
+| `editor-views/script-layout-view.ts` | `gui_blocks-wrapper_` を探すのをやめ、hostから要素を受け取る | code-views |
+| `editor-views/preview.css`・`script-layout.css` | `gui_watermark_`・`gui_extension-button-container_` を隠すCSSを、plus-editorの結線の側に移すか、hostが付ける属性で選ぶ | code-views |
+
+規則2（MPLのコードがGUIの部品・CSS・内部モジュールを使わない）のため、上の5行は移すPRの中で直します。
+
+次の2つは、手当てしません。
+
+- **GUIが定義するCSS変数：** 12のCSSファイルが、`--ui-primary`・`--looks-secondary`・`--text-primary` など15の名前を `var()` で読んでいます。これは、既にMPLで出ているworkbench・sprite-panes・windowsと同じ形です。扱いを変えるなら、familyの全体でそろえます。
+- **scratch-blocksのDOMのクラス名：** `preview-chrome.ts`・`preview.css`・`script-layout-view.ts`・`script-layout.css`・`workspace.ts` が、`.blocklyToolboxDiv`・`.blocklyFlyout`・`.blocklyZoom` などを使っています。ScratchBlocksは呼び出し側から受け取るので、そのDOMを扱うのはcode-viewsの役目の一部とみなします。
 
 ### plus-editorで変えるもの
 
