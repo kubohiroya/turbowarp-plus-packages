@@ -198,3 +198,38 @@ test('an update-only step of a public package needs no publishing workflow', () 
   p.steps[0] = { ...p.steps[0], action: 'publish' };
   assert.throws(() => resolveContracts(p, read), /release\.yml must not be read/u);
 });
+
+// The family's npm packages publish from a release.yml that runs on a push to main and on a dispatch.
+const npmManifest = JSON.stringify({ name: '@family/pane', version: '1.0.0', scripts: { prepare: 'npm run build', build: 'tsc', test: 'node --test' } });
+const pushAndDispatch = `name: Release
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions: { contents: read }
+jobs:
+  publish:
+    permissions: { contents: read, id-token: write }
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm ci
+      - run: npm publish --provenance
+`;
+
+test('a lockfile-only npm install does not run the package prepare script before dependencies exist', () => {
+  const profile = profileFromContract(npmManifest, pushAndDispatch);
+  assert.deepEqual(profile.install, [
+    ['npx', '--yes', 'npm@11.21.0', 'install', '--package-lock-only', '--ignore-scripts'],
+    ['npx', '--yes', 'npm@11.21.0', 'ci'],
+  ]);
+});
+
+test('a dispatch workflow that also runs on a push to a branch records that branch', () => {
+  const profile = profileFromContract(npmManifest, pushAndDispatch);
+  assert.deepEqual(profile.publish, { mode: 'dispatch-workflow', workflow: 'release.yml', inputs: {}, pushBranches: ['main'] });
+  const dispatchOnly = pushAndDispatch.replace('  push:\n    branches: [main]\n', '');
+  assert.equal('pushBranches' in profileFromContract(npmManifest, dispatchOnly).publish, false);
+  // A job kept to dispatches does not publish on a push.
+  const guarded = pushAndDispatch.replace('    runs-on:', "    if: github.event_name == 'workflow_dispatch'\n    runs-on:");
+  assert.equal('pushBranches' in profileFromContract(npmManifest, guarded).publish, false);
+});

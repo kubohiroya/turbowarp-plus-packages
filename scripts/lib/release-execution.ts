@@ -11,7 +11,9 @@ export interface ReleaseProfile {
   verify: Command[];
   artifacts?: string[];
   publish: { mode: 'cli'; provenance: boolean } |
-    { mode: 'tag-workflow' | 'dispatch-workflow'; workflow: string; inputs?: Record<string, string> };
+    { mode: 'tag-workflow' | 'dispatch-workflow'; workflow: string; inputs?: Record<string, string>;
+      /** Branches whose push also starts the workflow, so merging the release PR there publishes without a dispatch. */
+      pushBranches?: string[] };
   npm?: Command;
 }
 export interface ExecutionConfig {

@@ -524,7 +524,10 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
       }
     } else {
       const path = `repos/${step.repository}/actions/workflows/${profile.publish.workflow}/runs?per_page=100`;
-      if (profile.publish.mode === 'dispatch-workflow' && !entry.dispatchStartedAt) {
+      // The merge of the release PR already started the workflow. Dispatching another would race it to publish
+      // the same version, and the loser fails with E409.
+      const onMerge = profile.publish.mode === 'dispatch-workflow' && Boolean(profile.publish.pushBranches?.includes(entry.base!));
+      if (profile.publish.mode === 'dispatch-workflow' && !onMerge && !entry.dispatchStartedAt) {
         assert(!old, '別の公開処理が版を公開済みです。workflowを再起動せず、実行記録を確認してください。');
         const head = await this.api<{ object: { sha: string } }>(`repos/${step.repository}/git/ref/heads/${encodeURIComponent(entry.base!)}`);
         assert.equal(head.object.sha, entry.mergeCommit, '公開前にdefault branchが進みました。別ソースでworkflowを起動しません。');
@@ -539,6 +542,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
         const runs = (await this.api<{ workflow_runs: { id: number; event: string; head_sha: string; head_branch: string; created_at: string; status: string; conclusion: string }[] }>(path)).workflow_runs;
         const matches = runs.filter(run => entry.workflowRun ? run.id === entry.workflowRun :
           profile.publish.mode === 'tag-workflow' ? run.event === 'push' && run.head_sha === entry.mergeCommit && run.head_branch === tagOf(step) :
+            onMerge ? run.event === 'push' && run.head_sha === entry.mergeCommit && run.head_branch === entry.base :
             run.event === 'workflow_dispatch' && run.created_at >= entry.dispatchStartedAt! && run.head_branch === entry.base && run.head_sha === entry.dispatchHeadSha);
         assert(matches.length <= 1, '公開workflowが一意ではありません。自動選択を停止します。');
         if (!matches.length) return null;
@@ -578,11 +582,16 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
       const before = await tags();
       assert([step.publishedVersion, versionOf(step)].includes(before.latest), '別のリリースがlatestを更新しました。上書きせず停止します。');
       assert(!semver.valid(before.next) || !semver.gt(before.next, versionOf(step)), 'nextが予定版より進んでいます。下げずに停止します。');
-      const stale = ['latest', 'next'].filter(tag => before[tag] !== versionOf(step));
+      // A package that never used `next` publishes to `latest` only; there is no `next` to move.
+      const hasNext = before.next !== undefined;
+      const stale = ['latest', ...(hasNext ? ['next'] : [])].filter(tag => before[tag] !== versionOf(step));
       // With trusted publishing only, release.yml moves the tags, and the registry can serve the old ones
       // for a while after the workflow ends. Wait for them instead of moving them from here.
       if (!this.config.trustedPublisherOnly) for (const tag of stale) await this.npm(profile, ['dist-tag', 'add', `${step.name}@${versionOf(step)}`, tag], undefined, true);
-      const synced = async () => { const current = await tags(); return current.latest === versionOf(step) && current.next === versionOf(step) ? true : null; };
+      const synced = async () => {
+        const current = await tags();
+        return current.latest === versionOf(step) && (!hasNext || current.next === versionOf(step)) ? true : null;
+      };
       if (this.config.trustedPublisherOnly && stale.length) await this.wait(synced, 'latest/next同期。release.ymlでlatest/nextを同期してください。ローカルnpm dist-tagへフォールバックしません', DIST_TAG_PROPAGATION_SECONDS);
       else await this.wait(synced, 'latest/next同期');
     }

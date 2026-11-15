@@ -39,12 +39,14 @@ for (const resumedMismatch of [false, true]) test(`pre-existing unpublished tags
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-const lifecycles = [
+const lifecycles: { privatePackage: boolean; interruption: string; prepared: boolean; withoutNext?: boolean }[] = [
   ...[false, true].flatMap(privatePackage => ['none', 'verification', 'main-ci', 'cleanup'].map(interruption => ({ privatePackage, interruption, prepared: false }))),
   // The prepared release is already merged, so preparation changes nothing and the input commit is the candidate.
   ...['none', 'verification'].map(interruption => ({ privatePackage: false, interruption, prepared: true })),
+  // A package that never used `next` keeps publishing to `latest` alone.
+  { privatePackage: false, interruption: 'none', prepared: false, withoutNext: true },
 ];
-for (const { privatePackage, interruption, prepared } of lifecycles) test(`real Git lifecycle with resume (private=${privatePackage}, interruption=${interruption}, prepared=${prepared})`, async () => {
+for (const { privatePackage, interruption, prepared, withoutNext = false } of lifecycles) test(`real Git lifecycle with resume (private=${privatePackage}, interruption=${interruption}, prepared=${prepared}, next=${!withoutNext})`, async () => {
   const root = await mkdtemp(join(tmpdir(), 'release-real-git-'));
   const gitEnv = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_AUTHOR_NAME: 'Release Test', GIT_AUTHOR_EMAIL: 'release@example.invalid', GIT_COMMITTER_NAME: 'Release Test', GIT_COMMITTER_EMAIL: 'release@example.invalid' };
   const git = (args: string[], cwd?: string) => runCommand(['git', ...args], { cwd, env: gitEnv });
@@ -77,7 +79,7 @@ for (const { privatePackage, interruption, prepared } of lifecycles) test(`real 
     let release: { id: number; tag_name: string; html_url: string; draft: boolean; assets: { name: string; digest: string }[] } | null = null;
     let published: { name: string; version: string; dist: { shasum: string } } | null = null;
     let packed = '';
-    const tags = { latest: '1.0.0', next: '1.0.0' };
+    const tags: { latest: string; next?: string } = withoutNext ? { latest: '1.0.0' } : { latest: '1.0.0', next: '1.0.0' };
     const events: string[] = [];
     let failVerification = interruption === 'verification';
     let failMainCi = interruption === 'main-ci';
@@ -214,7 +216,8 @@ for (const { privatePackage, interruption, prepared } of lifecycles) test(`real 
       assert.equal(await git(['status', '--porcelain'], join(reference, 'tool')), '');
     } else await assert.rejects(readFile(alternates));
     if (!privatePackage) assert.equal(basename(state.entries.tool.extraArtifacts![0].path), 'candidate-1.1.0.sb3');
-    assert.equal(tags.latest, privatePackage ? '1.0.0' : '1.1.0'); assert.equal(tags.next, privatePackage ? '1.0.0' : '1.1.0');
+    assert.equal(tags.latest, privatePackage ? '1.0.0' : '1.1.0');
+    assert.equal(tags.next, withoutNext ? undefined : privatePackage ? '1.0.0' : '1.1.0', 'no `next` is created for a package without one');
     assert.equal(events.filter(event => event === 'publish').length, privatePackage ? 0 : 1);
     if (prepared) {
       assert.equal(pr, null, 'a candidate already on the base needs no PR');
