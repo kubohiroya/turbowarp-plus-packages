@@ -582,11 +582,16 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
       const before = await tags();
       assert([step.publishedVersion, versionOf(step)].includes(before.latest), '別のリリースがlatestを更新しました。上書きせず停止します。');
       assert(!semver.valid(before.next) || !semver.gt(before.next, versionOf(step)), 'nextが予定版より進んでいます。下げずに停止します。');
-      const stale = ['latest', 'next'].filter(tag => before[tag] !== versionOf(step));
+      // A package that never used `next` publishes to `latest` only; there is no `next` to move.
+      const hasNext = before.next !== undefined;
+      const stale = ['latest', ...(hasNext ? ['next'] : [])].filter(tag => before[tag] !== versionOf(step));
       // With trusted publishing only, release.yml moves the tags, and the registry can serve the old ones
       // for a while after the workflow ends. Wait for them instead of moving them from here.
       if (!this.config.trustedPublisherOnly) for (const tag of stale) await this.npm(profile, ['dist-tag', 'add', `${step.name}@${versionOf(step)}`, tag], undefined, true);
-      const synced = async () => { const current = await tags(); return current.latest === versionOf(step) && current.next === versionOf(step) ? true : null; };
+      const synced = async () => {
+        const current = await tags();
+        return current.latest === versionOf(step) && (!hasNext || current.next === versionOf(step)) ? true : null;
+      };
       if (this.config.trustedPublisherOnly && stale.length) await this.wait(synced, 'latest/next同期。release.ymlでlatest/nextを同期してください。ローカルnpm dist-tagへフォールバックしません', DIST_TAG_PROPAGATION_SECONDS);
       else await this.wait(synced, 'latest/next同期');
     }
