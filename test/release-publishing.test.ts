@@ -250,3 +250,34 @@ for (const syncedAfter of [2, Infinity]) test(`trusted publishing waits for rele
   if (syncedAfter === Infinity) await assert.rejects(execute.complete(unchanged, profile, entry), /release\.ymlでlatest\/nextを同期/u);
   else { await execute.complete(unchanged, profile, entry); assert.equal(reads, syncedAfter + 1); }
 });
+
+test('a workflow that publishes on the merge push is awaited, not dispatched to race it', async () => {
+  const entry = record();
+  const configured: ReleaseProfile = { ...profile, publish: { mode: 'dispatch-workflow', workflow: 'release.yml', pushBranches: ['main'] } };
+  let reads = 0;
+  const execute = driver(async command => {
+    if (command[0] === 'fixture-npm') { if (++reads === 1) throw missing(command); return registry; }
+    assert.deepEqual(command.slice(0, 2), ['gh', 'api'], 'must not run gh workflow run');
+    return JSON.stringify({ workflow_runs: [
+      { id: 7, head_sha: 'd'.repeat(40), head_branch: 'main', event: 'push', status: 'completed', conclusion: 'success' },
+      { id: 42, head_sha: sha, head_branch: 'main', event: 'push', status: 'completed', conclusion: 'success' },
+    ] });
+  }, entry);
+  await execute.published(step, configured, entry);
+  assert.equal(entry.workflowRun, 42, 'the run of the release merge commit is the one awaited');
+  assert.equal(entry.dispatchStartedAt, undefined);
+});
+
+test('a version the merge push already published is accepted on resume', async () => {
+  const entry = record();
+  const configured: ReleaseProfile = { ...profile, publish: { mode: 'dispatch-workflow', workflow: 'release.yml', pushBranches: ['main'] } };
+  const execute = driver(async command => {
+    if (command[0] === 'fixture-npm') return registry;
+    assert.deepEqual(command.slice(0, 2), ['gh', 'api'], 'must not run gh workflow run');
+    return JSON.stringify({ workflow_runs: [
+      { id: 42, head_sha: sha, head_branch: 'main', event: 'push', status: 'completed', conclusion: 'success' },
+    ] });
+  }, entry);
+  await execute.published(step, configured, entry);
+  assert.equal(entry.workflowRun, 42);
+});

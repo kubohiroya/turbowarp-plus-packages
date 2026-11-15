@@ -79,7 +79,9 @@ export function profileFromContract(manifestText: string, workflowText: string, 
   const commands = {
     install: manager?.[1] === 'pnpm'
       ? [command.concat('install', '--lockfile-only'), command.concat('install', '--frozen-lockfile')]
-      : [command.concat('install', '--package-lock-only'), command.concat('ci')],
+      // npm runs the package's own prepare script even for a lockfile-only install, before any dependency is in
+      // place, so a prepare that builds would fail there or use whatever tool is on PATH. npm ci runs it later.
+      : [command.concat('install', '--package-lock-only', '--ignore-scripts'), command.concat('ci')],
     // Sample SB3s embed the built extension, and the family's checks reject stale samples (samples:check).
     prepare: prepareName ? [command.concat('run', prepareName)] : ['docs', 'build', 'samples:build'].filter(has).map(name => command.concat('run', name)),
     verify, artifacts: contract.artifacts ?? [],
@@ -97,7 +99,7 @@ export function profileFromContract(manifestText: string, workflowText: string, 
     assert(['tag-workflow', 'dispatch-workflow'].includes(hint.mode), '公開はTrusted Publisher方式のみです。');
   }
   const jobs = Object.entries(object(workflow.jobs));
-  const candidates: { job: string; mode: 'tag-workflow' | 'dispatch-workflow' }[] = [];
+  const candidates: { job: string; mode: 'tag-workflow' | 'dispatch-workflow'; pushBranches?: string[] }[] = [];
   const publishingJobs: { name: string; condition: unknown }[] = [];
   const problems: string[] = [];
   for (const [name, raw] of jobs) {
@@ -118,7 +120,12 @@ export function profileFromContract(manifestText: string, workflowText: string, 
     const dispatch = Object.hasOwn(events, 'workflow_dispatch') &&
       (!eventConstraint || eventConstraint.has('workflow_dispatch')) && !condition.includes('refs/tags/');
     if (hint?.mode === 'tag-workflow' ? tag : !hint && tag) candidates.push({ job: name, mode: 'tag-workflow' });
-    else if (dispatch && (!hint || hint.mode === 'dispatch-workflow')) candidates.push({ job: name, mode: 'dispatch-workflow' });
+    else if (dispatch && (!hint || hint.mode === 'dispatch-workflow')) {
+      // A job that also runs on a push to a branch publishes on its own when the release PR merges there.
+      const branches = Array.isArray(events.push?.branches) && events.push.branches.every((branch: unknown) => typeof branch === 'string') &&
+        (!eventConstraint || eventConstraint.has('push')) && !condition.includes('refs/tags/') ? events.push.branches as string[] : undefined;
+      candidates.push({ job: name, mode: 'dispatch-workflow', ...(branches?.length ? { pushBranches: branches } : {}) });
+    }
   }
   assert(candidates.length === 1, `汎用OIDC公開jobを一意に特定できません。${problems.join(' / ')}`);
   const selected = candidates[0];
@@ -142,7 +149,8 @@ export function profileFromContract(manifestText: string, workflowText: string, 
     assert(Object.keys(inputs).every(key => Object.hasOwn(declared, key)), '未定義のworkflow inputがあります。');
     assert(Object.entries(declared).every(([key, value]: [string, any]) => !value.required || value.default !== undefined || Object.hasOwn(inputs!, key)), '必須workflow inputを推定できません。publish.inputs例外を指定してください。');
   }
-  return { ...commands, ...exception, publish: { mode: selected.mode, workflow: 'release.yml', ...(inputs ? { inputs } : {}) } };
+  return { ...commands, ...exception, publish: { mode: selected.mode, workflow: 'release.yml', ...(inputs ? { inputs } : {}),
+    ...(selected.pushBranches ? { pushBranches: selected.pushBranches } : {}) } };
 }
 
 /** Exception precedence: explicit fields replace standard fields; publishing cannot be downgraded. */

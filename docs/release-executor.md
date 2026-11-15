@@ -44,6 +44,8 @@ pnpm release --plan /tmp/release-plan.json --workspace /tmp/family-release \
 - 準備は既存の`release:prepare` / `prepare:release`があれば使用し、なければ既存の`docs` / `build` / `samples:build`をこの順で使用します。サンプルSB3はbuildした拡張を埋め込み、多くのrepoの検証（`samples:check`）が古いサンプルを拒むためです。これらの名前を新設する要求はありません。
 - 検証は既存の`release:verify` → `verify:release` → `verify:full` → `check` → `verify`の順で選びます。まとめたコマンドがない場合は既存のtypecheck/lint/test/buildを使い、検証手順が不明ならverify例外を要求します。
 - 公開は既存の`release.yml`を読み、起動条件、汎用のnpm publish job、id-token権限を確認します。タグ起動と手動起動が併存していても、過去版専用jobを除外して汎用jobを選びます。
+- 手動起動の汎用jobが既定ブランチへのpushでも動く場合（`on.push.branches`）、その対象ブランチを`publish.pushBranches`に記録します。リリースPRのマージがそのpushで公開を始めるため、実行器は手動起動せず、マージコミットのpushで始まった実行を待ちます。手動起動を重ねると、同じ版の公開を競って遅れた側がE409で失敗するためです。
+- npmの依存の準備は`install --package-lock-only --ignore-scripts`の後に`ci`を実行します。npmはlockfileだけの更新でもパッケージ自身の`prepare`を実行し、依存がないままビルドが走るためです。`prepare`は続く`ci`と準備手順で実行されます。
 - private repoには公開workflowもnpm公開設定も要求しません。既存の準備・検証手順だけを解決します。
 - ローカルに入力SHAがない場合は「GitHub側は未確認」と表示します。古い入力SHAにファイルがないことを、GitHub最新版にもない証拠として扱いません。
 
