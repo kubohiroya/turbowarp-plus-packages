@@ -431,7 +431,3 @@ overrides:
     npm: false
   turbowarp-webrtc-qrcode-pairing-app:
     npm: false
-  turbowarp-openai-realtime-api:
-    editorCatalogHold: not returned to the Editor catalog yet; to be restored by an explicit decision
-  turbowarp-voice-chat:
-    editorCatalogHold: not returned to the Editor catalog yet; to be restored by an explicit decision
