@@ -352,8 +352,9 @@ categories:
       - turbowarp-webrtc-qrcode-pairing-app
       - turbowarp-realtime-motion-capture-app
 
-  # Includes: guides, sample projects, and the navigation and shell shared by
-  #   documentation sites.
+  # Includes: guides, sample projects, the navigation and shell shared by
+  #   documentation sites, and the site that holds the default addresses of
+  #   projects made in the editor, whether or not any project is placed there yet.
   # Excludes: a package's own README and API docs, which stay with the package.
   - id: docs
     title: Documentation & Samples
@@ -365,6 +366,7 @@ categories:
       - turbowarp-kamishibai-samples
       - turbowarp-kamishibai-site-navigation
       - turbowarp-plus-site-header
+      - turbowarp-plus-projects
 
 # Per-package overrides. Only the keys that differ from the defaults are needed.
 #
@@ -418,6 +420,8 @@ overrides:
   turbowarp-kamishibai-docs:
     npm: false
   turbowarp-kamishibai-samples:
+    npm: false
+  turbowarp-plus-projects:
     npm: false
   turbowarp-camera-calibration-app:
     npm: false
