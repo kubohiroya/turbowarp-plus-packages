@@ -32,22 +32,25 @@ localProtocols: [file:, link:, workspace:, portal:, patch:]
 
 # Choosing a category. Every package belongs to exactly one. Ask these in order
 # and stop at the first "yes":
-#   1. Is it a non-editor application deployed and used as-is?     -> apps
-#   2. Is it a guide, sample collection or documentation site?      -> docs
-#   3. Is it for building, packaging or previewing extensions?     -> toolchain
-#   4. Does it define the editor host interface or provide the
+#   1. Is it a GitHub fork of an upstream TurboWarp repository
+#      (scratch-gui, scratch-vm and the like)?                      -> forks
+#   2. Is it a non-editor application deployed and used as-is?     -> apps
+#   3. Is it a guide, sample collection or documentation site?      -> docs
+#   4. Is it for building, packaging or previewing extensions or
+#      projects?                                                    -> toolchain
+#   5. Does it define the editor host interface or provide the
 #      minimal runtime used in package tests?                       -> editor-testing
-#   5. Is it an editor distribution, the forked scratch-gui, or a
-#      library that only the editor uses?                           -> foundation
-#   6. Does a packaged app use it to host the TurboWarp runtime in
+#   6. Is it an editor distribution (web or desktop), or a library
+#      that only the editor uses?                                   -> foundation
+#   7. Does a packaged app use it to host the TurboWarp runtime in
 #      its own page, or is it the template such an app starts from? -> shell
-#   7. Is it a contract, API or adapter that extensions from several
+#   8. Is it a contract, API or adapter that extensions from several
 #      other categories build on, with no domain of its own?        -> contracts
-#   8. Is it a camera source or an optical code format that packages
+#   9. Is it a camera source or an optical code format that packages
 #      in other categories read through?                            -> camera
-#   9. Does it mostly expose one JavaScript library or one browser
+#  10. Does it mostly expose one JavaScript library or one browser
 #      API as blocks, adding little model of its own?               -> wraps
-#  10. Otherwise, pick by what the package is for, not by the medium
+#  11. Otherwise, pick by what the package is for, not by the medium
 #      it happens to use: a QR code that carries a WebRTC offer is
 #      networking, a QR code that is read from the camera is sensing.
 # Each category below lists what it includes and what it sends elsewhere.
@@ -61,7 +64,8 @@ localProtocols: [file:, link:, workspace:, portal:, patch:]
 
 categories:
   # Includes: build tools, bundler plugins, the extension template, manifest
-  #   contracts consumed by that template, and local preview.
+  #   contracts consumed by that template, local preview, and the starter
+  #   that moves a Scratch project into a repository for the editor.
   # Excludes: anything else a running project loads at runtime (-> shell,
   #   contracts or a domain category), and the packaged-app template, which
   #   depends on the app shell (-> shell).
@@ -77,10 +81,11 @@ categories:
       - turbowarp-extension-manifest
       - turbowarp-sb3-source-builder
       - turbowarp-local-preview
+      - turbowarp-plus-editor-project-starter
 
-  # Includes: the TurboWarp-Plus-Editor distribution, its scratch-gui fork, and
+  # Includes: the TurboWarp-Plus-Editor distributions (web and desktop) and
   #   the libraries only an editor host uses, such as the security dialog.
-  # Excludes: extensions that only run inside the editor (-> their domain),
+  # Excludes: the upstream forks the editor is built from (-> forks), extensions that only run inside the editor (-> their domain),
   #   anything a packaged app uses outside the editor (-> shell), and the data
   #   editor contract that extensions build on, even though the editor bundles
   #   it (-> contracts): the editor distribution uses extensions, so a library
@@ -90,11 +95,11 @@ categories:
   - id: foundation
     title: Editor
     titleJa: エディター
-    description: TurboWarp-Plus-Editor, its forked editor and editor-only libraries.
-    descriptionJa: TurboWarp-Plus-Editor、フォークしたエディター、エディター専用のライブラリ。
+    description: TurboWarp-Plus-Editor for the web and the desktop, and editor-only libraries.
+    descriptionJa: TurboWarp-Plus-Editor（Web 版・デスクトップ版）と、エディター専用のライブラリ。
     packages:
       - turbowarp-plus-editor
-      - scratch-gui
+      - turbowarp-plus-desktop
       - turbowarp-extension-security-dialog
       - turbowarp-document-editor
       - turbowarp-sb3-save-format
@@ -106,6 +111,8 @@ categories:
       - turbowarp-plus-editor-project-folder
       - turbowarp-plus-editor-git
       - turbowarp-plus-editor-auth
+      - turbowarp-plus-editor-code-views
+      - turbowarp-plus-editor-fonts
 
   # Editor libraries and extension contracts both use the test runtime.
   # Keep its host interface and pinned blocks here with the runtime so this
@@ -119,6 +126,26 @@ categories:
       - turbowarp-plus-editor-host
       - turbowarp-plus-editor-test-runtime
       - turbowarp-plus-editor-test-runtime-blocks
+
+  # Includes: GitHub forks of upstream TurboWarp repositories that keep the
+  #   upstream's name, history and license, whether or not they carry changes
+  #   of our own yet. The editor pins the scratch-gui and scratch-vm forks.
+  # Excludes: products of our own that start from an upstream codebase without
+  #   being a fork, such as the desktop editor (-> foundation).
+  # Forks depend on no family package, so every other category may build on
+  #   them. They are not published to npm, and their summaries live in the
+  #   overrides below because their READMEs are not ours to translate.
+  - id: forks
+    title: Upstream Forks
+    titleJa: 上流のフォーク
+    description: Forks of the TurboWarp editor, VM, renderer, audio engine and fonts.
+    descriptionJa: TurboWarp のエディター・VM・レンダラー・音声エンジン・フォントのフォーク。
+    packages:
+      - scratch-gui
+      - scratch-vm
+      - scratch-render
+      - scratch-audio
+      - scratch-render-fonts
 
   # Includes: DOM shell primitives, runtime adapters, and the title and
   #   application menu chrome and live reload control used to host the TurboWarp
@@ -325,8 +352,9 @@ categories:
       - turbowarp-webrtc-qrcode-pairing-app
       - turbowarp-realtime-motion-capture-app
 
-  # Includes: guides, sample projects, and the navigation and shell shared by
-  #   documentation sites.
+  # Includes: guides, sample projects, the navigation and shell shared by
+  #   documentation sites, and the site that holds the default addresses of
+  #   projects made in the editor, whether or not any project is placed there yet.
   # Excludes: a package's own README and API docs, which stay with the package.
   - id: docs
     title: Documentation & Samples
@@ -337,6 +365,8 @@ categories:
       - turbowarp-kamishibai-docs
       - turbowarp-kamishibai-samples
       - turbowarp-kamishibai-site-navigation
+      - turbowarp-plus-site-header
+      - turbowarp-plus-projects
 
 # Per-package overrides. Only the keys that differ from the defaults are needed.
 #
@@ -366,6 +396,23 @@ overrides:
     # A fork of someone else's project: its README is not ours to add a
     # translation to, so the Japanese summary lives here instead.
     descriptionJa: TurboWarp のエディター scratch-gui のフォーク。拡張機能セキュリティダイアログと拡張データエディターを組み込んでいます。
+  scratch-vm:
+    npm: false
+    descriptionJa: TurboWarp の実行エンジン scratch-vm のフォーク。拡張の登録口、スクリプト取り込みの結果、ブロックからの同期実行などを足しています。
+  scratch-render:
+    npm: false
+    descriptionJa: TurboWarp のレンダラー scratch-render のフォーク。
+  scratch-audio:
+    npm: false
+    descriptionJa: TurboWarp の音声エンジン scratch-audio のフォーク。
+  scratch-render-fonts:
+    npm: false
+    descriptionJa: TurboWarp の描画用フォント scratch-render-fonts のフォーク。
+  turbowarp-plus-desktop:
+    npm: false
+    # The repository has no description yet and its README is Japanese only.
+    description: TurboWarp Plus Editor for the desktop, built on TurboWarp Desktop.
+    descriptionJa: TurboWarp Plus Editor のデスクトップ版。TurboWarp Desktop を基点にしています。
   turbowarp-realtime-motion-capture-app:
     npm: '@kubohiroya/turbowarp-realtime-motion-capture-app'
   turbowarp-app-template:
@@ -373,6 +420,8 @@ overrides:
   turbowarp-kamishibai-docs:
     npm: false
   turbowarp-kamishibai-samples:
+    npm: false
+  turbowarp-plus-projects:
     npm: false
   turbowarp-camera-calibration-app:
     npm: false
