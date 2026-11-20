@@ -65,7 +65,7 @@ localProtocols: [file:, link:, workspace:, portal:, patch:]
 categories:
   # Includes: build tools, bundler plugins, the extension template, manifest
   #   contracts consumed by that template, local preview, and the starter
-  #   that moves a Scratch project into a repository for the editor.
+  #   that prepares a project folder and a Git repository for development.
   # Excludes: anything else a running project loads at runtime (-> shell,
   #   contracts or a domain category), and the packaged-app template, which
   #   depends on the app shell (-> shell).
@@ -81,7 +81,7 @@ categories:
       - turbowarp-extension-manifest
       - turbowarp-sb3-source-builder
       - turbowarp-local-preview
-      - turbowarp-plus-editor-project-starter
+      - turbowarp-plus-project-folder-starter
 
   # Includes: the TurboWarp-Plus-Editor distributions (web and desktop) and
   #   the libraries only an editor host uses, such as the security dialog.
