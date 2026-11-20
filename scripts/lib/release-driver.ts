@@ -79,11 +79,12 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     try {
       const value = JSON.parse(await this.npm(profile, ['view', `${step.name}@${version}`, '--json', '--prefer-online', '--fetch-retries=0', '--fetch-timeout=15000'])) as RegistryVersion;
       assert(value.name === step.name && value.version === version, 'npmの版・名前が不正です。');
-      if (!value.gitHead && value.dist.integrity && value.dist.attestations?.provenance?.predicateType === 'https://slsa.dev/provenance/v1') {
+      if (value.dist.integrity && value.dist.attestations?.provenance?.predicateType === 'https://slsa.dev/provenance/v1') {
         const response = await fetch(`https://registry.npmjs.org/-/npm/v1/attestations/${encodeURIComponent(value.name)}@${value.version}`,
           { signal: AbortSignal.timeout(15000) });
         assert(response.ok, 'npmのprovenanceを取得できません。');
         value.provenanceCommit = provenanceSource(value.name, value.version, value.dist.integrity, step.repository, await response.json()) ?? undefined;
+        assert(value.provenanceCommit, 'provenanceのパッケージ・integrity・公開元を照合できません。');
       }
       return value;
     } catch (error) { if (absent(error)) return null; throw error; }
@@ -222,7 +223,8 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
   /** Whether npm says the version was published from the release's own commit. */
   private fromSource(profile: ReleaseProfile, entry: ExecutionEntry, published: RegistryVersion): boolean {
     const source = sourceOf(profile, entry);
-    return Boolean(source) && (published.gitHead ?? published.provenanceCommit) === source;
+    // Archive manifests may retain an old gitHead; the registry-hosted attestation binds these bytes to their build.
+    return Boolean(source) && (published.provenanceCommit ?? published.gitHead) === source;
   }
 
   /** Move pinned `<name>@<previous version>` references in tracked documentation to the release version. */
