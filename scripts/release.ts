@@ -8,6 +8,7 @@ import { executeReleasePlan, executionDigest, PHASES } from './lib/release-execu
 import type { ExecutionConfig } from './lib/release-execution.ts';
 import type { ReleasePlan } from './lib/release-plan.ts';
 import { localContractReader, resolveContracts, trustedConfig } from './lib/release-contract.ts';
+import { createBundle, verifyBundle } from './lib/release-candidates.ts';
 
 const HELP = `使い方: pnpm release --plan <plan.json> --workspace <専用dir> [--discover --repos-dir <repo群の親dir>]
 
@@ -20,6 +21,9 @@ const HELP = `使い方: pnpm release --plan <plan.json> --workspace <専用dir>
 --reference-dir <dir>        <dir>/<repo名>に既存のcheckoutがあれば、専用checkoutのcloneでそのオブジェクトを借りる
                              （git clone --reference-if-able。既存checkoutは読むだけで変更しない）
 --help                       この説明を表示
+--prepare                    公開せず、実行可能な候補を準備・検証
+--candidates <JSON>           承認済み候補だけを実行（confirmは候補digest）
+--lock-dir <dir>              共通lock（既定はdata/release-locks）
 
 実行時は専用checkoutで依存/version更新、install/prepare/verify、commit/push、
 PR/CI/Squash Merge、タグ/Release、npm公開（tarballは扱わない）、provenance/公開元commit/latest/next照合を対象ごとに実行。
@@ -32,10 +36,12 @@ try {
     execute: { type: 'boolean' }, confirm: { type: 'string' }, help: { type: 'boolean' },
     discover: { type: 'boolean' }, 'repos-dir': { type: 'string' }, resolved: { type: 'string' },
     concurrency: { type: 'string' }, 'reference-dir': { type: 'string' },
+    prepare: { type: 'boolean' }, candidates: { type: 'string' }, 'lock-dir': { type: 'string' },
   } });
   if (values.help) console.log(HELP);
   else {
     if (positionals.length || !values.plan || !values.workspace || Boolean(values.execute) !== Boolean(values.confirm) ||
+        (values.prepare && values.execute) || (values.candidates && !values.execute) ||
         (values.resolved && (values.config || values.discover || values['repos-dir'])) ||
         (values.discover && !values['repos-dir']) || (!values.discover && values['repos-dir']) ||
         (!values.discover && !values.config && !values.resolved) ||
@@ -52,7 +58,7 @@ try {
       config = values.discover ? resolveContracts(plan, localContractReader(values['repos-dir']!), overrides) : trustedConfig(overrides!);
     }
     const digest = executionDigest(plan, config);
-    if (!values.execute) console.log(JSON.stringify({
+    if (!values.execute && !values.prepare) console.log(JSON.stringify({
       mode: 'dry-run', digest, workspace: resolve(values.workspace),
       effectiveConfig: config,
       phases: PHASES.slice(1),
@@ -64,11 +70,17 @@ try {
       note: 'ネットワーク・ファイル更新・外部公開は未実行です。実行時にmain/npm/契約を再確認します。--resolvedでこの出力を指定すると同じ実効設定で再開できます。',
     }, null, 2));
     else {
+      const bundle = values.candidates ? await verifyBundle(plan, config, values.workspace, values.candidates, values.confirm!) : undefined;
       const state = await executeReleasePlan(plan, config, values.workspace,
         (save, state) => new GithubNpmReleaseDriver(values.workspace!, config, state, save, undefined, undefined,
-          { referenceDir: values['reference-dir'] }), values.confirm!,
-        (repository, phase) => console.error(`[${repository}] ${phase}`), Number(values.concurrency ?? 4));
-      console.log(JSON.stringify({ mode: 'complete', digest, state }, null, 2));
+          { referenceDir: values['reference-dir'], verifyOnly: values.prepare }), bundle || values.prepare ? digest : values.confirm!,
+        (repository, phase) => console.error(`[${repository}] ${phase}`), Number(values.concurrency ?? 4), {
+          prepareOnly: values.prepare, lockDir: values['lock-dir'] ?? new URL('../data/release-locks', import.meta.url).pathname,
+          ...(bundle ? { selected: bundle.candidates.map(c => c.repo), beforeRun: async () => {
+            await verifyBundle(plan, config, values.workspace!, values.candidates!, values.confirm!);
+          } } : {}),
+        });
+      console.log(JSON.stringify(values.prepare ? await createBundle(plan, config, values.workspace, state) : { mode: 'complete', digest, state }, null, 2));
     }
   }
 } catch (error) {

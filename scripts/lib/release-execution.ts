@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import semver from 'semver';
+import { lockRepositories } from './release-io.ts';
 import type { PackagePlan, ReleasePlan } from './release-plan.ts';
 
 export type Command = string[];
@@ -44,12 +45,14 @@ export interface ExecutionEntry {
   /** Why the step turned out to be unnecessary; it then stops without pushing, tagging or publishing. */
   cancelled?: string;
   error?: string;
+  publication?: { title: string; body: string; releaseBody: string };
 }
 export interface ExecutionState {
   schemaVersion: 1;
   digest: string;
   entries: Record<string, ExecutionEntry>;
   effectiveConfig?: ExecutionConfig;
+  approvalRequired?: boolean;
 }
 export interface ReleaseDriver {
   preflight(step: PackagePlan, profile: ReleaseProfile, entry: ExecutionEntry): Promise<void>;
@@ -187,6 +190,7 @@ export async function executeReleasePlan(
   confirmation: string,
   progress: (repository: string, phase: string) => void = () => {},
   concurrency = 1,
+  options: { prepareOnly?: boolean; selected?: string[]; lockDir?: string; beforeRun?: () => Promise<void> } = {},
 ): Promise<ExecutionState> {
   if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error('並列数は1以上の整数が必要です。');
   const digest = executionDigest(plan, config);
@@ -195,7 +199,10 @@ export async function executeReleasePlan(
   await mkdir(directory, { recursive: true });
   const lock = join(directory, '.execution-lock');
   await mkdir(lock).catch(() => { throw new Error('同じworkspaceの実行が進行中です。停止状態を確認するまでlockを削除しないでください。'); });
+  let unlock = async () => {};
   try {
+    if (options.lockDir) unlock = await lockRepositories(options.lockDir, plan.steps.map(s => s.repository), directory);
+    if (options.beforeRun) await options.beforeRun();
     let state: ExecutionState;
     try {
       state = JSON.parse(await readFile(join(directory, 'state.json'), 'utf8')) as ExecutionState;
@@ -209,6 +216,8 @@ export async function executeReleasePlan(
       state = { schemaVersion: 1, digest, entries: Object.create(null) as Record<string, ExecutionEntry>, effectiveConfig: config };
     }
     // Steps run concurrently, so writes of the shared state are serialized.
+    if (options.prepareOnly) state.approvalRequired = true;
+    if (state.approvalRequired && !options.prepareOnly && !options.selected) throw new Error('候補の承認には--candidatesが必要です。');
     let saving: Promise<void> = Promise.resolve();
     const save = () => (saving = saving.catch(() => {}).then(() => saveExecutionState(directory, state)));
     const driver = createDriver(save, state);
@@ -226,7 +235,29 @@ export async function executeReleasePlan(
       }
     }
     await save();
-    await runByDependencies(plan.steps, concurrency, async step => {
+    if (options.prepareOnly || options.selected) {
+      for (const step of plan.steps) if (state.entries[step.repo].phase === 'complete' && !state.entries[step.repo].cancelled) {
+        try { await driver.complete(step, config.repositories[step.repository], state.entries[step.repo]); }
+        catch (error) {
+          state.entries[step.repo].error = error instanceof Error ? error.message : String(error);
+          await save();
+          throw error;
+        }
+      }
+      for (const step of plan.steps) if (step.action === 'none' && state.entries[step.repo].phase !== 'complete') {
+        await driver.complete(step, config.repositories[step.repository], state.entries[step.repo]);
+        state.entries[step.repo].phase = 'complete';
+        await save();
+      }
+    }
+    const eligible = plan.steps.filter(step => !options.selected || options.selected.includes(step.repo));
+    if (options.selected && options.selected.some(repo => !plan.steps.some(s => s.repo === repo))) throw new Error('不明な対象です。');
+    const frontier = eligible.filter(step => step.dependencyUpdates.every(update => {
+      const entry = state.entries[update.upstreamRepo];
+      return !entry || entry.phase === 'complete' || Boolean(entry.cancelled);
+    }));
+    if (options.selected && frontier.length !== eligible.length) throw new Error('依存先が完了するまで選択対象を実行できません。');
+    await runByDependencies(options.prepareOnly ? frontier : eligible, concurrency, async step => {
       const entry = state.entries[step.repo];
       const profile = config.repositories[step.repository];
       try {
@@ -241,6 +272,7 @@ export async function executeReleasePlan(
           await save();
         }
         else for (const phase of PHASES.slice(PHASES.indexOf(entry.phase) + 1)) {
+          if (options.prepareOnly && PHASES.indexOf(phase) > 1) break;
           if (phase === 'pending') continue;
           progress(step.repository, phase);
           await driver[phase](step, profile, entry);
@@ -261,6 +293,7 @@ export async function executeReleasePlan(
     });
     return state;
   } finally {
-    await rm(lock, { recursive: true });
+    try { await unlock(); }
+    finally { await rm(lock, { recursive: true }); }
   }
 }

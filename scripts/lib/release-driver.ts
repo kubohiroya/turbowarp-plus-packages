@@ -61,7 +61,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     workspace: string, private readonly config: ExecutionConfig, private readonly state: ExecutionState,
     private readonly save: () => Promise<void>, private readonly run: Runner = runCommand,
     private readonly sleep: (milliseconds: number) => Promise<void> = ms => setTimeout(ms),
-    private readonly options: { referenceDir?: string } = {},
+    private readonly options: { referenceDir?: string; verifyOnly?: boolean } = {},
   ) { this.root = resolve(workspace); }
 
   private path(step: PackagePlan) { return join(this.root, 'checkouts', step.repo); }
@@ -272,6 +272,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     }
     assert.equal(await this.git(step, 'rev-parse', 'HEAD'), entry.commit, '検証コマンドが候補commitを変更しました。');
     assert.equal(await this.git(step, 'status', '--porcelain'), '', '検証後に未コミット変更があります。');
+    this.publication(step, entry);
     if (step.action === 'publish') {
       await mkdir(this.artifacts(step), { recursive: true });
       if (!entry.extraArtifacts) {
@@ -293,11 +294,19 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     const after = JSON.parse(await readFile(join(cwd, 'package.json'), 'utf8'));
     assert(after.name === step.name && after.version === versionOf(step), '検証コマンドがname/versionを変更しました。');
     for (const change of updates) assert.equal(after[change.field]?.[change.name], change.to);
-    assert.equal(await this.git(step, 'status', '--porcelain'), '', '検証後に未コミット変更があります。');
+  }
+
+  private publication(step: PackagePlan, entry: ExecutionEntry) {
+    entry.publication ??= {
+      title: `chore(release): prepare ${step.name} ${versionOf(step)}`,
+      body: `${step.name}を${versionOf(step)}へ更新する。\n\n依存更新:\n${this.updates(step).map(u => `- ${u.name}: ${u.from} → ${u.to}`).join('\n') || '- なし'}\n\n検証: 設定されたinstall/prepare/verifyを実行済み。\n計画SHA: ${this.state.digest}\n\nロールバック: 未公開差分はrevert。公開済み版は上書きせず別番号で修正する。\n`,
+      releaseBody: `${step.name} ${versionOf(step)}\n\nCandidate: ${entry.commit}\nPlan: ${this.state.digest}\n\n公開後の修正は別番号で発行し、この版・タグは上書きしません。\n`,
+    };
   }
 
   async pushed(step: PackagePlan, _profile: ReleaseProfile, entry: ExecutionEntry): Promise<void> {
     if (step.action === 'none') return;
+    this.publication(step, entry);
     assert(entry.branch?.startsWith('codex/release/') && entry.commit);
     assert.equal(await this.git(step, 'rev-parse', 'HEAD'), entry.commit);
     assert.equal(await this.git(step, 'status', '--porcelain'), '');
@@ -315,8 +324,8 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
       } else {
         const notes = join(this.root, 'notes', step.repo, 'pr-body.md');
         await mkdir(dirname(notes), { recursive: true });
-        await writeFile(notes, `${step.name}を${versionOf(step)}へ更新する。\n\n依存更新:\n${this.updates(step).map(update => `- ${update.name}: ${update.from} → ${update.to}`).join('\n') || '- なし'}\n\n検証: 設定されたinstall/prepare/verifyを実行済み。\n計画SHA: ${this.state.digest}\n\nロールバック: 未公開差分はrevert。公開済み版は上書きせず別番号で修正する。\n`);
-        entry.prUrl = await this.run(['gh', 'pr', 'create', '--repo', step.repository, '--base', entry.base!, '--head', entry.branch!, '--title', `chore(release): prepare ${step.name} ${versionOf(step)}`, '--body-file', notes]);
+        await writeFile(notes, entry.publication?.body ?? '');
+        entry.prUrl = await this.run(['gh', 'pr', 'create', '--repo', step.repository, '--base', entry.base!, '--head', entry.branch!, '--title', entry.publication?.title ?? `chore(release): prepare ${step.name} ${versionOf(step)}`, '--body-file', notes]);
         assert.match(entry.prUrl, new RegExp(`^https://github.com/${step.repository}/pull/\\d+$`, 'u'));
         entry.pr = Number(entry.prUrl.split('/').at(-1));
       }
@@ -403,7 +412,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
       await mkdir(this.artifacts(step), { recursive: true });
       const notes = join(this.root, 'notes', step.repo, 'release-notes.md');
       await mkdir(dirname(notes), { recursive: true });
-      await writeFile(notes, `${step.name} ${versionOf(step)}\n\nSource: ${entry.mergeCommit}\nPlan: ${this.state.digest}\n\n公開後の修正は別番号で発行し、この版・タグは上書きしません。\n`);
+      await writeFile(notes, entry.publication?.releaseBody ?? `${step.name} ${versionOf(step)}\n\nSource: ${entry.mergeCommit}\n`);
       const args = ['gh', 'release', 'create', tagOf(step), '--repo', step.repository, '--verify-tag', '--title', `${step.name} ${versionOf(step)}`, '--notes-file', notes];
       if (semver.prerelease(versionOf(step))) args.push('--prerelease');
       try { await this.run(args); }
@@ -527,7 +536,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
       if (this.config.trustedPublisherOnly && stale.length) await this.wait(synced, 'latest/next同期。release.ymlでlatest/nextを同期してください。ローカルnpm dist-tagへフォールバックしません', DIST_TAG_PROPAGATION_SECONDS);
       else await this.wait(synced, 'latest/next同期');
     }
-    if (step.action !== 'none') {
+    if (step.action !== 'none' && !this.options.verifyOnly) {
       if (onBase(step, entry)) assert.equal(entry.mergeCommit, entry.commit);
       else {
         const pr = await this.api<PullRequest>(`repos/${step.repository}/pulls/${entry.pr}`);

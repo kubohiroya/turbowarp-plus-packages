@@ -1,43 +1,160 @@
-# 依存順でのリリース実行
+# plus-family の更新からダッシュボードまで
 
-`bump` / `bump:downstream`は計画、`release`は保存した計画に従う実行コマンドです。
-公開はGitHub Actions Trusted Publisher（OIDC）、workflowは`.github/workflows/release.yml`に統一します。
-CLI公開・長期npm token・provenanceなしへフォールバックしません。
+上流を更新し、それを使うパッケージへ順に伝え、最後にダッシュボードへ反映する手順です。
+全体は **収集 → 計画 → 確認 → 公開 → ダッシュボード** です。
 
-## 標準経路（Issue #19）
+たとえば A を B が使い、B を C が使う場合は、A → B → C の順です。
+A の公開を確認してから B、B の公開を確認してから C へ進みます。
+計画は深さ優先の後行順で作り、共通の依存は1回だけ処理します。
 
-導入中の契約自動解決は既定OFFです。`--discover`で明示的に有効にします。
-通常repoは中央config不要です。既存のpackage.jsonとworkflowから手順を解決します。新しい宣言やスクリプト名を各repoに追加する必要はありません。
+| コマンド | 用途 |
+| --- | --- |
+| `bump` | 指定したパッケージから上流をたどる |
+| `bump:downstream` | 指定した上流から、それを使う側へ広げる |
+| `release` | 保存した計画を実行する |
+
+まず下の手順を読めば進められます。設定の詳細は後半にあります。
+
+自動化については[別の案](release-automation.ja.md)があります。
+
+- [作業手順](#作業手順)：収集から公開まで。
+- [再開](#5-止まったら同じ条件で再開する)：失敗したとき。
+- [ダッシュボード](#6-ダッシュボードを更新する)：公開後の反映。
+- [詳細](#詳細)：設定や例外。
+
+## 作業手順
+
+### 1. 最新の情報を集める
+
+このリポジトリで実行します。Node.js 22 以上と `gh` が必要です。
+収集用の `GITHUB_TOKEN`（なければ `gh auth token`）と、実行用の `gh` の認証を用意します。
+公開対象の Trusted Publisher は設定済みである必要があります。ローカルの npm ログインは不要です。
+各対象の checkout は、例では `../<repo名>` に置きます。
 
 ```sh
-pnpm build
-pnpm --silent bump:downstream sb3-toolchain --reconcile --json > /tmp/release-plan.json
+npm ci
+npm run collect
+```
 
-# ローカルrepo群から、計画の入力SHAにある契約を読み取る。ネットワーク・変更・公開なし。
-pnpm --silent release --plan /tmp/release-plan.json --workspace /tmp/family-release \
+これで `data/dashboard.json` が更新されます。最初は収集だけでよく、画像生成は最後に行います。
+
+### 2. 更新する範囲を選び、計画を保存する
+
+**上流の変更を使う側へ伝える**場合は、次を使います。
+
+```sh
+npm run --silent bump:downstream -- sb3-toolchain --json > /tmp/release-plan.json
+```
+
+**特定のアプリとその上流をまとめて揃える**場合は、代わりに次を使います。
+
+```sh
+npm run --silent bump -- turbowarp-plus-editor --json > /tmp/release-plan.json
+```
+
+family 全体を扱うときは、対象が漏れていないか計画を確認します。この例だけでは全件を網羅しません。
+下流の計画には複数の起点を指定できるので、共通の依存元を何度も公開せずに済みます。
+
+```sh
+npm run --silent bump:downstream -- vite-plugin-turbowarp-extension turbowarp-extension-data-editor \
+  --json > /tmp/release-plan.json
+```
+
+計画の `ready` が `true` であること、各 `steps` の版・依存更新・警告を確認します。
+通常は minor を1回上げますが、準備済みの版は再利用し、RC は同じ系列を保ちます。
+peer・Git 参照・RC は追加のレビューが必要です。`ready: true` だけでは公開に進めません。
+
+GitHub と npm の不一致を新しい版で揃える場合だけ、`--reconcile` を追加します。
+これは新しい版を発行するため、対象と番号を改めて確認します。
+
+### 3. 各パッケージの手順を確認する
+
+次は dry-run です。各 repo の `package.json` と workflow を読み、準備・検証の手順を解決します。
+
+```sh
+npm run --silent release -- --plan /tmp/release-plan.json --workspace /tmp/family-release \
   --discover --repos-dir .. > /tmp/release-preview.json
+```
 
-# 表示内容を確認したうえで、同じ実効設定を使って実行する。
-# <digest>はrelease-preview.jsonのdigest。
-pnpm release --plan /tmp/release-plan.json --workspace /tmp/family-release \
+出力の `steps` と `effectiveConfig` を確認します。`digest` は、その内容を固定する識別子です。
+不足している SHA は各 repo で fetch します。dry-run は自分で fetch しません。
+peer・Git・RC がある場合は、[例外設定](#例外明示config移行)の `reviewedRepositories` にレビュー済みの repo を記載し、
+`--config <例外ファイル>` を付けて dry-run を作り直します。
+この段階では対象 repo や外部を変更しません。
+GitHub・npm の現在の状態は実行時に再確認します。
+
+### 4. 承認後に実行する
+
+対象・差分・公開文面を確認して承認を得たら、`<digest>` を保存した値に置き換えます。
+
+```sh
+npm run release -- --plan /tmp/release-plan.json --workspace /tmp/family-release \
   --resolved /tmp/release-preview.json --execute --confirm <digest>
 ```
 
-実行時に`--reference-dir ..`を付けると、専用checkoutのcloneが`<dir>/<repo名>`にある既存のcheckoutからオブジェクトを借ります（`git clone --reference-if-able`）。
-大きなrepoを丸ごとダウンロードし直さずに済み、ディスクもほとんど使いません。既存のcheckoutは読むだけで、ブランチ・作業ツリー・設定は変えません。
-借りたオブジェクトは既存のcheckoutに残っている必要があるので、実行中は既存のcheckoutで`git gc --prune=now`などを行わないでください。
+各パッケージの専用 checkout で次を行います。
 
-各repoは`--repos-dir/<repo名>`に配置します。dirtyな作業ファイルは読まず、`git show <planのheadSha>:<file>`で不変のソースを読みます。
-必要なSHAがローカルにない場合は、利用者がそのrepoをfetchしてから再試行します。dry-run自身はfetchしません。
-`release-preview.json`には全実効設定、package.json/workflowの参照SHAとSHA256、操作順、確認digestが入ります。
-`--resolved`はその内容を再利用し、repoから再解決しません。planか設定が変わればdigest検証が失敗します。
+1. 依存・version・lockfile・生成物を更新する。
+2. 検証し、PR・CI・Squash Merge を進める。
+3. タグ・Release・npm 公開と、公開結果の照合を行う。
 
-`bump:downstream`には起点を複数指定できます（例：`bump:downstream vite-plugin-turbowarp-extension turbowarp-extension-data-editor --reconcile --json`）。
-複数の起点は1つの計画にまとまり、複数の起点に依存する対象も、すべての依存更新を含めて1回だけ更新・公開します。
-起点ごとに別の計画を順に実行すると、共通の依存元を起点の数だけ公開し直すことになるため、同時に進める起点はまとめてください。
+依存先が完了するまで、使う側へ進みません。独立した対象は並列です。直列にするなら `--concurrency 1` を付けます。
+公開は GitHub Actions Trusted Publisher（OIDC）と `release.yml` を使います。
+CLI 公開や長期 token には切り替えません。
+private などの `update-only` は merge までです。
 
-`--reconcile`はGitHub/npmの公開基点が一致しない場合も新しい版を計画し、依存元へ版を伝播します。
-既存タグを推測して復元する操作ではありません。通常版はminorを上げ、RC版は同じRC系列を維持するため、実行前に計画の対象と番号を確認してください。
+### 5. 止まったら同じ条件で再開する
+
+結果は `/tmp/family-release/state.json` に残ります。失敗箇所を直し、同じコマンドで再開します。
+計画・preview・workspace・digest を保ってください。
+未着手の main や設定が変わった場合は、収集から作り直して新しい workspace を使います。
+古い記録も残し、PR・タグ・公開がどこまで済んだかを確認してから進めます。
+詳細は[実行・再開・完了条件](#実行再開完了条件)にあります。
+
+`/tmp` は一時的なので、長く続ける場合は最初から永続的な場所を使います。
+
+### 6. ダッシュボードを更新する
+
+各パッケージの公開が終わったら、この repo の Actions で
+**Collect and publish the dashboard**（`pages.yml`）を起動します。
+
+```sh
+gh workflow run pages.yml --repo kubohiroya/turbowarp-plus-packages --ref main
+```
+
+ダッシュボードの更新も、承認された範囲に含めてから実行します。
+workflow が収集 → カタログ → 画像 → HTML → Pages を行います。
+main への push と毎日の定期実行でも動きます。
+
+ローカルで確認する場合は、初回に `npx playwright install chromium`、続けて `npm run build` と `npm run serve` を使います。
+
+### 完了の確認
+
+- [ ] `state.json` で公開・取りやめ・失敗を確認した。
+- [ ] 公開版・タグの照合が済んだ。
+- [ ] Pages の build と deploy が成功した。
+- [ ] [公開ダッシュボード](https://kubohiroya.github.io/turbowarp-plus-packages/)で版・依存の鮮度を確認した。
+- [ ] 結果を Issue に記録した。
+
+切戻しは未公開なら revert、公開済みなら別番号で修正します。公開済みの版やタグは上書きしません。
+
+## 詳細
+
+ここからは、必要なときに参照する内容です。
+
+- [既存手順の解決](#既存手順の解決)
+- [例外・明示config・移行](#例外明示config移行)
+- [実行・再開・完了条件](#実行再開完了条件)
+- [段階導入・切戻し](#段階導入切戻し)
+- [本家追従](#本家追従turbowarp-plus-editor)
+
+通常は中央 config 不要です。導入中なので `--discover` は明示します。
+実行時に `--reference-dir ..` を付ければ、既存 checkout からオブジェクトを借りられます。
+その場合は実行中に参照元で `git gc --prune=now` などを行わないでください。
+
+dry-run は `git show <planのheadSha>:<file>` で固定したソースを読みます。
+`release-preview.json` には全実効設定、参照 SHA と SHA256、操作順、digest が入ります。
+`--resolved` は再解決せず、それを使います。計画や設定が変われば digest 検証は失敗します。
 
 ## 既存手順の解決
 
@@ -84,7 +201,7 @@ pnpm release --plan /tmp/release-plan.json --workspace /tmp/family-release \
 - workflowはjob単位ではなく全体が起動します。他の公開jobが選択イベントで必ずスキップされると確認できない場合は停止します。固定版jobを候補から除外しただけでは、そのworkflowを実行可能とは扱いません。
 - dispatchの必須inputは契約で全て指定します。`{version}`と`{tag}`を実際の公開版・タグへ置換します。tarballのハッシュ（`{shasum}`）はworkflowへ渡しません。そのような契約は解決時に拒否します。
 - タグ起動も`mode: tag-workflow`、`workflow: release.yml`、対象`job`で宣言できます。`v*`のpushタグ起動と汎用のnpm公開jobが必要です。
-- executorはtarballを作らず、取得も比較もしません。npmへの公開はworkflow（CLI方式ではnpm自身）が自分のcheckoutから行います。公開後は、npmがその版に記録した`gitHead`（公開元のcommit）が、このリリースのcommit（workflow方式ではリリースPRのマージcommit、CLI方式では検証した候補commit）と一致することを確かめます。npm用のtarballはGitHub Releaseにも添付しません。
+- executorはtarballを作らず、取得も比較もしません。公開後は、npmの`gitHead`がリリースのcommitと一致することを確かめます。準備済みの版では入力SHAを使います。npm用のtarballはGitHub Releaseにも添付しません。
 - private repoは既存の準備・検証手順だけを使用します。`update-only`ではタグ・Release・npm公開をしません。
 - `artifacts`はcheckout内の追加Release添付物です。パス内の`{version}`を置換し、検証後のSHA256を記録します。checkout外参照や重複名を拒否します。
 
@@ -93,7 +210,7 @@ repoへ適用する前に既存CI・Release添付物・初回公開・レジス�
 このファイルを作成しただけで、対象repoのworkflowを変更したことにはなりません。
 
 npm側はowner/repository/workflow=`release.yml`、workflowと同じEnvironment、直接`npm publish`権限を設定します。
-完了時はworkflowが`latest`と`next`を同じ版へ同期します。OIDCで同期するには`Allow npm dist-tag`も必要です。
+完了時はworkflowが`latest`を更新し、`next`がある場合は同じ版へ同期します。OIDCで同期するには`Allow npm dist-tag`も必要です。
 executorは公開版・公開元commit（`gitHead`）・SLSA provenance・両タグを照合します。workflow完了後もレジストリが古いタグを返すことがあるため、両タグは最大5分待ちます。それでも揃わなければ停止し、ローカル認証で代行しません。
 
 ## 例外・明示config・移行
@@ -205,3 +322,11 @@ npm run upstream:sync -- --repos-dir .. --id 2026-11-15 --publish
 - リリースは plus-editor の `package.json` の version を上げ、`v<version>` タグを push します。Release workflow が `scripts/ci/release-verification.ts` で、検証に成功したリビジョンだけを公開します。
 
 ファミリーの npm パッケージの更新は、この手順に含めません。`bump` / `bump:downstream` で別に計画します。
+
+## 関連文書
+
+- [README](../README.ja.md)：コマンドの規則。
+- [family の依存更新](release-chains/family-2026-11-08.ja.md)：過去の例。
+- [Editor カタログ](editor-extension-catalog.md)：配信の詳細。
+- [確認記録](release-contract/audit-2026-10-27.md)：元の確認。
+- [Issue #19](https://github.com/kubohiroya/turbowarp-plus-packages/issues/19)：設計の記録。

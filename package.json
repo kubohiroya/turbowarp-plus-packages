@@ -27,6 +27,10 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
     "release": "node --import tsx scripts/release.ts",
+    "release:chain": "node --import tsx scripts/release-chain.ts",
+    "release:status": "node --import tsx scripts/release-status.ts",
+    "release:tasks": "node --import tsx scripts/release-tasks.ts",
+    "release:finish": "node --import tsx scripts/release-finish.ts",
     "editor:catalog": "node --import tsx scripts/editor-catalog.ts"
   },
   "dependencies": {

@@ -1,4 +1,5 @@
 name: Collect and publish the dashboard
+run-name: Dashboard ${{ inputs.release_id || github.event_name }}
 
 on:
   push:
@@ -7,6 +8,11 @@ on:
     # Every day at 21:00 UTC (06:00 JST), after a typical day of releases.
     - cron: '0 21 * * *'
   workflow_dispatch:
+    inputs:
+      release_id:
+        description: Release execution identifier
+        required: false
+        type: string
 
 permissions:
   contents: read

@@ -793,7 +793,7 @@ function row(pkg: DashboardPackage, thumb: Thumbnail | undefined, editorUrl: str
   // in both languages rather than leaving an empty cell.
   const summary = ja && ja !== en ? t(esc(en), esc(ja)) : esc(en);
 
-  return `<tr data-search="${esc(haystack)}" data-repo="${esc(pkg.repo)}" data-flags="${esc(flagsFor(pkg).join(' '))}">
+  return `<tr data-search="${esc(haystack)}" data-repo="${esc(pkg.repo)}" data-npm-version="${esc(pkg.npm?.latest ?? '')}" data-flags="${esc(flagsFor(pkg).join(' '))}">
   <td class="name">
     <div class="pkg">${icon}<a href="${esc(gh.url ?? '#')}">${esc(pkg.label)}</a>${archived}</div>
     <div class="desc">${summary}</div>

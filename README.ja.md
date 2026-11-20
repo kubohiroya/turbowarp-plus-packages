@@ -1,6 +1,8 @@
 # TurboWarp Plus
 
-リリース実行: [dry-run・依存順の更新と公開](docs/release-executor.md)。
+リリース手順: [plus-family の更新からダッシュボードまで](docs/release-executor.md)。
+
+自動化: [スクリプトとAI](docs/release-automation.ja.md)。
 
 実行できるサンプル: [配信方式と全機能拡張のデモ計画一覧](docs/sample-projects/plan.ja.md)。
 
@@ -175,6 +177,8 @@ GitHub Actionsではこのディレクトリをキャッシュして再利用し
 
 ## 再帰的リリースの計画
 
+作業全体は[手順書](docs/release-executor.md)を参照してください。ここではコマンドの規則を説明します。
+
 既存の解析結果から、指定パッケージとその上流だけの処理順・依存更新・バージョン変更・
 公開対象を確認できます。入力は既定で `data/dashboard.json` です。ローカルにない場合は、
 Pages workflow の `dashboard-data` artifact にある JSON を配置するか、`--data` で指定します。
@@ -218,9 +222,11 @@ npm run --silent bump -- turbowarp-title-menu --json > /tmp/release-plan.json
 計画には解析日時・JSON全体のSHA-256（JSON再シリアライズ後）・各repoのHEAD SHAを含みます。
 現在のGitHub/npm状態や互換性を確認したものではなく、記録されたスナップショットに基づく
 計画です。終了コードは `0` が生成成功、`1` が引数/入力エラー、`2` が未解決事項ありです。
-公開機能を導入する際は、現状の再確認・検証・承認を別途必要とします。
+実行は[作業手順](docs/release-executor.md#作業手順)に従います。
 
 ## 依存元へのbump
+
+公開まで進める場合は[手順書](docs/release-executor.md)を参照してください。
 
 上流パッケージを指定し、それに直接・間接に依存するパッケージの更新を、依存関係の順に
 計画・適用できます。開発依存も対象なので、拡張ビルド用プラグインの変更を伝播できます。
@@ -261,6 +267,8 @@ npm run bump:downstream -- vite-plugin-turbowarp-extension \
 スナップショットの警告と実際の互換性を確認してから適用してください。
 
 ## 公開の仕組み
+
+リリース後の更新は[ダッシュボードの手順](docs/release-executor.md#6-ダッシュボードを更新する)を参照してください。
 
 [`.github/workflows/pages.yml`](.github/workflows/pages.yml) が `main` への push、
 1 日 1 回のスケジュール、および手動実行でパイプライン全体を回し、`site/` を
