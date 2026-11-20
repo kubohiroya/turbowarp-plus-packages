@@ -201,7 +201,7 @@ dry-run は `git show <planのheadSha>:<file>` で固定したソースを読み
 - workflowはjob単位ではなく全体が起動します。他の公開jobが選択イベントで必ずスキップされると確認できない場合は停止します。固定版jobを候補から除外しただけでは、そのworkflowを実行可能とは扱いません。
 - dispatchの必須inputは契約で全て指定します。`{version}`と`{tag}`を実際の公開版・タグへ置換します。tarballのハッシュ（`{shasum}`）はworkflowへ渡しません。そのような契約は解決時に拒否します。
 - タグ起動も`mode: tag-workflow`、`workflow: release.yml`、対象`job`で宣言できます。`v*`のpushタグ起動と汎用のnpm公開jobが必要です。
-- executorはtarballを作らず、取得も比較もしません。公開後は、npmの`gitHead`がリリースのcommitと一致することを確かめます。準備済みの版では入力SHAを使います。npm用のtarballはGitHub Releaseにも添付しません。
+- executorはtarballを作らず、取得も比較もしません。公開後は、npmの`gitHead`がリリースのcommitと一致することを確かめます。`gitHead`がない公開では、npmが配信するprovenanceのパッケージ名・版・integrity・repository・workflowを照合して公開元commitを確認します。準備済みの版では入力SHAを使います。npm用のtarballはGitHub Releaseにも添付しません。
 - private repoは既存の準備・検証手順だけを使用します。`update-only`ではタグ・Release・npm公開をしません。
 - `artifacts`はcheckout内の追加Release添付物です。パス内の`{version}`を置換し、検証後のSHA256を記録します。checkout外参照や重複名を拒否します。
 
