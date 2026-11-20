@@ -61,3 +61,18 @@ overrides:
     /"editorCatalogHold" for "hidden-site" must say why it is held/,
   );
 });
+
+test('application identity is independent of display category and must be explicit', async () => {
+  const entries = (await loadCatalog(await catalog(`${BASE}
+overrides:
+  shown-site:
+    application: true
+`))).entries;
+  assert.equal(entries.find(entry => entry.repo === 'shown-site')?.application, true);
+  assert.equal(entries.find(entry => entry.repo === 'hidden-site')?.application, undefined);
+  await assert.rejects(loadCatalog(await catalog(`${BASE}
+overrides:
+  shown-site:
+    application: 'true'
+`)), /"application" for "shown-site" may only be true/);
+});

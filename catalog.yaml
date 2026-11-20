@@ -34,14 +34,16 @@ localProtocols: [file:, link:, workspace:, portal:, patch:]
 # and stop at the first "yes":
 #   1. Is it a GitHub fork of an upstream TurboWarp repository
 #      (scratch-gui, scratch-vm and the like)?                      -> forks
-#   2. Is it a non-editor application deployed and used as-is?     -> apps
-#   3. Is it a guide, sample collection or documentation site?      -> docs
-#   4. Is it for building, packaging or previewing extensions or
-#      projects?                                                    -> toolchain
+#   2. Is it the Kamishibai app, its guides, samples or navigation? -> kamishibai
+#   3. Is it another non-editor app, documentation site or shared
+#      documentation infrastructure still under development?       -> in-development
+#   4. Is it a standalone project-development command?             -> toolchain
+#      Is it a build plugin or reusable tool library?               -> toolchain-components
+#      Is it a shared extension template or manifest contract?      -> contracts
 #   5. Does it define the editor host interface or provide the
 #      minimal runtime used in package tests?                       -> editor-testing
-#   6. Is it an editor distribution (web or desktop), or a library
-#      that only the editor uses?                                   -> foundation
+#   6. Is it an editor distribution (web or desktop)?               -> foundation
+#      Is it a library that only the editor uses?                   -> editor-extensions
 #   7. Does a packaged app use it to host the TurboWarp runtime in
 #      its own page, or is it the template such an app starts from? -> shell
 #   8. Is it a contract, API or adapter that extensions from several
@@ -63,43 +65,55 @@ localProtocols: [file:, link:, workspace:, portal:, patch:]
 # The dashboard warns about any cycle it finds in the collected data.
 
 categories:
-  # Includes: build tools, bundler plugins, the extension template, manifest
-  #   contracts consumed by that template, local preview, and the starter
-  #   that prepares a project folder and a Git repository for development.
-  # Excludes: anything else a running project loads at runtime (-> shell,
-  #   contracts or a domain category), and the packaged-app template, which
-  #   depends on the app shell (-> shell).
+  # Includes: standalone commands for building SB3 projects and preparing
+  #   a project repository for development with the editor.
+  # Excludes: build plugins and tool libraries (-> toolchain-components),
+  #   shared extension templates and manifest contracts (-> contracts).
   - id: toolchain
-    title: Toolchain & Templates
-    titleJa: ツールチェーン・テンプレート
-    description: Build, package and preview TurboWarp extensions and projects.
-    descriptionJa: TurboWarp 拡張とプロジェクトのビルド・パッケージ化・プレビュー。
+    title: Standalone Tools
+    titleJa: 単独で使うツール
+    description: Commands for managing SB3 projects and preparing project repositories.
+    descriptionJa: コマンドから使える、SB3 の展開・検査・ビルドとプロジェクトリポジトリの準備ツール。
     packages:
       - sb3-toolchain
-      - vite-plugin-turbowarp-extension
-      - turbowarp-extension-template
-      - turbowarp-extension-manifest
-      - turbowarp-sb3-source-builder
-      - turbowarp-local-preview
       - turbowarp-plus-project-folder-starter
 
-  # Includes: the TurboWarp-Plus-Editor distributions (web and desktop) and
-  #   the libraries only an editor host uses, such as the security dialog.
-  # Excludes: the upstream forks the editor is built from (-> forks), extensions that only run inside the editor (-> their domain),
-  #   anything a packaged app uses outside the editor (-> shell), and the data
-  #   editor contract that extensions build on, even though the editor bundles
-  #   it (-> contracts): the editor distribution uses extensions, so a library
-  #   that extensions use cannot share its category. The shared host interface
-  #   and test runtime belong in editor-testing.
+  # Includes: plugins and libraries embedded in another project's build
+  #   or preview workflow; these do not expose their own standalone command.
+  # Excludes: extension templates and manifest contracts (-> contracts),
+  #   runtime app infrastructure (-> shell), and standalone commands (-> toolchain).
+  - id: toolchain-components
+    title: Build Plugins & Tool Libraries
+    titleJa: 組み込み用ツール
+    description: Plugins and libraries integrated into build and preview workflows.
+    descriptionJa: 他のプロジェクトのビルドやプレビュー処理へ組み込むプラグイン・ライブラリ。
+    packages:
+      - vite-plugin-turbowarp-extension
+      - turbowarp-sb3-source-builder
+      - turbowarp-local-preview
+
+  # Includes: only the TurboWarp-Plus-Editor web and desktop distributions.
+  # Excludes: editor-only libraries (-> editor-extensions), the shared host
+  #   interface and test runtime (-> editor-testing), and upstream forks (-> forks).
   # Keep the foundation ID stable for existing JSON consumers.
   - id: foundation
     title: Editor
     titleJa: エディター
-    description: TurboWarp-Plus-Editor for the web and the desktop, and editor-only libraries.
-    descriptionJa: TurboWarp-Plus-Editor（Web 版・デスクトップ版）と、エディター専用のライブラリ。
+    description: TurboWarp-Plus-Editor for the web and the desktop.
+    descriptionJa: TurboWarp-Plus-Editor 本体（Web 版・デスクトップ版）。
     packages:
       - turbowarp-plus-editor
       - turbowarp-plus-desktop
+
+  # Includes: editor-only libraries, such as the security dialog and workspace UI.
+  # Excludes: contracts shared by extensions (-> contracts), packaged-app
+  #   infrastructure (-> shell), and host interfaces and test runtimes (-> editor-testing).
+  - id: editor-extensions
+    title: Editor Extensions
+    titleJa: エディター拡張
+    description: Editor-only libraries and components that extend the editor.
+    descriptionJa: エディターの機能を拡張する専用ライブラリ・構成要素。
+    packages:
       - turbowarp-extension-security-dialog
       - turbowarp-document-editor
       - turbowarp-sb3-save-format
@@ -173,16 +187,19 @@ categories:
   #   consume (named data, named functions, runtime expressions, structured
   #   diagnostics that any DSL host or app reports and the stage displays,
   #   the data editing contract and API that extensions and the editor share),
-  #   and adapters to external UI and state frameworks (React, Jotai).
+  #   adapters to external UI and state frameworks (React, Jotai), and the
+  #   shared extension development template and its manifest contract.
   # Excludes: a contract used only within one family, or a package that mainly
   #   provides blocks for one kind of data, device or service (-> that domain's
   #   category); anything only the editor uses (-> foundation).
   - id: contracts
     title: Extension Contracts
     titleJa: 拡張共通の契約
-    description: Contracts and adapters shared by extensions across categories.
-    descriptionJa: カテゴリをまたいで拡張が共有する契約とアダプタ。
+    description: Contracts, adapters and development templates shared by extensions across categories.
+    descriptionJa: カテゴリをまたいで拡張が共有する契約・アダプタ・開発テンプレート。
     packages:
+      - turbowarp-extension-template
+      - turbowarp-extension-manifest
       - turbowarp-extension-data-editor
       - turbowarp-document-source
       - turbowarp-runtime-expression
@@ -336,36 +353,34 @@ categories:
       - turbowarp-webusb-pasori
       - turbowarp-uuid
 
-  # Includes: applications that are deployed and used as-is, including ones
-  #   that exist to verify an extension against real cameras and displays.
-  # Excludes: app templates (-> shell) and documentation sites (-> docs).
-  #   An app goes here even when it is published to npm.
-  - id: apps
-    title: Applications
-    titleJa: アプリケーション
-    description: Deployable applications built from the packages above.
-    descriptionJa: 上記パッケージを組み合わせた、配布可能なアプリケーション。
+  # Includes: the Kamishibai app and its dedicated guides, samples and navigation.
+  # Excludes: shared site infrastructure and other apps (-> in-development).
+  - id: kamishibai
+    title: Kamishibai
+    titleJa: 紙芝居
+    description: The Kamishibai app, guides, sample projects and dedicated site navigation.
+    descriptionJa: 紙芝居アプリ本体と、使い方のガイド・サンプル・専用サイトナビゲーション。
     packages:
       - turbowarp-kamishibai-app
+      - turbowarp-kamishibai-docs
+      - turbowarp-kamishibai-samples
+      - turbowarp-kamishibai-site-navigation
+
+  # Includes: other apps, project hosting and shared documentation infrastructure.
+  # Excludes: editor distributions (-> foundation), app templates (-> shell)
+  #   and each package's own README and API docs, which stay with the package.
+  - id: in-development
+    title: Other (in development)
+    titleJa: その他(開発中)
+    description: Other apps under development, project hosting and shared site infrastructure.
+    descriptionJa: 開発中のその他のアプリと、プロジェクト公開サイト・共通サイト基盤。
+    packages:
       - turbowarp-camera-calibration-app
       - turbowarp-photogrammetry-app
       - turbowarp-time-space-sync-app
       - turbowarp-webrtc-qrcode-pairing-app
       - turbowarp-realtime-motion-capture-app
 
-  # Includes: guides, sample projects, the navigation and shell shared by
-  #   documentation sites, and the site that holds the default addresses of
-  #   projects made in the editor, whether or not any project is placed there yet.
-  # Excludes: a package's own README and API docs, which stay with the package.
-  - id: docs
-    title: Documentation & Samples
-    titleJa: ドキュメント・サンプル
-    description: Guides, sample projects and the shared documentation shell.
-    descriptionJa: ガイド、サンプルプロジェクト、共通ドキュメント基盤。
-    packages:
-      - turbowarp-kamishibai-docs
-      - turbowarp-kamishibai-samples
-      - turbowarp-kamishibai-site-navigation
       - turbowarp-plus-site-header
       - turbowarp-plus-projects
 
@@ -382,6 +397,8 @@ categories:
 # site is not ours to show, instead of reporting it as down. Repositories
 # left at the default are reported as "unpublished" until they appear on npm,
 # which is intentional: that is a status worth seeing.
+# `application: true` identifies deployed apps independently of their category
+# for favicon collection and bundled-extension sandbox requirements.
 # `editorCatalogHold: <reason>` keeps an extension (and whatever depends on it)
 # out of the Editor extension catalog even when its dependency ranges are met.
 # Remove the key to let it back in.
@@ -421,7 +438,10 @@ overrides:
     description: TurboWarp Plus Editor for the desktop, built on TurboWarp Desktop.
     descriptionJa: TurboWarp Plus Editor のデスクトップ版。TurboWarp Desktop を基点にしています。
   turbowarp-realtime-motion-capture-app:
+    application: true
     npm: '@kubohiroya/turbowarp-realtime-motion-capture-app'
+  turbowarp-kamishibai-app:
+    application: true
   turbowarp-kamishibai-docs:
     npm: false
     npmReason: {"en": "Documentation is distributed as a Pages site, not as a runtime npm library.", "ja": "文書はPagesサイトで配布します。実行時にimportするnpmライブラリではありません。"}
@@ -432,14 +452,18 @@ overrides:
     npm: false
     npmReason: {"en": "A collection of project sources; it has no package.json or npm runtime API.", "ja": "プロジェクトのソース集で、package.jsonやnpm用の実行APIはありません。"}
   turbowarp-camera-calibration-app:
+    application: true
     npm: false
     npmReason: {"en": "An end-user app scaffold with UI and SB3 build output, not an importable library.", "ja": "UIとSB3をビルドする利用者向けアプリの雛形です。importして使うライブラリではありません。"}
   turbowarp-photogrammetry-app:
+    application: true
     npm: false
     npmReason: {"en": "An end-user app scaffold with UI and SB3 build output, not an importable library.", "ja": "UIとSB3をビルドする利用者向けアプリの雛形です。importして使うライブラリではありません。"}
   turbowarp-time-space-sync-app:
+    application: true
     npm: false
     npmReason: {"en": "An end-user app scaffold with UI and SB3 build output, not an importable library.", "ja": "UIとSB3をビルドする利用者向けアプリの雛形です。importして使うライブラリではありません。"}
   turbowarp-webrtc-qrcode-pairing-app:
+    application: true
     npm: false
     npmReason: {"en": "An end-user app scaffold with UI and SB3 build output, not an importable library.", "ja": "UIとSB3をビルドする利用者向けアプリの雛形です。importして使うライブラリではありません。"}

@@ -29,6 +29,9 @@ export async function loadCatalog(path = 'catalog.yaml'): Promise<Catalog> {
       seen.set(repo, category.id);
 
       const override = overrides[repo] ?? {};
+      if (override.application !== undefined && override.application !== true) {
+        throw new Error(`${path}: "application" for "${repo}" may only be true`);
+      }
       if (override.buildSource && override.buildSource !== 'fixed-editor-gui') {
         throw new Error(`${path}: unsupported buildSource for "${repo}"`);
       }
@@ -47,6 +50,7 @@ export async function loadCatalog(path = 'catalog.yaml'): Promise<Catalog> {
       entries.push({
         repo,
         category: category.id,
+        ...(override.application ? { application: true as const } : {}),
         npm: override.npm === false ? null : (override.npm ?? `${scope}/${repo}`),
         pages: override.pages !== false,
         ...(override.npmReason ? { npmReason: override.npmReason } : {}),

@@ -797,7 +797,7 @@ function row(pkg: DashboardPackage, thumb: Thumbnail | undefined, editorUrl: str
 
   const archived = gh.isArchived ? ` <span class="tag">${t('archived', 'アーカイブ')}</span>` : '';
   // Favicons stay in an image context; only vetted palette drawings are inlined.
-  const favicon = pkg.category === 'apps' ? pkg.pages?.svgFaviconUrl ?? pkg.pages?.faviconUrl : null;
+  const favicon = pkg.application || pkg.category === 'apps' ? pkg.pages?.svgFaviconUrl ?? pkg.pages?.faviconUrl : null;
   const icon = favicon
     ? `<img class="icon" src="${esc(favicon)}" alt="" width="20" height="20">`
     : pkg.icon ? `<span class="icon" aria-hidden="true">${pkg.icon}</span>` : '';
@@ -1087,12 +1087,22 @@ async function main() {
     {
       id: 'use', title: t('Apps & Documentation', 'アプリ・ドキュメント'),
       description: t('Ready-to-use apps, guides and sample projects.', 'そのまま使えるアプリと、使い方を学ぶガイド・サンプル。'),
-      categories: visibleCategories.filter((category) => ['apps', 'docs'].includes(category.id)),
+      categories: visibleCategories.filter((category) => ['kamishibai', 'in-development', 'apps', 'docs'].includes(category.id)),
+    },
+    {
+      id: 'editor', title: t('Editor', 'エディター'),
+      description: t('Editor distributions, editor-only libraries and test support.', 'エディター本体と専用ライブラリ、テスト基盤。'),
+      categories: visibleCategories.filter((category) => ['foundation', 'editor-extensions', 'editor-testing'].includes(category.id)),
+    },
+    {
+      id: 'toolchain', title: t('Toolchain', 'ツールチェーン'),
+      description: t('Standalone development commands and reusable build and preview tools.', '単独で使う開発コマンドと、他のプロジェクトに組み込むビルド・プレビュー用ツール。'),
+      categories: visibleCategories.filter((category) => ['toolchain', 'toolchain-components'].includes(category.id)),
     },
     {
       id: 'develop', title: t('Development Packages', '開発用パッケージ'),
-      description: t('Extensions, editor components and tools for building projects and apps.', 'プロジェクトやアプリを作るための拡張・エディター構成要素・ツール。'),
-      categories: visibleCategories.filter((category) => !['apps', 'docs'].includes(category.id)),
+      description: t('Extensions and tools for building projects and apps.', 'プロジェクトやアプリを作るための拡張・ツール。'),
+      categories: visibleCategories.filter((category) => !['kamishibai', 'in-development', 'apps', 'docs', 'foundation', 'editor-extensions', 'editor-testing', 'toolchain', 'toolchain-components'].includes(category.id)),
     },
   ].filter((group) => group.categories.length);
 
