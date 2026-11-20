@@ -79,11 +79,12 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     try {
       const value = JSON.parse(await this.npm(profile, ['view', `${step.name}@${version}`, '--json', '--prefer-online', '--fetch-retries=0', '--fetch-timeout=15000'])) as RegistryVersion;
       assert(value.name === step.name && value.version === version, 'npmの版・名前が不正です。');
-      if (!value.gitHead && value.dist.integrity && value.dist.attestations?.provenance?.predicateType === 'https://slsa.dev/provenance/v1') {
+      if (value.dist.integrity && value.dist.attestations?.provenance?.predicateType === 'https://slsa.dev/provenance/v1') {
         const response = await fetch(`https://registry.npmjs.org/-/npm/v1/attestations/${encodeURIComponent(value.name)}@${value.version}`,
           { signal: AbortSignal.timeout(15000) });
         assert(response.ok, 'npmのprovenanceを取得できません。');
         value.provenanceCommit = provenanceSource(value.name, value.version, value.dist.integrity, step.repository, await response.json()) ?? undefined;
+        assert(value.provenanceCommit, 'provenanceのパッケージ・integrity・公開元を照合できません。');
       }
       return value;
     } catch (error) { if (absent(error)) return null; throw error; }
@@ -222,7 +223,8 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
   /** Whether npm says the version was published from the release's own commit. */
   private fromSource(profile: ReleaseProfile, entry: ExecutionEntry, published: RegistryVersion): boolean {
     const source = sourceOf(profile, entry);
-    return Boolean(source) && (published.gitHead ?? published.provenanceCommit) === source;
+    // Archive manifests may retain an old gitHead; the registry-hosted attestation binds these bytes to their build.
+    return Boolean(source) && (published.provenanceCommit ?? published.gitHead) === source;
   }
 
   /** Move pinned `<name>@<previous version>` references in tracked documentation to the release version. */
@@ -553,7 +555,15 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
       await this.git(step, 'fetch', 'origin', entry.base!);
       await this.git(step, 'merge-base', '--is-ancestor', entry.mergeCommit!, `origin/${entry.base}`);
       await this.git(step, 'diff', '--exit-code', entry.commit!, entry.mergeCommit!);
-      await this.git(step, 'checkout', '--detach', entry.mergeCommit!);
+      try {
+        await this.git(step, 'checkout', entry.base!);
+        await this.git(step, 'pull', '--ff-only', 'origin', entry.base!);
+        await this.git(step, 'merge-base', '--is-ancestor', entry.mergeCommit!, entry.base!);
+      } finally {
+        // Keep a resumable, verified HEAD even when the base cannot fast-forward.
+        await this.git(step, 'checkout', '--detach', entry.mergeCommit!);
+      }
+      assert.equal(await this.git(step, 'status', '--porcelain'), '', 'FF更新後に未コミット変更があるためbranchを保持します。');
       const local = await this.git(step, 'branch', '--list', entry.branch!);
       if (local) {
         assert.equal(await this.git(step, 'rev-parse', entry.branch!), entry.commit);
@@ -569,6 +579,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
         assert.equal(remote.split(/\s/u)[0], entry.commit, 'remote branchに未確認のcommitがあり保持します。');
         await this.git(step, 'push', 'origin', '--delete', entry.branch!);
       }
+      await this.git(step, 'worktree', 'prune');
     }
   }
 }
