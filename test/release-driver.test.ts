@@ -40,7 +40,7 @@ for (const resumedMismatch of [false, true]) test(`pre-existing unpublished tags
 });
 
 const lifecycles: { privatePackage: boolean; interruption: string; prepared: boolean; withoutNext?: boolean }[] = [
-  ...[false, true].flatMap(privatePackage => ['none', 'verification', 'main-ci', 'cleanup'].map(interruption => ({ privatePackage, interruption, prepared: false }))),
+  ...[false, true].flatMap(privatePackage => ['none', 'verification', 'main-ci', 'cleanup', 'cleanup-ff'].map(interruption => ({ privatePackage, interruption, prepared: false }))),
   // The prepared release is already merged, so preparation changes nothing and the input commit is the candidate.
   ...['none', 'verification'].map(interruption => ({ privatePackage: false, interruption, prepared: true })),
   // A package that never used `next` keeps publishing to `latest` alone.
@@ -83,9 +83,20 @@ for (const { privatePackage, interruption, prepared, withoutNext = false } of li
     let failVerification = interruption === 'verification';
     let failMainCi = interruption === 'main-ci';
     let failCleanup = interruption === 'cleanup';
+    let failFastForward = interruption === 'cleanup-ff';
     const missing = (command: string[]) => new CommandFailure(command, '{"error":{"code":"E404"}}', 'HTTP 404', 1);
     const runner: Runner = async (command, options) => {
       if (command[0] === 'git') {
+        if (command[1] === 'pull' && failFastForward) {
+          failFastForward = false;
+          throw new Error('injected base fast-forward failure');
+        }
+        if (command[1] === 'branch' && command.includes('-D')) {
+          assert(pr?.merged && pr.merge_commit_sha);
+          await git(['merge-base', '--is-ancestor', pr.merge_commit_sha, 'main'], options!.cwd);
+          events.push('delete-local');
+        }
+        if (command[1] === 'worktree' && command[2] === 'prune') events.push('prune');
         if (command[1] === 'push' && command.includes('--delete') && failCleanup) {
           failCleanup = false;
           throw new Error('injected cleanup network failure');
@@ -182,7 +193,7 @@ for (const { privatePackage, interruption, prepared, withoutNext = false } of li
       (save, state) => new GithubNpmReleaseDriver(workspace, config, state, save, runner, async () => {},
         { referenceDir: reference }), executionDigest(plan, config));
     if (interruption !== 'none') {
-      const expected = interruption === 'verification' ? /injected verification failure/ : interruption === 'main-ci' ? /main CI/ : /injected cleanup network failure/;
+      const expected = interruption === 'verification' ? /injected verification failure/ : interruption === 'main-ci' ? /main CI/ : interruption === 'cleanup-ff' ? /injected base fast-forward failure/ : /injected cleanup network failure/;
       await assert.rejects(execute(), expected);
       const journal = JSON.parse(await readFile(join(workspace, 'state.json'), 'utf8'));
       if (interruption === 'verification') {
@@ -200,9 +211,18 @@ for (const { privatePackage, interruption, prepared, withoutNext = false } of li
         assert.equal(await git(['rev-parse', 'HEAD'], join(workspace, 'checkouts/tool')), journal.entries.tool.mergeCommit);
         assert.equal(await git(['branch', '--list', journal.entries.tool.branch], join(workspace, 'checkouts/tool')), '');
       }
+      if (interruption === 'cleanup-ff') {
+        assert.equal(journal.entries.tool.phase, 'published');
+        assert.equal(await git(['rev-parse', 'HEAD'], join(workspace, 'checkouts/tool')), journal.entries.tool.mergeCommit);
+        assert.equal(await git(['rev-parse', journal.entries.tool.branch], join(workspace, 'checkouts/tool')), journal.entries.tool.commit);
+        assert.equal(await git(['--git-dir', remote, 'rev-parse', journal.entries.tool.branch]), journal.entries.tool.commit);
+        assert(!events.includes('delete-local'), 'failed FF must keep both task branches');
+      }
     }
     const state = await execute();
     assert.equal(state.entries.tool.phase, 'complete');
+    await git(['merge-base', '--is-ancestor', state.entries.tool.mergeCommit!, 'main'], join(workspace, 'checkouts/tool'));
+    assert(events.includes('prune'));
     const alternates = join(workspace, 'checkouts/tool/.git/objects/info/alternates');
     if (reference) {
       assert.match(await readFile(alternates, 'utf8'), /existing\/tool\/\.git\/objects/);

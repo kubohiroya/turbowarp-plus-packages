@@ -555,7 +555,15 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
       await this.git(step, 'fetch', 'origin', entry.base!);
       await this.git(step, 'merge-base', '--is-ancestor', entry.mergeCommit!, `origin/${entry.base}`);
       await this.git(step, 'diff', '--exit-code', entry.commit!, entry.mergeCommit!);
-      await this.git(step, 'checkout', '--detach', entry.mergeCommit!);
+      try {
+        await this.git(step, 'checkout', entry.base!);
+        await this.git(step, 'pull', '--ff-only', 'origin', entry.base!);
+        await this.git(step, 'merge-base', '--is-ancestor', entry.mergeCommit!, entry.base!);
+      } finally {
+        // Keep a resumable, verified HEAD even when the base cannot fast-forward.
+        await this.git(step, 'checkout', '--detach', entry.mergeCommit!);
+      }
+      assert.equal(await this.git(step, 'status', '--porcelain'), '', 'FF更新後に未コミット変更があるためbranchを保持します。');
       const local = await this.git(step, 'branch', '--list', entry.branch!);
       if (local) {
         assert.equal(await this.git(step, 'rev-parse', entry.branch!), entry.commit);
@@ -571,6 +579,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
         assert.equal(remote.split(/\s/u)[0], entry.commit, 'remote branchに未確認のcommitがあり保持します。');
         await this.git(step, 'push', 'origin', '--delete', entry.branch!);
       }
+      await this.git(step, 'worktree', 'prune');
     }
   }
 }
