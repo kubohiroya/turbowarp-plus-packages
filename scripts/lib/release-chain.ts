@@ -8,7 +8,7 @@ import type { Runner } from './release-driver.ts';
 import { readJson, writeJson } from './release-io.ts';
 
 export async function createChain(options: { workspace: string; data?: string; roots: string[]; upstream?: boolean;
-  reconcile?: boolean; config?: string; referenceDir?: string }, run: Runner = runCommand) {
+  reconcile?: boolean; patch?: boolean; config?: string; referenceDir?: string }, run: Runner = runCommand) {
   // Exclusive creation prevents accidental reuse, including after an interrupted run.
   await mkdir(options.workspace);
   try {
@@ -16,8 +16,8 @@ export async function createChain(options: { workspace: string; data?: string; r
       '--output', join(options.workspace, 'collected.json')]);
     const snapshot = await readJson(options.data ?? join(options.workspace, 'collected.json'));
     await writeJson(join(options.workspace, 'snapshot.json'), snapshot);
-    const plan = options.upstream ? createReleasePlan(snapshot, options.roots[0], { reconcile: options.reconcile }) :
-      createDownstreamReleasePlan(snapshot, options.roots, { reconcile: options.reconcile });
+    const plan = options.upstream ? createReleasePlan(snapshot, options.roots[0], { reconcile: options.reconcile, patch: options.patch }) :
+      createDownstreamReleasePlan(snapshot, options.roots, { reconcile: options.reconcile, patch: options.patch });
     await writeJson(join(options.workspace, 'plan.json'), plan);
     if (!plan.ready) throw new Error('計画に未解決事項があります。plan.jsonを確認してください。');
     const sources = join(options.workspace, 'sources');

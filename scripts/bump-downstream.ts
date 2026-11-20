@@ -13,6 +13,7 @@ const HELP = `使い方: npm run bump:downstream -- <npm名またはrepo名>... 
 既定では計画だけを出力します。
 --data <解析JSON>       既定入力: data/dashboard.json
 --json                 機械可読JSONを標準出力
+--patch                安定版の互換更新をpatch採番する（RC系列は維持）
 --reconcile            GitHub/npm不一致も新規リリース対象にする
 --apply                ローカルのpackage.jsonへ依存指定とversionを適用
 --repos-dir <親dir>     --apply時に必須。<親dir>/<repo名>が各checkout
@@ -29,7 +30,7 @@ try {
     options: {
       data: { type: 'string' }, json: { type: 'boolean' }, help: { type: 'boolean' },
       apply: { type: 'boolean' }, 'repos-dir': { type: 'string' },
-      reconcile: { type: 'boolean' },
+      reconcile: { type: 'boolean' }, patch: { type: 'boolean' },
     },
   });
   if (values.help) {
@@ -46,7 +47,7 @@ try {
     } catch (error) {
       throw new Error(`解析JSONを読み込めません: ${path}。--dataで入力を指定してください。`, { cause: error });
     }
-    const plan = createDownstreamReleasePlan(JSON.parse(source), positionals, { reconcile: values.reconcile });
+    const plan = createDownstreamReleasePlan(JSON.parse(source), positionals, { reconcile: values.reconcile, patch: values.patch });
     if (!plan.ready || (values.apply && !plan.applyReady)) {
       console.log(values.json ? JSON.stringify(plan, null, 2) : formatReleasePlan(plan));
       process.exitCode = 2;

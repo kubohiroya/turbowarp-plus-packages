@@ -62,6 +62,7 @@ npm run --silent bump:downstream -- vite-plugin-turbowarp-extension turbowarp-ex
 
 計画の `ready` が `true` であること、各 `steps` の版・依存更新・警告を確認します。
 通常は minor を1回上げますが、準備済みの版は再利用し、RC は同じ系列を保ちます。
+API互換を検証した安定版の依存更新は、`bump`・`bump:downstream`・`release:chain`の`--patch`で同じ系列のpatch更新を選べます。採番指定は互換性レビューやRC正式化の承認を省略しません。
 peer・Git 参照・RC は追加のレビューが必要です。`ready: true` だけでは公開に進めません。
 
 GitHub と npm の不一致を新しい版で揃える場合だけ、`--reconcile` を追加します。

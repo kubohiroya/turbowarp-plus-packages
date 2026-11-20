@@ -26,6 +26,7 @@ export interface RawCatalog {
   localProtocols?: string[];
   overrides?: Record<string, {
     npm?: string | false;
+    npmReason?: { en: string; ja: string };
     pages?: false;
     note?: string;
     label?: string;
@@ -40,6 +41,7 @@ export interface CatalogEntry {
   repo: string;
   category: string;
   npm: string | null;
+  npmReason?: { en: string; ja: string };
   /** False when the repository's Pages site is deliberately not shown. */
   pages: boolean;
   note: string | null;
@@ -98,6 +100,7 @@ export interface RepositoryNode {
   isArchived: boolean;
   isPrivate: boolean;
   isFork: boolean;
+  parent?: { nameWithOwner: string; defaultBranchRef?: { name: string; target: Commit | null } | null } | null;
   pushedAt: string | null;
   stargazerCount: number;
   licenseInfo?: { spdxId: string } | null;
@@ -119,11 +122,12 @@ export interface RepositoryNode {
 }
 
 export interface RevisionStatus {
-  state: 'empty' | 'untagged' | 'released' | 'unreleased';
+  state: 'empty' | 'untagged' | 'released' | 'unreleased' | 'fork';
   head: Commit | null;
   tag: { name: string; oid: string | null; committedDate: string | null } | null;
   release: Release | null;
   aheadBy: number | null;
+  upstream?: { repository: string; branch: string; head: string; aheadBy: number | null; behindBy: number | null };
 }
 
 export interface PagesStatus {
@@ -143,6 +147,7 @@ export interface NpmStatus {
   name: string | null;
   published: boolean;
   notAPackage?: boolean;
+  reason?: { en: string; ja: string };
   latest?: string | null;
   lastPublishedAt?: string | null;
   versionCount?: number;
@@ -182,6 +187,7 @@ export interface GitHubSummary {
   isArchived: boolean;
   isPrivate: boolean;
   isFork: boolean;
+  parent?: { nameWithOwner: string; defaultBranchRef?: { name: string; target: Commit | null } | null } | null;
   pushedAt: string | null;
   stars: number;
   license: string | null;

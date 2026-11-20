@@ -206,6 +206,8 @@ hour, which is not enough for a single package.
 
 ## Planning recursive releases
 
+Dependency updates, compatibility pins and non-npm distribution channels are explained in the [maintenance policy](docs/dependency-compatibility.ja.md) (Japanese).
+
 See the [release guide](docs/release-executor.md) for the full workflow. This section describes the rules.
 
 Preview the upstream processing order, dependency edits, version changes and publish

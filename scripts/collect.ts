@@ -16,11 +16,12 @@ import { promisify } from 'node:util';
 import { parseArgs } from 'node:util';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { revisionStatus } from './lib/revision.ts';
 import { releaseVersionsMatch } from './lib/release-version.ts';
 import { errorMessage } from './lib/errors.ts';
 import type {
   Catalog, CatalogEntry, DashboardPackage, DashboardReport, DeclaredDependency,
-  Dependency, PackageManifest, PagesStatus, RepositoryNode, RevisionStatus, TagNode,
+  Dependency, PackageManifest, PagesStatus, RepositoryNode,
 } from './lib/types.ts';
 import { loadCatalog } from './lib/catalog.ts';
 import { graphql, rest, pool } from './lib/github.ts';
@@ -59,6 +60,7 @@ const REPO_FIELDS = `
   isArchived
   isPrivate
   isFork
+  parent { nameWithOwner defaultBranchRef { name target { ... on Commit { oid committedDate } } } }
   pushedAt
   stargazerCount
   licenseInfo { spdxId }
@@ -173,56 +175,6 @@ async function fetchRepositories(owner: string, repoNames: string[]) {
   }
 
   return results;
-}
-
-/** The tag's commit, following annotated tags through to their target. */
-function tagCommit(tagNode: TagNode | null) {
-  if (!tagNode) return null;
-  const target = tagNode.target ?? {};
-  const commit = target.target ?? target;
-  return {
-    name: tagNode.name,
-    oid: commit.oid ?? target.oid ?? null,
-    committedDate: commit.committedDate ?? null,
-  };
-}
-
-async function revisionStatus(owner: string, repo: string, node: RepositoryNode): Promise<RevisionStatus> {
-  const head = node.defaultBranchRef?.target ?? null;
-  const tag = tagCommit(node.tags?.nodes?.[0] ?? null);
-
-  if (!head) return { state: 'empty', head: null, tag: null, release: null, aheadBy: null };
-
-  const release = node.latestRelease
-    ? {
-        tagName: node.latestRelease.tagName,
-        publishedAt: node.latestRelease.publishedAt,
-        url: node.latestRelease.url,
-        isPrerelease: node.latestRelease.isPrerelease,
-      }
-    : null;
-
-  const base = {
-    head: { oid: head.oid, committedDate: head.committedDate },
-    tag,
-    release,
-  };
-
-  if (!tag?.oid) return { ...base, state: 'untagged', aheadBy: null };
-  if (tag.oid === head.oid) return { ...base, state: 'released', aheadBy: 0 };
-
-  // Only ask how far ahead the branch is once we know it is ahead at all.
-  let aheadBy = null;
-  try {
-    const comparison = await rest<{ ahead_by?: number }>(
-      `/repos/${owner}/${repo}/compare/${encodeURIComponent(tag.name)}...${head.oid}`,
-    );
-    aheadBy = comparison?.ahead_by ?? null;
-  } catch (error) {
-    console.warn(`compare failed for ${repo}: ${errorMessage(error)}`);
-  }
-
-  return { ...base, state: 'unreleased', aheadBy };
 }
 
 /**
@@ -400,7 +352,7 @@ async function main() {
         record.errors.push(`npm: ${errorMessage(error)}`);
       }
     } else {
-      record.npm = { name: null, published: false, notAPackage: true };
+      record.npm = { name: null, published: false, notAPackage: true, ...(entry.npmReason ? { reason: entry.npmReason } : {}) };
     }
 
     // Does what npm serves match the newest tag in the repository?
