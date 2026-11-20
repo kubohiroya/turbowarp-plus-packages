@@ -9,6 +9,7 @@ import type { Command, ExecutionConfig, ExecutionEntry, ExecutionState, ReleaseD
 import type { PackagePlan } from './release-plan.ts';
 import { profileFromContract } from './release-contract.ts';
 import { effectiveUpdates, onlyDependencyUpdate } from './release-unneeded.ts';
+import { provenanceSource } from './release-provenance.ts';
 
 export class CommandFailure extends Error {
   constructor(readonly command: Command, readonly stdout: string, readonly stderr: string, readonly status: number | null) {
@@ -45,7 +46,7 @@ const unpublishedReference = (step: PackagePlan) => step.action === 'none' && !s
 const DIST_TAG_PROPAGATION_SECONDS = 300;
 const versionOf = (step: PackagePlan) => step.nextVersion ?? step.publishedVersion ?? step.currentVersion!;
 const tagOf = (step: PackagePlan) => `v${versionOf(step)}`;
-interface RegistryVersion { name: string; version: string; gitHead?: string; dist: { attestations?: { provenance?: { predicateType: string } } } }
+interface RegistryVersion { name: string; version: string; gitHead?: string; provenanceCommit?: string; dist: { integrity?: string; attestations?: { provenance?: { predicateType: string } } } }
 /**
  * The commit a release publishes from. npm records it as `gitHead` when publishing from a Git checkout, so the
  * registry tells where a version came from without fetching or comparing any tarball.
@@ -78,6 +79,12 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     try {
       const value = JSON.parse(await this.npm(profile, ['view', `${step.name}@${version}`, '--json', '--prefer-online', '--fetch-retries=0', '--fetch-timeout=15000'])) as RegistryVersion;
       assert(value.name === step.name && value.version === version, 'npmの版・名前が不正です。');
+      if (!value.gitHead && value.dist.integrity && value.dist.attestations?.provenance?.predicateType === 'https://slsa.dev/provenance/v1') {
+        const response = await fetch(`https://registry.npmjs.org/-/npm/v1/attestations/${encodeURIComponent(value.name)}@${value.version}`,
+          { signal: AbortSignal.timeout(15000) });
+        assert(response.ok, 'npmのprovenanceを取得できません。');
+        value.provenanceCommit = provenanceSource(value.name, value.version, value.dist.integrity, step.repository, await response.json()) ?? undefined;
+      }
       return value;
     } catch (error) { if (absent(error)) return null; throw error; }
   }
@@ -215,7 +222,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
   /** Whether npm says the version was published from the release's own commit. */
   private fromSource(profile: ReleaseProfile, entry: ExecutionEntry, published: RegistryVersion): boolean {
     const source = sourceOf(profile, entry);
-    return Boolean(source) && published.gitHead === source;
+    return Boolean(source) && (published.gitHead ?? published.provenanceCommit) === source;
   }
 
   /** Move pinned `<name>@<previous version>` references in tracked documentation to the release version. */
