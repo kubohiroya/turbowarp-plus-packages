@@ -1,2 +1,5 @@
 allowBuilds:
   esbuild: true
+
+minimumReleaseAgeExclude:
+  - '@kubohiroya/turbowarp-extension-manifest@0.6.0'
