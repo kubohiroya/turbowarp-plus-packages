@@ -58,7 +58,7 @@ export interface ReleasePlan {
 
 const FIELDS = Object.keys(DEPENDENCY_KINDS) as DependencyField[];
 const KINDS = Object.values(DEPENDENCY_KINDS);
-const STATES = ['empty', 'untagged', 'released', 'unreleased'];
+const STATES = ['empty', 'untagged', 'released', 'unreleased', 'fork'];
 const compare = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
 const object = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
