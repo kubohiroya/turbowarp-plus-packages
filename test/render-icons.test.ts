@@ -16,7 +16,8 @@ test('render prefers app favicons, escapes URLs, and preserves other icons and m
   });
   const report: DashboardReport = {
     generatedAt: '2026-10-25T00:00:00Z', owner: 'test', scope: '@test', site: {},
-    categories: [{ id: 'apps', title: 'Applications' }, { id: 'toolchain', title: 'Toolchain' }],
+    categories: [{ id: 'apps', title: 'Applications' }, { id: 'kamishibai', title: 'Kamishibai' },
+      { id: 'in-development', title: 'Other (in development)' }, { id: 'toolchain', title: 'Toolchain' }],
     packages: [
       pkg('app-with-favicon', 'apps', blockIcon, 'https://example.org/icon.svg?a=1&b="2"'),
       pkg('app-with-block', 'apps', blockIcon, null),
@@ -27,6 +28,9 @@ test('render prefers app favicons, escapes URLs, and preserves other icons and m
       { ...pkg('app-with-both', 'apps', blockIcon, 'https://example.org/preferred.svg'),
         pages: { enabled: true, svgFaviconUrl: 'https://example.org/preferred.svg',
           faviconUrl: 'https://example.org/fallback.png' } },
+      { ...pkg('kamishibai-app', 'kamishibai', blockIcon, 'https://example.org/kamishibai.svg'), application: true },
+      pkg('kamishibai-docs', 'kamishibai', blockIcon, 'https://example.org/docs.svg'),
+      { ...pkg('other-app', 'in-development', blockIcon, 'https://example.org/other.svg'), application: true },
     ],
   };
   try {
@@ -44,7 +48,7 @@ test('render prefers app favicons, escapes URLs, and preserves other icons and m
     assert.equal(result.status, 0, result.stderr);
     const html = await readFile(join(root, 'site/index.html'), 'utf8');
     const rows = [...html.matchAll(/<tr data-search=[\s\S]*?<\/tr>/g)].map((row) => row[0]);
-    assert.equal(rows.length, 6);
+    assert.equal(rows.length, 9);
     assert.match(rows[0], /<img class="icon" src="https:\/\/example.org\/icon.svg\?a=1&amp;b=&quot;2&quot;" alt="" width="20" height="20">/);
     assert.doesNotMatch(rows[0], /block-icon/);
     assert.match(rows[1], /<span class="icon" aria-hidden="true"><svg id="block-icon"><\/svg><\/span>/);
@@ -52,8 +56,14 @@ test('render prefers app favicons, escapes URLs, and preserves other icons and m
     assert.match(rows[3], /class="icon" src="https:\/\/example.org\/favicon.png"/);
     assert.match(rows[4], /preferred.svg/);
     assert.doesNotMatch(rows[4], /fallback.png|block-icon/);
-    assert.match(rows[5], /block-icon/);
-    assert.doesNotMatch(rows[5], /unused.svg/);
+    assert.match(rows[5], /kamishibai.svg/);
+    assert.doesNotMatch(rows[5], /block-icon/);
+    assert.match(rows[6], /block-icon/);
+    assert.doesNotMatch(rows[6], /docs.svg/);
+    assert.match(rows[7], /other.svg/);
+    assert.doesNotMatch(rows[7], /block-icon/);
+    assert.match(rows[8], /block-icon/);
+    assert.doesNotMatch(rows[8], /unused.svg/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -82,7 +82,7 @@ export function inheritedUnsandboxedRequirements(
   const byRepo = new Map(packages.map(pkg => [pkg.repo, pkg]));
   const result = new Map<string, string[]>();
   for (const pkg of packages) {
-    if (pkg.category !== 'apps' && pkg.unsandboxed === undefined) continue;
+    if (!pkg.application && pkg.category !== 'apps' && pkg.unsandboxed === undefined) continue;
     const visited = new Set([pkg.repo]);
     const required = new Set<string>();
     const pending = [pkg];
@@ -91,7 +91,7 @@ export function inheritedUnsandboxedRequirements(
       for (const dependency of current.dependencies ?? []) {
         if (!dependency.family) continue;
         // An app's build dependencies can be bundled extensions; a library's are not shipped.
-        if (dependency.kind === 'dev' && current.category !== 'apps') continue;
+        if (dependency.kind === 'dev' && !current.application && current.category !== 'apps') continue;
         const repo = npmToRepo.get(dependency.name);
         const target = repo && byRepo.get(repo);
         if (!target || visited.has(target.repo)) continue;

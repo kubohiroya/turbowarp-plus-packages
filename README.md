@@ -25,11 +25,19 @@ English | [日本語](README.ja.md)
 ## What the dashboard shows
 
 The dashboard displays the **Package list** only. Both the list and its table of
-contents separate **Apps & Documentation** (apps, documentation and samples)
-from **Development Packages** (all other categories). On wide screens, the table
+contents separate **Apps & Documentation** (Kamishibai and Other (in development)),
+**Editor** (Editor, Editor Extensions and Editor Test Support),
+**Toolchain** (Standalone Tools and Build Plugins & Tool Libraries), and **Development Packages** (all
+other categories). On wide screens, the table
 of contents stays on the left while scrolling; category links jump to their
 headings. On narrow screens it appears above the list. Categories with no
 search or status-filter matches are also hidden from the table of contents.
+Kamishibai brings together the app, guides, samples and dedicated site navigation;
+Other (in development) contains the remaining apps and shared site infrastructure.
+Editor contains only the web and desktop distributions; editor-only libraries appear under Editor Extensions.
+Standalone Tools contains the SB3 command-line tool and project starter. Build Plugins & Tool Libraries
+contains the Vite plugin, SB3 source builder and local preview library. The extension development
+template and manifest contract appear under Extension Contracts in Development Packages.
 The list includes summary cards, search,
 status filters and the third-party dependency toggle. There is no tab-style view
 switch. A graph icon immediately to the right of each category heading opens that

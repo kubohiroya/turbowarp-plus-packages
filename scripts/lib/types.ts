@@ -28,6 +28,7 @@ export interface RawCatalog {
     npm?: string | false;
     npmReason?: { en: string; ja: string };
     pages?: false;
+    application?: true;
     note?: string;
     label?: string;
     description?: string;
@@ -40,6 +41,8 @@ export interface RawCatalog {
 export interface CatalogEntry {
   repo: string;
   category: string;
+  /** A deployed app, regardless of its display category. */
+  application?: true;
   npm: string | null;
   npmReason?: { en: string; ja: string };
   /** False when the repository's Pages site is deliberately not shown. */
@@ -200,6 +203,8 @@ export interface DashboardPackage {
   repo: string;
   label: string;
   category: string;
+  /** A deployed app; legacy snapshots use the apps category instead. */
+  application?: true;
   note: string | null;
   /** Why the Editor catalog deliberately leaves this extension out for now. */
   editorCatalogHold?: string;

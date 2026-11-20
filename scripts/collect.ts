@@ -278,6 +278,7 @@ async function main() {
       repo: entry.repo,
       label: entry.label,
       category: entry.category,
+      ...(entry.application ? { application: true as const } : {}),
       note: entry.note,
       ...(entry.editorCatalogHold ? { editorCatalogHold: entry.editorCatalogHold } : {}),
       errors: [],
@@ -314,7 +315,7 @@ async function main() {
         return null;
       }),
       entry.pages
-        ? pagesStatus(owner, entry.repo, entry.category === 'apps')
+        ? pagesStatus(owner, entry.repo, entry.application === true || entry.category === 'apps')
         : Promise.resolve<PagesStatus>({ enabled: false }),
       analyseDependencies(node.packageJson?.text ?? null, { npmToRepo, localProtocols }),
     ]);

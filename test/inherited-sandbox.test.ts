@@ -42,6 +42,20 @@ test('includes direct prod, peer, optional and bundled development extensions', 
   }
 });
 
+test('regrouped apps retain bundled extension requirements while documentation stays excluded', () => {
+  const packages = [
+    { ...pkg('kamishibai-app', 'kamishibai', [dependency('extension', 'dev')]), application: true as const },
+    { ...pkg('other-app', 'in-development', [dependency('extension', 'dev')]), application: true as const },
+    pkg('kamishibai-docs', 'kamishibai', [dependency('extension', 'dev')]),
+    pkg('shared-site', 'in-development', [dependency('extension', 'dev')]),
+    pkg('extension', 'media', [], 'required'),
+  ];
+  assert.deepEqual([...inheritedUnsandboxedRequirements(packages, catalog(packages))], [
+    ['kamishibai-app', ['extension']],
+    ['other-app', ['extension']],
+  ]);
+});
+
 test('resolves catalog npm aliases and ignores external or absent repositories', () => {
   const packages = [
     pkg('app', 'apps', [dependency('alias'), dependency('missing'), { ...dependency('external'), family: false }]),
