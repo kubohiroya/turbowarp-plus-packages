@@ -4,7 +4,7 @@ import { DEPENDENCY_KINDS } from './dependencies.ts';
 import type { DashboardPackage, DashboardReport, Dependency } from './types.ts';
 
 type DependencyField = keyof typeof DEPENDENCY_KINDS;
-type VersionChange = 'none' | 'minor' | 'prerelease' | 'prepared' | 'initial';
+type VersionChange = 'none' | 'minor' | 'patch' | 'prerelease' | 'prepared' | 'initial';
 
 export interface PlanIssue {
   severity: 'warning' | 'blocker';
@@ -44,6 +44,7 @@ export interface ReleasePlan {
   mode: 'plan';
   direction?: 'downstream';
   reconcile?: true;
+  patch?: true;
   snapshot: { generatedAt: string; sha256: string };
   target: string;
   /** Present only when one downstream plan starts from several roots. */
@@ -117,8 +118,8 @@ function familyGitReference(range: string, owner: string, repo: string): boolean
 }
 
 /** Pure snapshot planning: no API requests, repository writes or release commands. */
-export function createReleasePlan(input: unknown, target: string, options: { reconcile?: boolean } = {}): ReleasePlan {
-  return createPlan(input, [target], false, options.reconcile ?? false);
+export function createReleasePlan(input: unknown, target: string, options: { reconcile?: boolean; patch?: boolean } = {}): ReleasePlan {
+  return createPlan(input, [target], false, options.reconcile ?? false, options.patch ?? false);
 }
 
 /**
@@ -126,12 +127,12 @@ export function createReleasePlan(input: unknown, target: string, options: { rec
  * Several roots share one plan, so a consumer of more than one root is updated and released once.
  */
 export function createDownstreamReleasePlan(
-  input: unknown, target: string | readonly string[], options: { reconcile?: boolean } = {},
+  input: unknown, target: string | readonly string[], options: { reconcile?: boolean; patch?: boolean } = {},
 ): ReleasePlan {
-  return createPlan(input, typeof target === 'string' ? [target] : target, true, options.reconcile ?? false);
+  return createPlan(input, typeof target === 'string' ? [target] : target, true, options.reconcile ?? false, options.patch ?? false);
 }
 
-function createPlan(input: unknown, targets: readonly string[], downstream: boolean, reconcile: boolean): ReleasePlan {
+function createPlan(input: unknown, targets: readonly string[], downstream: boolean, reconcile: boolean, patch: boolean): ReleasePlan {
   const report = snapshot(input);
   const repos = new Map<string, DashboardPackage>();
   const names = new Map<string, DashboardPackage>();
@@ -196,7 +197,7 @@ function createPlan(input: unknown, targets: readonly string[], downstream: bool
 
   const planned = new Map<string, PackagePlan>();
   for (const pkg of ordered) {
-    const step = planPackage(report.owner, pkg, names, planned, affected, reconcile);
+    const step = planPackage(report.owner, pkg, names, planned, affected, reconcile, patch);
     planned.set(pkg.repo, step);
   }
   const steps = [...planned.values()].filter((step) => !affected || affected.has(step.repo));
@@ -204,6 +205,7 @@ function createPlan(input: unknown, targets: readonly string[], downstream: bool
     schemaVersion: 1,
     mode: 'plan',
     ...(reconcile ? { reconcile: true as const } : {}),
+    ...(patch ? { patch: true as const } : {}),
     ...(downstream ? { direction: 'downstream' as const } : {}),
     snapshot: {
       generatedAt: report.generatedAt,
@@ -230,6 +232,7 @@ function planPackage(
   planned: Map<string, PackagePlan>,
   affected?: ReadonlySet<string>,
   reconcile = false,
+  patch = false,
 ): PackagePlan {
   const referenceOnly = affected !== undefined && !affected.has(pkg.repo);
   const step: PackagePlan = {
@@ -337,9 +340,9 @@ function planPackage(
       step.nextVersion = current;
       step.versionChange = 'initial';
     } else {
-      const increment = semver.prerelease(base) ? 'prerelease' : 'minor';
+      const increment = semver.prerelease(base) ? 'prerelease' : patch ? 'patch' : 'minor';
       // Do not implicitly promote an older RC manifest beyond a stable registry version.
-      const implicitPromotion = Boolean(semver.prerelease(current) && increment === 'minor');
+      const implicitPromotion = Boolean(semver.prerelease(current) && !semver.prerelease(base));
       let next = implicitPromotion ? null : semver.inc(base, increment);
       while (next && semver.valid(next) && versions.includes(next)) next = semver.inc(next, increment);
       if (next && semver.valid(next)) {

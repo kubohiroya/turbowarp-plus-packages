@@ -39,11 +39,17 @@ export async function loadCatalog(path = 'catalog.yaml'): Promise<Catalog> {
         (typeof override.editorCatalogHold !== 'string' || !override.editorCatalogHold.trim())) {
         throw new Error(`${path}: "editorCatalogHold" for "${repo}" must say why it is held`);
       }
+      if (override.npmReason !== undefined && (override.npm !== false ||
+        !override.npmReason || typeof override.npmReason.en !== 'string' || !override.npmReason.en.trim() ||
+        typeof override.npmReason.ja !== 'string' || !override.npmReason.ja.trim())) {
+        throw new Error(`${path}: npmReason for "${repo}" requires npm: false and English/Japanese reasons`);
+      }
       entries.push({
         repo,
         category: category.id,
         npm: override.npm === false ? null : (override.npm ?? `${scope}/${repo}`),
         pages: override.pages !== false,
+        ...(override.npmReason ? { npmReason: override.npmReason } : {}),
         note: override.note ?? null,
         label: override.label ?? repo,
         // Summaries are read from the repository's own READMEs; these only

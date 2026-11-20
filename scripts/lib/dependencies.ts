@@ -45,9 +45,13 @@ export function evaluateRange({ range, versions, localProtocols = [] }: {
   }
 
   const stable = versions.filter((v) => !semver.prerelease(v));
-  const latest =
+  let latest =
     semver.maxSatisfying(stable.length ? stable : versions, '*', { includePrerelease: true }) ?? null;
   const wanted = semver.maxSatisfying(versions, range, { loose: true }) ?? null;
+
+  // Some vendors use a prerelease-shaped name for newer production artifacts.
+  // Never call a selected newer version stale relative to an older stable release.
+  if (latest && wanted && semver.gt(wanted, latest)) latest = wanted;
 
   if (!latest) return { local: false, stale: false, missing: true };
 

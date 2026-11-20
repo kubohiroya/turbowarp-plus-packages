@@ -621,6 +621,17 @@ function revisionCell(pkg: DashboardPackage) {
   const tag = rev.tag?.name ? esc(rev.tag.name) : '';
   const when = relativeDate(rev.head?.committedDate);
 
+  if (rev.state === 'fork') {
+    const upstream = rev.upstream;
+    if (!upstream || upstream.aheadBy == null || upstream.behindBy == null) {
+      return `<span class="tag warn">${t('fork comparison unavailable', '上流との比較は未取得')}</span><span class="sub">${when}</span>`;
+    }
+    const same = upstream.aheadBy === 0 && upstream.behindBy === 0;
+    const label = same ? t('matches upstream', '上流と同一') :
+      t(`${upstream.aheadBy} ahead / ${upstream.behindBy} behind upstream`, `上流比 ${upstream.aheadBy} 先行 / ${upstream.behindBy} 遅れ`);
+    const url = `https://github.com/${upstream.repository}`;
+    return `<span class="tag ${same ? 'ok' : 'warn'}">${label}</span><span class="sub"><a href="${esc(url)}">${esc(upstream.repository)}</a> · ${esc(upstream.branch)}</span>`;
+  }
   if (rev.state === 'untagged') {
     return `<span class="tag">${t('untagged', 'タグなし')}</span><span class="sub">${when}</span>`;
   }
@@ -680,7 +691,9 @@ function pagesCell(pkg: DashboardPackage, thumb: Thumbnail | undefined) {
 function npmCell(pkg: DashboardPackage) {
   const npm: Partial<NpmStatus> = pkg.npm ?? {};
   if (npm.notAPackage) {
-    return `<span class="muted">—<span class="sub">${t('not an npm package', 'npm 対象外')}</span></span>`;
+    const reason = npm.reason ? t(esc(npm.reason.en), esc(npm.reason.ja)) :
+      t('distribution reason not recorded', '配布方式の理由が未記録');
+    return `<span class="muted">—<span class="sub">${t('not an npm package', 'npm 対象外')}</span></span><span class="sub${npm.reason ? '' : ' tag warn'}">${reason}</span>`;
   }
   if (!npm.published) {
     return `<span class="tag bad">${t('unpublished', '未公開')}</span>`;
@@ -1218,7 +1231,8 @@ ${report.categories.filter((category) => byCategory.get(category.id)?.length).ma
 <footer>
   ${t(`Generated ${generated}`, `生成 ${generated}`)} ·
   <a href="${repoUrl}">${t('source', 'ソース')}</a> ·
-  <a href="${repoUrl}/blob/main/catalog.yaml">catalog.yaml</a>
+  <a href="${repoUrl}/blob/main/catalog.yaml">catalog.yaml</a> ·
+  <a href="${repoUrl}/blob/main/docs/dependency-compatibility.ja.md">${t('dependency policy', '依存の固定方針')}</a>
 </footer>
 </div>
 <script>${SCRIPT}</script>
