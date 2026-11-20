@@ -36,3 +36,18 @@ test('patch selection cannot silently promote a prerelease beyond a newer stable
   const plan = createDownstreamReleasePlan(report, 'core', { patch: true });
   assert.equal(plan.ready, false); assert(plan.steps[0].issues.some(i => i.code === 'prerelease-series'));
 });
+
+test('a collected fork outside the release closure does not reject the whole snapshot', () => {
+  const report = input();
+  const fork = pkg('scratch-gui', '3.2.37');
+  fork.manifest!.private = true;
+  fork.npm = { name: null, published: false, notAPackage: true };
+  fork.revision!.state = 'fork';
+  fork.revision!.aheadBy = null;
+  fork.revision!.upstream = { repository: 'TurboWarp/scratch-gui', branch: 'develop', head: b, aheadBy: 135, behindBy: 0 };
+  report.packages.push(fork);
+  const plan = createDownstreamReleasePlan(report, 'core', { patch: true });
+  assert.equal(plan.ready, true);
+  assert.deepEqual(plan.order, ['core', 'consumer']);
+  assert.deepEqual(plan.steps.map(step => step.nextVersion), ['1.2.1', '4.0.1']);
+});
