@@ -5,6 +5,8 @@ import { errorMessage } from './errors.ts';
 import { describeFromReadme } from './descriptions.ts';
 import {catalogIconURL} from './extension-branding.ts';
 import type { DashboardPackage, DashboardReport } from './types.ts';
+import {readPackageResourceDeclaration, parseResourceDeclaration} from '@kubohiroya/turbowarp-extension-manifest/resources';
+import type {ResourceDeclaration} from '@kubohiroya/turbowarp-extension-manifest/resources';
 
 export interface EditorExtension {
   id: string;
@@ -24,6 +26,7 @@ export interface EditorExtension {
   license?: string;
   banner?: string;
   unsandboxed?: 'required' | 'optional' | 'not-needed' | 'unknown';
+  resourceDeclaration?: ResourceDeclaration;
   dependencies: string[];
 }
 export interface EditorCategory {
@@ -38,6 +41,7 @@ export interface EditorCatalog {
   extensions: EditorExtension[];
 }
 export interface PublishedManifest {
+  turbowarpExtension?: {resourceDeclaration?: unknown};
   name?: string;
   version?: string;
   jsdelivr?: string;
@@ -83,6 +87,7 @@ export function extensionDisplayName(
 
 /** Apply catalog-owned labels and illustrations without rewriting executable sources. */
 export function catalogEntryPresentation(entry: EditorExtension): EditorExtension {
+  parseResourceDeclaration(entry.resourceDeclaration);
   const banner = catalogIconURL(entry.package);
   return {...entry, name: extensionDisplayName(entry.name, entry.package), ...(banner ? {banner} : {})};
 }
@@ -226,6 +231,7 @@ async function readPublishedExtension(pkg: DashboardPackage, allowPrerelease: bo
   if (manifest.name !== name || manifest.version !== version) {
     throw new Error(`Published manifest mismatch: ${name}@${version}`);
   }
+  const resourceDeclaration = readPackageResourceDeclaration(manifest);
   const paths = tree.files.map(f => f.name).filter(path => /^\/dist\/[^/]+\.js$/.test(path));
   const preferred = [manifest.jsdelivr, manifest.unpkg].filter((path): path is string => typeof path === 'string')
     .map(path => `/${path.replace(/^\.\//, '').replace(/^\//, '')}`);
@@ -269,6 +275,7 @@ async function readPublishedExtension(pkg: DashboardPackage, allowPrerelease: bo
       license: metadata.license ?? manifest.license,
       ...(banner ? { banner } : {}),
       unsandboxed,
+      ...(resourceDeclaration !== undefined ? {resourceDeclaration} : {}),
       dependencies: [],
     } };
   }

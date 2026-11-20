@@ -28,6 +28,15 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DATA = join(ROOT, 'data', 'dashboard.json');
 const SITE = join(ROOT, 'site');
 const OUT = join(SITE, 'index.html');
+// Read the generated public catalog, whose declarations describe its exact npm artifacts.
+let resourceDisplays = new Map<string, {version: string; html: string}>();
+try {
+  const catalog = JSON.parse(await readFile(join(SITE, 'extensions-v1.json'), 'utf8'));
+  const {catalogResourceDisplays} = await import('./lib/resource-display.ts');
+  resourceDisplays = catalogResourceDisplays(catalog);
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+}
 
 /**
  * The shared header every documentation site in this family loads. Served from
@@ -197,6 +206,25 @@ html[lang="ja"] thead th { text-transform: none; letter-spacing: 0; font-size: 1
 tbody tr:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
 td.name { min-width: 230px; }
 td.name .pkg { font-weight: 600; display: flex; align-items: center; gap: 7px; }
+.resource-status, .resource-disclosure { margin: 6px 0 0; font-size: .85em; overflow-wrap: anywhere; }
+.resource-disclosure summary { cursor: pointer; }
+.resource-disclosure:not([open]) .resource-heading,
+.resource-disclosure:not([open]) .resource-label {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+.resource-disclosure:not([open]) .resource-chip { padding: 4px; }
+.resource-disclosure:not([open]) + .resource-origin { display: none; }
+.resource-chips { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; margin: 2px 0 0 6px; vertical-align: middle; }
+.resource-chip { display: inline-flex; align-items: center; gap: 4px; }
+.resource-chip svg { width: 18px; height: 18px; flex: 0 0 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.resource-disclosure dl { margin: 8px 0; }
+.resource-disclosure dl > div { margin: 8px 0; }
+.resource-disclosure dt { font-weight: bold; }
+.resource-disclosure dd { margin: 3px 0 0 10px; }
+.resource-disclosure p { margin: 4px 0 0; }
+.resource-origin { display: block; font-size: .75em; color: var(--muted); overflow-wrap: anywhere; }
+.resource-disclosure summary:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 /* Show the app's favicon or the extension's palette icon at the same size. */
 td.name .pkg .icon { flex: 0 0 auto; width: 20px; height: 20px; }
 td.name .pkg img.icon { object-fit: contain; }
@@ -810,6 +838,7 @@ function row(pkg: DashboardPackage, thumb: Thumbnail | undefined, editorUrl: str
   <td class="name">
     <div class="pkg">${icon}<a href="${esc(gh.url ?? '#')}">${esc(pkg.label)}</a>${archived}</div>
     <div class="desc">${summary}</div>
+    ${pkg.npm?.name && resourceDisplays.has(pkg.npm.name) ? resourceDisplays.get(pkg.npm.name)!.html : ''}
     ${sandboxBadge(pkg)}
     ${note}
   </td>
