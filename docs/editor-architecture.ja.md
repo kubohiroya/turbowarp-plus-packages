@@ -284,4 +284,4 @@ TurboWarp-Plus全体で、機能拡張だけでなくアセットやDSLファイ
 
 - [turbowarp-plus-editor: 責務と配信](https://github.com/kubohiroya/turbowarp-plus-editor/blob/main/docs/architecture.md)
 - [turbowarp-plus-editor: 拡張ローダーの接続仕様](https://github.com/kubohiroya/turbowarp-plus-editor/blob/main/docs/extension-loader-integration.md)
-- [依存順でのリリース実行](release-executor.md)
+- [plus-family の更新からダッシュボードまで](release-executor.md)

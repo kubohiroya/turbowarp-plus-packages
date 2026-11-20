@@ -232,3 +232,11 @@ test('a version the merge push already published is accepted on resume', async (
   await execute.published(step, configured, entry);
   assert.equal(entry.workflowRun, 42);
 });
+
+test('prepare-mode rechecks never clean remote branches', async () => {
+  const entry = record();
+  const state: ExecutionState = { schemaVersion: 1, digest: 'c'.repeat(64), entries: { tool: entry } };
+  const execute = new GithubNpmReleaseDriver('/unused', { schemaVersion: 1, repositories: {} }, state,
+    async () => {}, async () => { throw new Error('cleanup must not run'); }, async () => {}, { verifyOnly: true });
+  await execute.complete({ ...step, action: 'update-only' }, profile, entry);
+});

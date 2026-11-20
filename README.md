@@ -1,6 +1,8 @@
 # TurboWarp Plus
 
-Release execution: [dry-run, dependency-ordered updates and publication](docs/release-executor.md).
+Release guide: [family updates through dashboard publication (Japanese)](docs/release-executor.md).
+
+Automation: [scripts and AI (Japanese)](docs/release-automation.ja.md).
 
 Runnable samples: [distribution standard and demo plans for all extensions (Japanese)](docs/sample-projects/plan.ja.md).
 
@@ -204,6 +206,8 @@ hour, which is not enough for a single package.
 
 ## Planning recursive releases
 
+See the [release guide](docs/release-executor.md) for the full workflow. This section describes the rules.
+
 Preview the upstream processing order, dependency edits, version changes and publish
 targets for one package using the existing analysis. The default input is
 `data/dashboard.json`. If absent locally, use the JSON from the Pages workflow's
@@ -257,10 +261,12 @@ publish to npm. There is no `--apply` option.
 Plans include the analysis timestamp, SHA-256 of the reserialized JSON, and each
 repository's recorded HEAD SHA. They describe the snapshot, without checking
 current GitHub/npm state or compatibility. Exit codes: `0` for a completed plan,
-`1` for argument/input errors, `2` for unresolved items. Future execution requires
-fresh state checks, validation and approval.
+`1` for argument/input errors, `2` for unresolved items. Follow the
+[release steps](docs/release-executor.md#作業手順) to execute.
 
 ## Bumping downstream dependents
+
+See the [release guide](docs/release-executor.md) to proceed to publication.
 
 Select an upstream package to plan updates for all its direct and transitive
 dependents in dependency order, including development dependencies used to build
@@ -307,6 +313,8 @@ succeeds with exit code `0` when `ready: true` and `applyReady: false`.
 Review snapshot warnings and actual compatibility before applying.
 
 ## How it is published
+
+See the [dashboard steps](docs/release-executor.md#6-ダッシュボードを更新する) after publishing packages.
 
 [`.github/workflows/pages.yml`](.github/workflows/pages.yml) runs the whole
 pipeline on every push to `main`, once a day on a schedule, and on demand, then

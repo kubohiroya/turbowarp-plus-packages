@@ -13,6 +13,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { parseArgs } from 'node:util';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { releaseVersionsMatch } from './lib/release-version.ts';
@@ -46,7 +47,8 @@ interface DependencyAnalysis {
 }
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const OUT = join(ROOT, 'data', 'dashboard.json');
+const { values } = parseArgs({ options: { output: { type: 'string' } } });
+const OUT = values.output ?? join(ROOT, 'data', 'dashboard.json');
 const BATCH_SIZE = 15;
 
 const REPO_FIELDS = `

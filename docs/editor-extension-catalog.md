@@ -12,6 +12,8 @@ EditorのPlus一覧は、Pagesで配信する次のJSONをHTTPSで取得しま�
 Pages workflowおよび `build` / `build:no-thumbnails` に組み込み、ダッシュボードと
 同じ `site/` を配信します。生成物はコミットしません。
 
+パッケージの依存更新は[手順書](release-executor.md)を参照してください。
+
 ## JSON契約（v1）
 
 ```json
