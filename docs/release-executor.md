@@ -150,6 +150,8 @@ main への push と毎日の定期実行でも動きます。
 - [本家追従](#本家追従turbowarp-plus-editor)
 
 通常は中央 config 不要です。導入中なので `--discover` は明示します。
+専用 checkout は partial clone（`--filter=blob:none`）で作り、ファイルの中身は必要になった分だけ取ります。
+生成物を履歴に多く持つリポジトリ（kamishibai-samples の履歴は約 6GB）でも、clone は現在の木の分で済みます。
 実行時に `--reference-dir ..` を付ければ、既存 checkout からオブジェクトを借りられます。
 その場合は実行中に参照元で `git gc --prune=now` などを行わないでください。
 
