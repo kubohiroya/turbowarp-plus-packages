@@ -76,3 +76,24 @@ overrides:
     application: 'true'
 `)), /"application" for "shown-site" may only be true/);
 });
+
+test('dashboard roles preserve dependency categories and reject unknown roles', async () => {
+  const result = await loadCatalog(await catalog(`${BASE}
+overrides:
+  shown-site:
+    dashboardGroup: extensions
+  hidden-site:
+    dashboardGroup: infrastructure
+`));
+  assert.deepEqual(result.entries.map(({category, dashboardGroup}) => ({category, dashboardGroup})), [
+    {category: 'foundation', dashboardGroup: 'extensions'},
+    {category: 'foundation', dashboardGroup: 'infrastructure'},
+  ]);
+  for (const value of ['other', 'true', 'false', 'null', '42', '[]']) {
+    await assert.rejects(loadCatalog(await catalog(`${BASE}
+overrides:
+  shown-site:
+    dashboardGroup: ${value}
+`)), /"dashboardGroup" for "shown-site" must be extensions or infrastructure/);
+  }
+});

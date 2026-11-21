@@ -1,4 +1,7 @@
 /** Shared catalog, API and dashboard data contracts. */
+/** Display roles are independent of dependency categories and publication state. */
+export type DashboardGroup = 'extensions' | 'infrastructure';
+
 export interface SiteConfig {
   title?: string;
   tagline?: string;
@@ -29,6 +32,7 @@ export interface RawCatalog {
     npmReason?: { en: string; ja: string };
     pages?: false;
     application?: true;
+    dashboardGroup?: DashboardGroup;
     note?: string;
     label?: string;
     description?: string;
@@ -41,6 +45,7 @@ export interface RawCatalog {
 export interface CatalogEntry {
   repo: string;
   category: string;
+  dashboardGroup?: DashboardGroup;
   /** A deployed app, regardless of its display category. */
   application?: true;
   npm: string | null;
@@ -203,6 +208,7 @@ export interface DashboardPackage {
   repo: string;
   label: string;
   category: string;
+  dashboardGroup?: DashboardGroup;
   /** A deployed app; legacy snapshots use the apps category instead. */
   application?: true;
   note: string | null;

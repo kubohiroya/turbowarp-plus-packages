@@ -278,6 +278,7 @@ async function main() {
       repo: entry.repo,
       label: entry.label,
       category: entry.category,
+      ...(entry.dashboardGroup ? { dashboardGroup: entry.dashboardGroup } : {}),
       ...(entry.application ? { application: true as const } : {}),
       note: entry.note,
       ...(entry.editorCatalogHold ? { editorCatalogHold: entry.editorCatalogHold } : {}),

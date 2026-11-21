@@ -27,8 +27,8 @@ English | [日本語](README.ja.md)
 The dashboard displays the **Package list** only. Both the list and its table of
 contents separate **Apps & Documentation** (Kamishibai and Other (in development)),
 **Editor** (Editor, Editor Extensions and Editor Test Support),
-**Toolchain** (Standalone Tools and Build Plugins & Tool Libraries), and **Development Packages** (all
-other categories). On wide screens, the table
+**Toolchain** (Standalone Tools and Build Plugins & Tool Libraries), **TurboWarp-Plus Extensions**,
+**Development & Runtime Support**, and **Upstream Forks**. On wide screens, the table
 of contents stays on the left while scrolling; category links jump to their
 headings. On narrow screens it appears above the list. Categories with no
 search or status-filter matches are also hidden from the table of contents.
@@ -36,14 +36,21 @@ Kamishibai brings together the app, guides, samples and dedicated site navigatio
 Other (in development) contains the remaining apps and shared site infrastructure.
 Editor contains only the web and desktop distributions; editor-only libraries appear under Editor Extensions.
 Standalone Tools contains the SB3 command-line tool and project starter. Build Plugins & Tool Libraries
-contains the Vite plugin, SB3 source builder and local preview library. The extension development
-template and manifest contract appear under Extension Contracts in Development Packages.
+contains the Vite plugin, SB3 source builder and local preview library.
+TurboWarp-Plus Extensions contains only extensions loaded into projects, organized by purpose.
+Shared data, expressions and UI integration appear under Shared Features & UI; title and menu
+controls appear under App Controls. Development & Runtime Support separates Extension Development
+Support (templates, manifest contracts, data editing APIs and document source contracts), App Runtime
+Support (shells, loaders and runtime adapters), and Support Libraries (scene graphs and linked QR codes).
+Upstream Forks contains the GUI, VM, renderer, audio and font source forks.
 The list includes summary cards, search,
 status filters and the third-party dependency toggle. There is no tab-style view
 switch. A graph icon immediately to the right of each category heading opens that
 category's package relationships in a modal dialog. List filters and scroll
 position remain unchanged; the graph includes the entire category regardless of
-list filters. Close with the visible button, Escape or a click on the backdrop to return to the invoking
+list filters or display groups. For example, Camera & Codes includes both the camera extension and
+the linked-QR library, even though they appear in different display groups.
+Close with the visible button, Escape or a click on the backdrop to return to the invoking
 icon. The dialog keeps keyboard focus inside it while open.
 
 Arrows point from dependent to dependency. The diagram shows production, peer,
@@ -164,6 +171,14 @@ may use A, directly or through other categories. Move the lower-level package, o
 split it into a category of its own, instead. The criteria in `catalog.yaml`
 explain the current split, and the dashboard warns when collected data contains a
 cycle.
+
+List and TOC display groups are independent of dependency categories. Set
+`overrides.<repo>.dashboardGroup` to `extensions` or `infrastructure` for exceptions.
+App Shell and Extension Contracts default to infrastructure; the data, presentation,
+spatial, camera, sensing, network and wrapper domains default to extensions.
+Roles are explicit for mixed categories, independent of publication or Editor catalog holds.
+This does not change dependency analysis or Editor catalog categories. Collect again before
+rendering after a role change; older snapshots do not contain the new overrides.
 
 The npm name defaults to `@kubohiroya/<repo>`. Override it with `npm:` when they
 differ, or `npm: false` for a repository that is deliberately not an npm package
