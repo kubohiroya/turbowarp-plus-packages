@@ -63,6 +63,12 @@ localProtocols: [file:, link:, workspace:, portal:, patch:]
 # dependency would close a cycle, move the lower-level package into a category
 # of its own (as camera was split from sensing) rather than draw an arrow back.
 # The dashboard warns about any cycle it finds in the collected data.
+#
+# Dependency categories and dashboard roles are separate: a package may be a
+# runnable extension or a support library within the same dependency domain.
+# Use overrides.dashboardGroup for exceptions to a category's display role:
+# shell/contracts default to infrastructure, and domain categories to extensions.
+# This is an explicit role, independent of npm publication or Editor catalog holds.
 
 categories:
   # Includes: standalone commands for building SB3 projects and preparing
@@ -399,10 +405,30 @@ categories:
 # which is intentional: that is a status worth seeing.
 # `application: true` identifies deployed apps independently of their category
 # for favicon collection and bundled-extension sandbox requirements.
+# `dashboardGroup: extensions | infrastructure` changes only the list and TOC
+# group. It does not change dependency categories or Editor catalog membership.
 # `editorCatalogHold: <reason>` keeps an extension (and whatever depends on it)
 # out of the Editor extension catalog even when its dependency ranges are met.
 # Remove the key to let it back in.
 overrides:
+  turbowarp-title-menu:
+    dashboardGroup: extensions
+  turbowarp-runtime-expression:
+    dashboardGroup: extensions
+  turbowarp-named-data:
+    dashboardGroup: extensions
+  turbowarp-named-functions:
+    dashboardGroup: extensions
+  turbowarp-jotai-adapter:
+    dashboardGroup: extensions
+  turbowarp-react-islands:
+    dashboardGroup: extensions
+  turbowarp-diagnostic-overlay:
+    dashboardGroup: extensions
+  turbowarp-scene-graph:
+    dashboardGroup: infrastructure
+  qrcode-structured-append:
+    dashboardGroup: infrastructure
   turbowarp-plus-editor:
     buildSource: fixed-editor-gui
   scratch-gui:

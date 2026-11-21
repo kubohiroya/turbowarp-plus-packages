@@ -156,6 +156,7 @@ a:hover { text-decoration: underline; }
 .package-group > header { margin-bottom: 20px; padding: 18px 20px; border-left: 4px solid var(--accent); background: var(--idle-bg); border-radius: 0 10px 10px 0; }
 .package-group > header h3 { margin: 0 0 4px; font-size: 23px; }
 .package-group > header p { margin: 0; color: var(--muted); font-size: 13px; }
+.nowrap { white-space: nowrap; }
 #package-list section[data-category] { scroll-margin-top: calc(var(--toolbar-height, 160px) + 16px); }
 
 header.hero { padding: 40px 0 24px; display: flex; gap: 20px; align-items: flex-start; }
@@ -1112,28 +1113,68 @@ async function main() {
   const head = HEADERS.map(([en, ja]) => `<th>${t(en, ja)}</th>`).join('');
 
   const visibleCategories = report.categories.filter((category) => byCategory.get(category.id)?.length);
+  const defaultGroup = (category: string) => {
+    if (['kamishibai', 'in-development', 'apps', 'docs'].includes(category)) return 'use';
+    if (['foundation', 'editor-extensions', 'editor-testing'].includes(category)) return 'editor';
+    if (['toolchain', 'toolchain-components'].includes(category)) return 'toolchain';
+    if (category === 'forks') return 'forks';
+    if (['data', 'media', 'spatial', 'camera', 'sensing', 'network', 'wraps'].includes(category)) return 'extensions';
+    return 'infrastructure';
+  };
+  const packageGroup = (pkg: DashboardPackage) => pkg.dashboardGroup ?? defaultGroup(pkg.category);
+  // A dependency domain can contain both extensions and libraries. Keep that
+  // domain for graphs, with distinct anchors for its separate list sections.
+  const sectionLabels: Record<string, [string, string, string, string]> = {
+    'extensions:contracts': ['Shared Features & UI', '共通機能・UI',
+      'Loadable extensions for shared data, expressions, framework integration and diagnostics.', '共通データ・式・フレームワーク連携・診断を作品で使うための機能拡張。'],
+    'extensions:shell': ['App Controls', 'アプリ操作',
+      'Loadable extensions for controlling the title and menus of a packaged app.', '作品からパッケージ化したアプリのタイトルやメニューを操作する機能拡張。'],
+    'infrastructure:contracts': ['Extension Development Support', '拡張開発基盤',
+      'Templates, manifest contracts and shared APIs used to develop extensions.', '拡張を開発するためのテンプレート・マニフェスト契約・共通API。'],
+    'infrastructure:shell': ['App Runtime Support', 'アプリ実行基盤',
+      'App shells, runtime adapters, extension loading, live reload and app templates.', 'アプリシェル・ランタイム接続・拡張読み込み・ライブリロード・アプリ雛形。'],
+    'infrastructure:spatial': ['Support Libraries: 3D & Space', '補助ライブラリ（3D・空間）',
+      'Libraries used by extensions and apps to process scene descriptions.', '機能拡張やアプリがシーン記述を処理するために利用するライブラリ。'],
+    'infrastructure:camera': ['Support Libraries: QR Codes', '補助ライブラリ（QRコード）',
+      'Libraries used by extensions and apps to encode and reconstruct linked QR codes.', '機能拡張やアプリが連結QRコードを生成・復元するために利用するライブラリ。'],
+  };
   const groups = [
     {
       id: 'use', title: t('Apps & Documentation', 'アプリ・ドキュメント'),
       description: t('Ready-to-use apps, guides and sample projects.', 'そのまま使えるアプリと、使い方を学ぶガイド・サンプル。'),
-      categories: visibleCategories.filter((category) => ['kamishibai', 'in-development', 'apps', 'docs'].includes(category.id)),
     },
     {
       id: 'editor', title: t('Editor', 'エディター'),
       description: t('Editor distributions, editor-only libraries and test support.', 'エディター本体と専用ライブラリ、テスト基盤。'),
-      categories: visibleCategories.filter((category) => ['foundation', 'editor-extensions', 'editor-testing'].includes(category.id)),
     },
     {
       id: 'toolchain', title: t('Toolchain', 'ツールチェーン'),
       description: t('Standalone development commands and reusable build and preview tools.', '単独で使う開発コマンドと、他のプロジェクトに組み込むビルド・プレビュー用ツール。'),
-      categories: visibleCategories.filter((category) => ['toolchain', 'toolchain-components'].includes(category.id)),
     },
     {
-      id: 'develop', title: t('Development Packages', '開発用パッケージ'),
-      description: t('Extensions and tools for building projects and apps.', 'プロジェクトやアプリを作るための拡張・ツール。'),
-      categories: visibleCategories.filter((category) => !['kamishibai', 'in-development', 'apps', 'docs', 'foundation', 'editor-extensions', 'editor-testing', 'toolchain', 'toolchain-components'].includes(category.id)),
+      id: 'extensions', title: t('TurboWarp-Plus Extensions', 'TurboWarp-Plus<wbr><span class="nowrap">機能拡張</span>'),
+      description: t('Extensions loaded into projects, organized by what they do.', '作品に読み込んで使う機能拡張を、用途別に探せます。'),
     },
-  ].filter((group) => group.categories.length);
+    {
+      id: 'infrastructure', title: t('Development & Runtime Support', '開発・実行基盤'),
+      description: t('Extension development APIs and templates, app runtime support and helper libraries.', '拡張開発用のAPI・テンプレート、アプリの実行基盤、補助ライブラリ。'),
+    },
+    {
+      id: 'forks', title: t('Upstream Forks', '上流フォーク'),
+      description: t('Upstream TurboWarp sources used to build the editor and runtime.', 'エディターや実行環境の構築に使うTurboWarp上流ソースのフォーク。'),
+    },
+  ].map((group) => ({...group, categories: visibleCategories.flatMap((category) => {
+    const packages = byCategory.get(category.id)!.filter((pkg) => packageGroup(pkg) === group.id);
+    if (!packages.length) return [];
+    const labels = sectionLabels[`${group.id}:${category.id}`];
+    return [{
+      ...category,
+      ...(labels ? {title: labels[0], titleJa: labels[1], description: labels[2], descriptionJa: labels[3]} : {}),
+      id: defaultGroup(category.id) === group.id ? category.id : `${group.id}-${category.id}`,
+      sourceCategory: category,
+      packages,
+    }];
+  })})).filter((group) => group.categories.length);
 
   const toc = `<nav class="category-toc" aria-labelledby="toc-heading">
   <h2 id="toc-heading">${t('Contents', '目次')}</h2>
@@ -1143,9 +1184,10 @@ async function main() {
   </div>`).join('\n')}
 </nav>`;
 
-  const sections = new Map(visibleCategories
+  const sections = new Map(groups.flatMap((group) => group.categories)
     .map((category) => {
-      const packages = byCategory.get(category.id) ?? [];
+      const packages = category.packages;
+      const source = category.sourceCategory;
 
       const rows = packages.map((pkg) => row(pkg, thumbs.get(pkg.repo), report.site?.demoEditorUrl ?? DEFAULT_DEMO_EDITOR)).join('\n');
       const heading = t(esc(category.title), esc(category.titleJa ?? category.title));
@@ -1155,9 +1197,9 @@ async function main() {
 
       return [category.id, `<section data-category="${esc(category.id)}" id="category-${esc(category.id)}" aria-labelledby="category-heading-${esc(category.id)}" tabindex="-1">
   <div class="category-heading"><h4 id="category-heading-${esc(category.id)}">${heading}</h4>
-    <button type="button" class="category-graph" data-graph-open="relationships-${esc(category.id)}" aria-haspopup="dialog" aria-controls="relationships-${esc(category.id)}" title="${esc(category.title)} / ${esc(category.titleJa ?? category.title)}: Package relationships / パッケージ相関図">
+    <button type="button" class="category-graph" data-graph-open="relationships-${esc(source.id)}" aria-haspopup="dialog" aria-controls="relationships-${esc(source.id)}" title="${esc(source.title)} / ${esc(source.titleJa ?? source.title)}: All packages in this dependency category / 依存カテゴリ全体のパッケージ相関図">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 7L16 7M7 9L11 17M17 9L13 17"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="19" r="3"/></svg>
-      <span class="sr-only">${t(`View relationships: ${esc(category.title)}`, `パッケージ相関図を表示：${esc(category.titleJa ?? category.title)}`)}</span>
+      <span class="sr-only">${t(`View all relationships: ${esc(source.title)}`, `依存カテゴリ全体のパッケージ相関図を表示：${esc(source.titleJa ?? source.title)}`)}</span>
     </button>
   </div>
   ${lead}

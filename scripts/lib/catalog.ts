@@ -29,6 +29,10 @@ export async function loadCatalog(path = 'catalog.yaml'): Promise<Catalog> {
       seen.set(repo, category.id);
 
       const override = overrides[repo] ?? {};
+      if (override.dashboardGroup !== undefined &&
+        !['extensions', 'infrastructure'].includes(override.dashboardGroup)) {
+        throw new Error(`${path}: "dashboardGroup" for "${repo}" must be extensions or infrastructure`);
+      }
       if (override.application !== undefined && override.application !== true) {
         throw new Error(`${path}: "application" for "${repo}" may only be true`);
       }
@@ -50,6 +54,7 @@ export async function loadCatalog(path = 'catalog.yaml'): Promise<Catalog> {
       entries.push({
         repo,
         category: category.id,
+        ...(override.dashboardGroup ? { dashboardGroup: override.dashboardGroup } : {}),
         ...(override.application ? { application: true as const } : {}),
         npm: override.npm === false ? null : (override.npm ?? `${scope}/${repo}`),
         pages: override.pages !== false,
