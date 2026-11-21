@@ -46,6 +46,10 @@ export async function loadCatalog(path = 'catalog.yaml'): Promise<Catalog> {
         (typeof override.editorCatalogHold !== 'string' || !override.editorCatalogHold.trim())) {
         throw new Error(`${path}: "editorCatalogHold" for "${repo}" must say why it is held`);
       }
+      if (override.releaseHold !== undefined &&
+        (typeof override.releaseHold !== 'string' || !override.releaseHold.trim())) {
+        throw new Error(`${path}: "releaseHold" for "${repo}" must say why it is held`);
+      }
       if (override.npmReason !== undefined && (override.npm !== false ||
         !override.npmReason || typeof override.npmReason.en !== 'string' || !override.npmReason.en.trim() ||
         typeof override.npmReason.ja !== 'string' || !override.npmReason.ja.trim())) {
@@ -67,6 +71,7 @@ export async function loadCatalog(path = 'catalog.yaml'): Promise<Catalog> {
         descriptionJa: override.descriptionJa ?? null,
         ...(override.buildSource ? { buildSource: override.buildSource } : {}),
         ...(override.editorCatalogHold ? { editorCatalogHold: override.editorCatalogHold.trim() } : {}),
+        ...(override.releaseHold ? { releaseHold: override.releaseHold.trim() } : {}),
       });
     }
   }

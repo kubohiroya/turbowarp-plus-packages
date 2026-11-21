@@ -282,6 +282,7 @@ async function main() {
       ...(entry.application ? { application: true as const } : {}),
       note: entry.note,
       ...(entry.editorCatalogHold ? { editorCatalogHold: entry.editorCatalogHold } : {}),
+      ...(entry.releaseHold ? { releaseHold: entry.releaseHold } : {}),
       errors: [],
     };
 

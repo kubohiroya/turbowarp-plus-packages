@@ -25,7 +25,7 @@ export async function createChain(options: { workspace: string; data?: string; r
     for (const step of plan.steps) {
       const target = join(sources, step.repo);
       const reference = options.referenceDir ? ['--reference-if-able', options.referenceDir + '/' + step.repo] : [];
-      await run(['git', 'clone', '--no-checkout', ...reference, `https://github.com/${step.repository}.git`, target]);
+      await run(['git', 'clone', '--no-checkout', '--filter=blob:none', ...reference, `https://github.com/${step.repository}.git`, target]);
       await run(['git', 'fetch', 'origin', step.headSha!], { cwd: target });
     }
     const { localContractReader } = await import('./release-contract.ts');

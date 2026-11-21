@@ -410,6 +410,10 @@ categories:
 # `editorCatalogHold: <reason>` keeps an extension (and whatever depends on it)
 # out of the Editor extension catalog even when its dependency ranges are met.
 # Remove the key to let it back in.
+# `releaseHold: <reason>` keeps a dependency release (bump:downstream) from
+# bumping and publishing that repository: its owner decides each version and
+# folds dependency updates into its own release. Its dependents are planned
+# only through their other updated dependencies.
 overrides:
   turbowarp-title-menu:
     dashboardGroup: extensions
@@ -468,6 +472,10 @@ overrides:
     npm: '@kubohiroya/turbowarp-realtime-motion-capture-app'
   turbowarp-kamishibai-app:
     application: true
+    releaseHold: >-
+      紙芝居は当面4.0.xで進める。4.1のリリースには別途の組織上の意味があるため、持ち主の指示なしに上げない。
+      DSLにも版番号が書き込まれるので、重大な非互換がない更新で4.1に上げるのはむしろ有害。
+      版はリリースごとに持ち主が決め、SB3の版の切り出し・リリースノートと一緒に出す。依存の更新は次の4.0.xのリリースに含める。
   turbowarp-kamishibai-docs:
     npm: false
     npmReason: {"en": "Documentation is distributed as a Pages site, not as a runtime npm library.", "ja": "文書はPagesサイトで配布します。実行時にimportするnpmライブラリではありません。"}

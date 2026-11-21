@@ -39,6 +39,7 @@ export interface RawCatalog {
     descriptionJa?: string;
     buildSource?: 'fixed-editor-gui';
     editorCatalogHold?: string;
+    releaseHold?: string;
   }>;
 }
 
@@ -59,6 +60,8 @@ export interface CatalogEntry {
   buildSource?: 'fixed-editor-gui';
   /** Why the Editor catalog deliberately leaves this extension out for now. */
   editorCatalogHold?: string;
+  /** Why a dependency release must not bump and publish this repository; its owner releases it. */
+  releaseHold?: string;
 }
 
 export interface Catalog {
@@ -214,6 +217,8 @@ export interface DashboardPackage {
   note: string | null;
   /** Why the Editor catalog deliberately leaves this extension out for now. */
   editorCatalogHold?: string;
+  /** Why a dependency release must not bump and publish this repository; its owner releases it. */
+  releaseHold?: string;
   errors: string[];
   github?: GitHubSummary;
   descriptions?: {

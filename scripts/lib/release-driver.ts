@@ -185,9 +185,11 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
         owned = true;
       } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
       if (!owned) {
-        // Borrow objects from an existing local checkout when one is present; it is only read, never changed.
+        // Fetch file contents only when a checkout needs them: some repositories keep gigabytes of generated
+        // archives in their history. Borrow objects from an existing local checkout when one is present;
+        // it is only read, never changed.
         const reference = this.options.referenceDir ? ['--reference-if-able', join(resolve(this.options.referenceDir), step.repo)] : [];
-        await this.run(['git', 'clone', '--no-checkout', ...reference, `https://github.com/${step.repository}.git`, this.path(step)]);
+        await this.run(['git', 'clone', '--no-checkout', '--filter=blob:none', ...reference, `https://github.com/${step.repository}.git`, this.path(step)]);
         await writeFile(marker, JSON.stringify({ digest: this.state.digest, repository: step.repository }));
         await this.git(step, 'checkout', '-b', entry.branch, step.headSha!);
       }
