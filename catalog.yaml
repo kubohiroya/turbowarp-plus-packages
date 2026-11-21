@@ -473,8 +473,8 @@ overrides:
   turbowarp-kamishibai-app:
     application: true
     releaseHold: >-
-      紙芝居の版はリリースごとに持ち主が決め、SB3の版の切り出し・リリースノートと一緒に出す。
-      依存の更新は次の紙芝居のリリースに含める。
+      紙芝居は当面4.0.xで進める。4.1のリリースには別途の組織上の意味があるため、持ち主の指示なしに上げない。
+      版はリリースごとに持ち主が決め、SB3の版の切り出し・リリースノートと一緒に出す。依存の更新は次の4.0.xのリリースに含める。
   turbowarp-kamishibai-docs:
     npm: false
     npmReason: {"en": "Documentation is distributed as a Pages site, not as a runtime npm library.", "ja": "文書はPagesサイトで配布します。実行時にimportするnpmライブラリではありません。"}
