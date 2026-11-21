@@ -49,6 +49,11 @@ export interface ReleasePlan {
   target: string;
   /** Present only when one downstream plan starts from several roots. */
   targets?: string[];
+  /**
+   * Dependents left out because catalog.yaml `releaseHold` says their owner releases them.
+   * Their own dependents are reached only through other updated upstreams.
+   */
+  held?: { repo: string; reason: string }[];
   ready: boolean;
   applyReady: boolean;
   order: string[];
@@ -76,6 +81,7 @@ function snapshot(value: unknown): DashboardReport {
   for (const pkg of value.packages) {
     const invalid = () => new Error(`解析JSONのパッケージ情報が不正です: ${object(pkg) ? pkg.repo : '?'}`);
     if (!object(pkg) || !text(pkg.repo) || !strings(pkg.errors)) throw invalid();
+    if (pkg.releaseHold !== undefined && !text(pkg.releaseHold)) throw invalid();
     if (pkg.manifest != null && (!object(pkg.manifest) ||
         !nullableText(pkg.manifest.name) || !nullableText(pkg.manifest.version) ||
         typeof pkg.manifest.private !== 'boolean')) throw invalid();
@@ -154,6 +160,7 @@ function createPlan(input: unknown, targets: readonly string[], downstream: bool
     roots.push(root);
   }
   const affected = downstream ? new Set(roots.map((root) => root.repo)) : undefined;
+  const held = new Set<string>();
   if (affected) {
     const dependents = new Map<string, Set<string>>();
     for (const pkg of report.packages) {
@@ -167,7 +174,11 @@ function createPlan(input: unknown, targets: readonly string[], downstream: bool
       }
     }
     for (const repo of affected) {
-      for (const dependent of dependents.get(repo) ?? []) affected.add(dependent);
+      for (const dependent of dependents.get(repo) ?? []) {
+        // A dependency release does not bump a held repository; it stays on its published version.
+        if (repos.get(dependent)!.releaseHold) held.add(dependent);
+        else affected.add(dependent);
+      }
     }
   }
   const ordered: DashboardPackage[] = [];
@@ -213,6 +224,7 @@ function createPlan(input: unknown, targets: readonly string[], downstream: bool
     },
     target: roots.map((root) => root.repo).join(', '),
     ...(roots.length > 1 ? { targets: roots.map((root) => root.repo) } : {}),
+    ...(held.size ? { held: [...held].sort(compare).map((repo) => ({ repo, reason: repos.get(repo)!.releaseHold! })) } : {}),
     ready: steps.every((step) => step.action !== 'blocked'),
     applyReady: steps.every((step) => step.action !== 'blocked' && !step.issues.some(issue => issue.requiresReview)),
     order: steps.map((step) => step.repo),
@@ -369,6 +381,7 @@ export function formatReleasePlan(plan: ReleasePlan): string {
     `解析日時: ${plan.snapshot.generatedAt}`,
     `解析SHA-256: ${plan.snapshot.sha256}`,
     `処理順: ${plan.order.join(' → ')}`,
+    ...(plan.held ?? []).map((entry) => `保留: ${entry.repo}（${entry.reason}）`),
     '',
   ];
   for (const [index, step] of plan.steps.entries()) {

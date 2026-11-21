@@ -97,3 +97,21 @@ overrides:
 `)), /"dashboardGroup" for "shown-site" must be extensions or infrastructure/);
   }
 });
+
+test('a release hold carries its reason and must give one', async () => {
+  const entries = (await loadCatalog(await catalog(`${BASE}
+overrides:
+  hidden-site:
+    releaseHold: '  its owner cuts each version  '
+`))).entries;
+  assert.equal(entries.find((entry) => entry.repo === 'hidden-site')?.releaseHold, 'its owner cuts each version');
+  assert.equal(entries.find((entry) => entry.repo === 'shown-site')?.releaseHold, undefined);
+  await assert.rejects(
+    loadCatalog(await catalog(`${BASE}
+overrides:
+  hidden-site:
+    releaseHold: ' '
+`)),
+    /"releaseHold" for "hidden-site" must say why it is held/,
+  );
+});

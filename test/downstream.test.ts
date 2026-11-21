@@ -344,3 +344,16 @@ test('downstream CLI is offline, validates flags, reports blockers, and applies 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('a held dependent is not bumped, and what only it reaches stays out of the plan', () => {
+  const app = pkg('app', [dep('tool')]);
+  app.releaseHold = 'the owner cuts each app version';
+  const input = report(pkg('tool'), app, pkg('site', [dep('app')]), pkg('both', [dep('app'), dep('tool')]));
+  const plan = createDownstreamReleasePlan(input, 'tool', { reconcile: true });
+  assert.deepEqual(plan.order, ['tool', 'both']);
+  assert.deepEqual(plan.held, [{ repo: 'app', reason: 'the owner cuts each app version' }]);
+  // The consumer of both keeps the held app's published version and only follows the tool.
+  assert.deepEqual(plan.steps[1].dependencyUpdates.map((update) => update.name), []);
+  assert.match(formatReleasePlan(plan), /保留: app（the owner cuts each app version）/);
+  assert.equal(createDownstreamReleasePlan(report(pkg('tool'), pkg('app', [dep('tool')])), 'tool').held, undefined);
+});

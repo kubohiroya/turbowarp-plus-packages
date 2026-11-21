@@ -68,6 +68,10 @@ peer・Git 参照・RC は追加のレビューが必要です。`ready: true` �
 GitHub と npm の不一致を新しい版で揃える場合だけ、`--reconcile` を追加します。
 これは新しい版を発行するため、対象と番号を改めて確認します。
 
+`catalog.yaml` に `releaseHold` がある repo（例：kamishibai-app）は、依存元として伝播しても計画に入れません。
+版は持ち主がリリースごとに決め、依存の更新はその repo の次のリリースに含めます。
+計画の `held` に保留した repo と理由が出ます。その repo だけを通じて届く依存元も計画に入りません。
+
 ### 3. 各パッケージの手順を確認する
 
 次は dry-run です。各 repo の `package.json` と workflow を読み、準備・検証の手順を解決します。
