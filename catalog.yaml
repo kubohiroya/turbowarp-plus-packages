@@ -415,12 +415,6 @@ categories:
 # folds dependency updates into its own release. Its dependents are planned
 # only through their other updated dependencies.
 overrides:
-  turbowarp-realtime-motion-capture:
-    releaseHold: >-
-      一時的（2026-11-22）: jsqr→zxing の改名中。改名と依存元の切り替え（zxing への PR）が終わったら外して、依存更新の連鎖にかけ直す。
-  turbowarp-webrtc-qrcode-pairing:
-    releaseHold: >-
-      一時的（2026-11-22）: jsqr→zxing の改名中。改名と依存元の切り替え（zxing への PR）が終わったら外して、依存更新の連鎖にかけ直す。
   turbowarp-title-menu:
     dashboardGroup: extensions
   turbowarp-runtime-expression:
