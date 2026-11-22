@@ -215,8 +215,35 @@
         [
           "corepack",
           "pnpm",
+          "--filter",
+          "./packages/*",
+          "--if-present",
           "run",
           "build"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "pin:extensions"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "update:readiness"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "build"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "snapshot"
         ]
       ]
     },
