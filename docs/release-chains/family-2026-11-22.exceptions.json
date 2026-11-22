@@ -454,6 +454,39 @@
           "build"
         ]
       ]
+    },
+    "kubohiroya/turbowarp-teachable-machine": {
+      "prepare": [
+        [
+          "node",
+          "-e",
+          "const fs=require(\"node:fs\");const a=process.argv.slice(1);for(let i=0;i<a.length;i+=3){const[file,o,n]=a.slice(i,i+3);const t=fs.readFileSync(file,\"utf8\");if(t.includes(n)&&!t.includes(o))continue;const k=t.split(o).length-1;if(k<1)throw new Error(file+\": \"+o+\" not found\");fs.writeFileSync(file,t.split(o).join(n));console.log(file+\": \"+o+\" -> \"+n+\" (\"+k+\")\");}",
+          "docs/index.html",
+          "Teachable Machine 4.3.1",
+          "Teachable Machine 4.4.0",
+          "docs/index.html",
+          "v4.3.1",
+          "v4.4.0",
+          "docs/ja/index.html",
+          "Teachable Machine 4.3.1",
+          "Teachable Machine 4.4.0",
+          "docs/ja/index.html",
+          "v4.3.1",
+          "v4.4.0"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "docs"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "build"
+        ]
+      ]
     }
   },
   "reviewedRepositories": [
