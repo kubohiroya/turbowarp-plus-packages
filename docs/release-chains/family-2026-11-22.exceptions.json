@@ -282,6 +282,8 @@
     }
   },
   "reviewedRepositories": [
+    "kubohiroya/turbowarp-extension-security-dialog",
+    "kubohiroya/turbowarp-plus-editor-code-views",
     "kubohiroya/turbowarp-plus-editor-workbench"
   ]
 }
