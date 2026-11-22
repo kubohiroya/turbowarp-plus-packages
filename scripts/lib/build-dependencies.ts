@@ -13,6 +13,8 @@ export function fixedEditorBuildDependency(input: {
   contract: string | null | undefined;
   build: string | null | undefined;
   packageJson: string | null | undefined;
+  /** `scripts/site/locked-pins.cts`, when `readPins` reads `site/source.json` through `readPinsSync`. */
+  lockedPins?: string | null | undefined;
   owner: string;
   catalogRepos: readonly string[];
 }): { dependencies: BuildDependency[]; error?: string } {
@@ -59,9 +61,15 @@ export function fixedEditorBuildDependency(input: {
   if (verify) findRevision(verify);
   const schemaVerified = calls(validate, (call) => text(call.expression, contract) === 'assert.equal'
     && text(call.arguments[0], contract) === 'pins.guiRepository' && literal(call.arguments[1], pins.guiRepository as string));
+  const joinsSource = (root: ts.Node | undefined, file: ts.SourceFile) => calls(root, (call) => text(call.expression, file) === 'path.join'
+    && text(call.arguments[0], file) === 'root' && literal(call.arguments[1], 'site/source.json'));
+  // Since turbowarp-plus-editor#744, `readPins` merges `site/source.json` with the lockfile's npm pins
+  // in `locked-pins.cts`. The GUI pin is still read from the repository root's `site/source.json`.
+  const locked = input.lockedPins ? ts.createSourceFile('locked-pins.cts', input.lockedPins, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS) : undefined;
+  const readsLockedSource = Boolean(locked) && calls(read, (call) => text(call.expression, contract) === 'readPinsSync')
+    && joinsSource(fn(locked!, 'readPinsSync'), locked!);
   const readsPins = calls(read, (call) => text(call.expression, contract) === 'validatePins')
-    && calls(read, (call) => text(call.expression, contract) === 'path.join'
-      && text(call.arguments[0], contract) === 'root' && literal(call.arguments[1], 'site/source.json'));
+    && (joinsSource(read, contract) || readsLockedSource);
   const readsHead = calls(revisionInitializer, (call) => text(call.expression, contract) === 'execFileSync'
     && literal(call.arguments[0], 'git') && Boolean(call.arguments[1] && ts.isArrayLiteralExpression(call.arguments[1])
       && literal(call.arguments[1].elements[0], 'rev-parse') && literal(call.arguments[1].elements[1], 'HEAD'))

@@ -34,3 +34,25 @@ test('unknown targets and unsupported contracts do not fall back to a guessed GU
     assert.ok(result.error);
   }
 });
+
+// Verbatim contract files from turbowarp-plus-editor 7a0fc70f85c01ad1db5fc8699f287a6766df8d91 (#744):
+// `readPins` reads `site/source.json` through `readPinsSync` in `locked-pins.cts`.
+const lockedFixture = await Promise.all(['source.json', 'source.ts', 'build.ts', 'package.json', 'locked-pins.cts'].map((name) => readFile(new URL(`fixtures/fixed-editor-744/${name}`, import.meta.url), 'utf8')));
+const lockedValid = { sourceRevision: '7a0fc70f85c01ad1db5fc8699f287a6766df8d91', sourceJson: lockedFixture[0], contract: lockedFixture[1],
+  build: lockedFixture[2], packageJson: lockedFixture[3], lockedPins: lockedFixture[4], owner: 'kubohiroya', catalogRepos: ['scratch-gui'] };
+
+test('reads the GUI pin through locked-pins.cts after the npm pins moved to the lockfile', () => {
+  const result = fixedEditorBuildDependency(lockedValid);
+  assert.equal(result.error, undefined);
+  assert.deepEqual(result.dependencies, [{ repo: 'scratch-gui', revision: 'b2e75a129546db48e6563f72c80a3d3d46d86fb5',
+    sourceRevision: lockedValid.sourceRevision, sourcePath: 'site/source.json', contractPaths: ['scripts/site/source.ts', 'scripts/site/build.ts'] }]);
+});
+
+test('readPinsSync must still read site/source.json from the repository root', () => {
+  for (const patch of [{ lockedPins: null }, { lockedPins: lockedValid.lockedPins.replace("path.join(root, 'site/source.json')", "path.join(root, 'site/other.json')") },
+    { lockedPins: lockedValid.lockedPins.replace('function readPinsSync', 'function readOtherPins') }]) {
+    const result = fixedEditorBuildDependency({ ...lockedValid, ...patch });
+    assert.deepEqual(result.dependencies, []);
+    assert.ok(result.error);
+  }
+});

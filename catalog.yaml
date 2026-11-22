@@ -463,6 +463,8 @@ overrides:
     descriptionJa: TurboWarp の描画用フォント scratch-render-fonts のフォーク。
   turbowarp-plus-desktop:
     npm: false
+    releaseHold: >-
+      一時的（2026-11-22）: 依存の更新は1.19.0で済んだ。update-onlyでタグが付かないため、先行コミットだけで毎回版が上がってしまう。版は持ち主がリリースのときに決める。
     npmReason: {"en": "A desktop application built as macOS, Windows and Linux installers, not an npm library.", "ja": "macOS・Windows・Linuxのインストーラーを作るアプリで、npmライブラリではありません。"}
     # The repository has no description yet and its README is Japanese only.
     description: TurboWarp Plus Editor for the desktop, built on TurboWarp Desktop.
@@ -482,6 +484,9 @@ overrides:
   turbowarp-kamishibai-samples:
     npm: false
     npmReason: {"en": "The work library distributes SB3, Web applications and authored sources on Pages.", "ja": "作品集はPagesからSB3・Webアプリ・台本ソースを配布します。"}
+    releaseHold: >-
+      作品集は紙芝居の版に合わせてSB3を切り出して配る。検証は隣の紙芝居のcheckoutとビルドを前提にし、
+      sb3-toolchainの更新は配布SB3のlockを変える。依存の更新は紙芝居のリリースと一緒に持ち主が行う。
   turbowarp-plus-projects:
     npm: false
     npmReason: {"en": "A collection of project sources; it has no package.json or npm runtime API.", "ja": "プロジェクトのソース集で、package.jsonやnpm用の実行APIはありません。"}
