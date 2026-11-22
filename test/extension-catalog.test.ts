@@ -11,7 +11,7 @@ test('family display names use a single TurboWarp prefix and hyphen-separated wo
     ['Runtime Expression', 'TurboWarp-Runtime-Expression'],
     ['Named Data', 'TurboWarp-Named-Data'],
     ['WebUSB PaSoRi', 'TurboWarp-WebUSB-PaSoRi'],
-    ['jsQR', 'TurboWarp-jsQR'],
+    ['ZXing', 'TurboWarp-ZXing'],
     ['WebRTC Manual Pairing', 'TurboWarp-WebRTC-Manual-Pairing'],
     ['TurboWarp YAML/JSON', 'TurboWarp-YAML-JSON'],
     ['TurboWarp-A-Frame', 'TurboWarp-A-Frame'],

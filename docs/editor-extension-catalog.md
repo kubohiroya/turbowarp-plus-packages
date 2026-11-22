@@ -118,12 +118,12 @@ rc等のプレリリースなら、その版より前の公開済み・非deprec
 | --- | --- |
 | Runtime Expression | TurboWarp-Runtime-Expression |
 | WebUSB PaSoRi | TurboWarp-WebUSB-PaSoRi |
-| jsQR | TurboWarp-jsQR |
+| ZXing | TurboWarp-ZXing |
 | WebRTC Manual Pairing | TurboWarp-WebRTC-Manual-Pairing |
 | TurboWarp YAML/JSON | TurboWarp-YAML-JSON |
 | TurboWarp-A-Frame | TurboWarp-A-Frame |
 
-既存の `Sesame`、`Pairing`、`jsQR`、`PaSoRi`、`A-Frame`、`UUID`、`AR`、`API` の表記は変更しません。他のownerや、この命名対象に属さないパッケージへ `TurboWarp` を付けることはありません。現時点で命名規則の例外はありません。将来、固有の製品名を保持すべき理由があれば、`EXTENSION_DISPLAY_NAME_EXCEPTIONS` に表示名と具体的な理由を記録します。理由が空の例外は生成エラーです。
+既存の `Sesame`、`Pairing`、`ZXing`、`PaSoRi`、`A-Frame`、`UUID`、`AR`、`API` の表記は変更しません。他のownerや、この命名対象に属さないパッケージへ `TurboWarp` を付けることはありません。現時点で命名規則の例外はありません。将来、固有の製品名を保持すべき理由があれば、`EXTENSION_DISPLAY_NAME_EXCEPTIONS` に表示名と具体的な理由を記録します。理由が空の例外は生成エラーです。
 
 これはカタログの表示名だけの整形です。拡張ID・npmパッケージ名・完全固定バージョン・JSの取得URL・依存関係・公開済みJSのバイト列は変更しません。
 
