@@ -354,7 +354,7 @@ categories:
     descriptionJa: 1つの JavaScript ライブラリやブラウザ API を薄くブロック化したもの。
     packages:
       - turbowarp-qr-display
-      - turbowarp-jsqr
+      - turbowarp-zxing
       - turbowarp-web-speech
       - turbowarp-webusb-pasori
       - turbowarp-uuid

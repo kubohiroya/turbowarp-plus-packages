@@ -67,7 +67,7 @@ if (mode === 'guard') {
     matrix.input.appShell.templateVersion = manifest.version;
     await writeFile(join(cwd, matrixPath), JSON.stringify(matrix, null, 2) + '\n');
   }
-  if (['sb3-toolchain', 'turbowarp-camera-source', 'turbowarp-jsqr', 'turbowarp-qr-display'].includes(repo)) {
+  if (['sb3-toolchain', 'turbowarp-camera-source', 'turbowarp-zxing', 'turbowarp-qr-display'].includes(repo)) {
     const file = 'scripts/check-repo.ts';
     const before = await read(file);
     assert(before, `Missing ${file}`);
