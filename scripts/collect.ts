@@ -26,7 +26,7 @@ import type {
 import { loadCatalog } from './lib/catalog.ts';
 import { graphql, rest, pool } from './lib/github.ts';
 import { packageStatus, allVersions } from './lib/npm.ts';
-import { declaredDependencies, evaluateRange } from './lib/dependencies.ts';
+import { declaredDependencies, evaluateRange, nestedFamilyDependencies, nestedManifestPaths } from './lib/dependencies.ts';
 import { describeFromReadme, looksJapanese } from './lib/descriptions.ts';
 import { checkLive } from './lib/pages.ts';
 import { publishedDemo } from './lib/demos.ts';
@@ -251,6 +251,22 @@ async function analyseDependencies(
   };
 }
 
+/** Family dependencies a repository declares in a package.json below its root. */
+async function nestedManifestProblems(owner: string, repo: string, sha: string | null, npmToRepo: Map<string, string>) {
+  if (!sha) return [];
+  const tree = await rest<{ tree: { path: string; type: string }[]; truncated: boolean }>(
+    `/repos/${owner}/${repo}/git/trees/${sha}?recursive=1`);
+  if (!tree) return [];
+  const paths = nestedManifestPaths(tree.tree.filter((item) => item.type === 'blob').map((item) => item.path));
+  const manifests = await pool(paths, 4, async (path) => {
+    const file = await rest<{ content: string }>(`/repos/${owner}/${repo}/contents/${path}?ref=${sha}`);
+    return { path, text: file ? Buffer.from(file.content, 'base64').toString('utf8') : '{}' };
+  });
+  const problems = nestedFamilyDependencies(manifests, (name) => npmToRepo.has(name));
+  if (tree.truncated) problems.push('repository tree is truncated; nested package.json files were not all checked');
+  return problems;
+}
+
 async function main() {
   const collectionStartedAt = new Date().toISOString();
   const catalogPath = join(ROOT, 'catalog.yaml');
@@ -328,6 +344,9 @@ async function main() {
     record.manifest = deps.manifest;
     record.dependencies = deps.dependencies;
     if (deps.error) record.errors.push(deps.error);
+    for (const problem of await nestedManifestProblems(owner, entry.repo, revision?.head?.oid ?? null, npmToRepo)) {
+      record.errors.push(problem);
+    }
     if (entry.buildSource) {
       const result = fixedEditorBuildDependency({ sourceRevision: revision?.head?.oid ?? null,
         packageJson: node.packageJson?.text,
