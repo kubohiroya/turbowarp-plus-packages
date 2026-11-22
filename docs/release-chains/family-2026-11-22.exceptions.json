@@ -248,34 +248,6 @@
         ]
       ]
     },
-    "kubohiroya/turbowarp-camera-source": {
-      "prepare": [
-        [
-          "node",
-          "-e",
-          "const {execFileSync}=require(\"node:child_process\");const fs=require(\"node:fs\");\nconst before=JSON.parse(execFileSync(\"git\",[\"show\",\"HEAD:package.json\"],{encoding:\"utf8\"})).version;\nconst after=JSON.parse(fs.readFileSync(\"package.json\",\"utf8\")).version;\nif(before===after)process.exit(0);\nfor(const file of process.argv.slice(1)){const t=fs.readFileSync(file,\"utf8\");const n=t.split(before).length-1;\nif(n<1)throw new Error(file+\": \"+before+\" not found\");fs.writeFileSync(file,t.split(before).join(after));console.log(file+\": \"+before+\" -> \"+after+\" (\"+n+\")\");}",
-          "scripts/check-repo.ts"
-        ],
-        [
-          "corepack",
-          "pnpm",
-          "run",
-          "docs"
-        ],
-        [
-          "corepack",
-          "pnpm",
-          "run",
-          "build"
-        ],
-        [
-          "corepack",
-          "pnpm",
-          "run",
-          "samples:build"
-        ]
-      ]
-    },
     "kubohiroya/turbowarp-jsqr": {
       "prepare": [
         [
@@ -334,7 +306,6 @@
     }
   },
   "reviewedRepositories": [
-    "kubohiroya/turbowarp-document-data",
     "kubohiroya/turbowarp-plus-editor-workbench",
     "kubohiroya/turbowarp-structured-data",
     "kubohiroya/turbowarp-asset-cache",
