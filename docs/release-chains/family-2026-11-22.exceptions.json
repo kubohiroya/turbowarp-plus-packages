@@ -410,6 +410,14 @@
     "kubohiroya/turbowarp-svg-text": {
       "prepare": [
         [
+          "corepack",
+          "pnpm",
+          "exec",
+          "prettier",
+          "--write",
+          "pnpm-workspace.yaml"
+        ],
+        [
           "node",
           "-e",
           "const {execFileSync}=require(\"node:child_process\");const fs=require(\"node:fs\");const f=\"CHANGELOG.md\";\nconst before=JSON.parse(execFileSync(\"git\",[\"show\",\"HEAD:package.json\"],{encoding:\"utf8\"}));const after=JSON.parse(fs.readFileSync(\"package.json\",\"utf8\"));\nlet t=fs.readFileSync(f,\"utf8\");if(t.includes(\"## \"+after.version+\" \"))process.exit(0);\nconst first=/^## [0-9]/mu.exec(t);if(!first)throw new Error(f+\": no version heading\");\nconst names=[];for(const field of [\"dependencies\",\"peerDependencies\",\"devDependencies\"])for(const[n,r]of Object.entries(after[field]??{})){const o=before[field]?.[n];if(o&&o!==r)names.push(\"`\"+n.replace(\"@kubohiroya/\",\"\")+\"` \"+r.replace(/.*\\|\\| /,\"\"));}\nif(!names.length)throw new Error(f+\": no dependency change\");\nconst [maj,min]=after.version.split(\".\").map(Number);const prev=maj+\".\"+(min-1)+\".0\";\nconst date=new Date().toLocaleDateString(\"sv-SE\");\nt=t.slice(0,first.index)+\"## \"+after.version+\" - \"+date+\"\\n\\n- family依存を更新（\"+[...new Set(names)].join(\"、\")+\"）。切り戻しは `\"+after.name+\"@\"+prev+\"` に固定。\\n\\n\"+t.slice(first.index);fs.writeFileSync(f,t);console.log(f+\": added \"+after.version);"
@@ -425,6 +433,24 @@
           "pnpm",
           "run",
           "samples:build"
+        ]
+      ]
+    },
+    "kubohiroya/turbowarp-camera-calibration-app": {
+      "prepare": [
+        [
+          "corepack",
+          "pnpm",
+          "exec",
+          "prettier",
+          "--write",
+          "pnpm-workspace.yaml"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "build"
         ]
       ]
     }
