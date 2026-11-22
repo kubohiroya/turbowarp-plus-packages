@@ -158,6 +158,12 @@
           "corepack",
           "pnpm",
           "run",
+          "pin:extensions"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
           "build"
         ]
       ]
@@ -243,6 +249,7 @@
           "--yes",
           "npm@11.21.0",
           "ci",
+          "--ignore-scripts",
           "--no-audit",
           "--no-fund"
         ]
