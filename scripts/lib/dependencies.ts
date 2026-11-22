@@ -87,3 +87,31 @@ export function declaredDependencies(
   }
   return declared;
 }
+
+/** package.json files below the repository root that are part of the repository's own source. */
+export function nestedManifestPaths(paths: readonly string[]): string[] {
+  return paths.filter((path) => path.endsWith('/package.json') &&
+    !/(^|\/)(node_modules|fixtures?|test|tests|__fixtures__)\//u.test(path));
+}
+
+/**
+ * Family dependencies declared outside the root package.json.
+ *
+ * The release plan reads only the root manifest, so a family version pinned in a nested
+ * manifest is never updated by a dependency release and silently stays old. Each one is
+ * reported, so it is moved to the root instead of being missed.
+ */
+export function nestedFamilyDependencies(
+  manifests: readonly { path: string; text: string }[],
+  isFamily: (name: string) => boolean,
+): string[] {
+  const problems: string[] = [];
+  for (const { path, text } of manifests) {
+    let manifest: PackageManifest;
+    try { manifest = JSON.parse(text); } catch { problems.push(`${path}: package.json is not valid JSON`); continue; }
+    const names = declaredDependencies(manifest, isFamily).filter((entry) => entry.family)
+      .map((entry) => `${entry.name}@${entry.range}`);
+    if (names.length) problems.push(`${path}: family dependencies outside the root package.json are not updated by dependency releases; declare them at the root: ${names.join(', ')}`);
+  }
+  return problems;
+}
