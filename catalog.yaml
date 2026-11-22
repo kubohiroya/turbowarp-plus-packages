@@ -354,7 +354,7 @@ categories:
     descriptionJa: 1つの JavaScript ライブラリやブラウザ API を薄くブロック化したもの。
     packages:
       - turbowarp-qr-display
-      - turbowarp-jsqr
+      - turbowarp-zxing
       - turbowarp-web-speech
       - turbowarp-webusb-pasori
       - turbowarp-uuid
@@ -415,6 +415,12 @@ categories:
 # folds dependency updates into its own release. Its dependents are planned
 # only through their other updated dependencies.
 overrides:
+  turbowarp-realtime-motion-capture:
+    releaseHold: >-
+      一時的（2026-11-22）: jsqr→zxing の改名中。改名と依存元の切り替え（zxing への PR）が終わったら外して、依存更新の連鎖にかけ直す。
+  turbowarp-webrtc-qrcode-pairing:
+    releaseHold: >-
+      一時的（2026-11-22）: jsqr→zxing の改名中。改名と依存元の切り替え（zxing への PR）が終わったら外して、依存更新の連鎖にかけ直す。
   turbowarp-title-menu:
     dashboardGroup: extensions
   turbowarp-runtime-expression:
@@ -463,6 +469,8 @@ overrides:
     descriptionJa: TurboWarp の描画用フォント scratch-render-fonts のフォーク。
   turbowarp-plus-desktop:
     npm: false
+    releaseHold: >-
+      一時的（2026-11-22）: 依存の更新は1.19.0で済んだ。update-onlyでタグが付かないため、先行コミットだけで毎回版が上がってしまう。版は持ち主がリリースのときに決める。
     npmReason: {"en": "A desktop application built as macOS, Windows and Linux installers, not an npm library.", "ja": "macOS・Windows・Linuxのインストーラーを作るアプリで、npmライブラリではありません。"}
     # The repository has no description yet and its README is Japanese only.
     description: TurboWarp Plus Editor for the desktop, built on TurboWarp Desktop.
@@ -470,6 +478,8 @@ overrides:
   turbowarp-realtime-motion-capture-app:
     application: true
     npm: '@kubohiroya/turbowarp-realtime-motion-capture-app'
+    releaseHold: >-
+      一時的（2026-11-22）: jsqr→zxing の改名中。改名と依存元の切り替え（zxing への PR）が終わったら外して、依存更新の連鎖にかけ直す。
   turbowarp-kamishibai-app:
     application: true
     releaseHold: >-
