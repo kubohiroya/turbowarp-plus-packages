@@ -1,7 +1,7 @@
 /** Curated catalog artwork is independent of the pinned executable npm artifact. */
 export const CATALOG_ICON_REPOSITORIES = Object.freeze([
   'turbowarp-sesame',
-  'turbowarp-jsqr',
+  'turbowarp-zxing',
   'turbowarp-web-speech',
   'turbowarp-webusb-pasori',
   'turbowarp-uuid',

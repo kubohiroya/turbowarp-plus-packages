@@ -14,11 +14,11 @@ test('only source manifests below the root are inspected', () => {
 
 test('a family version pinned below the root is reported with its location', () => {
   const problems = nestedFamilyDependencies([
-    { path: 'apps/camera-app/package.json', text: JSON.stringify({ devDependencies: { '@kubohiroya/turbowarp-jsqr': '0.6.0', vite: '8.0.0' } }) },
+    { path: 'apps/camera-app/package.json', text: JSON.stringify({ devDependencies: { '@kubohiroya/turbowarp-zxing': '0.6.0', vite: '8.0.0' } }) },
     { path: 'packages/local-host/package.json', text: JSON.stringify({ dependencies: { typescript: '5.9.3' } }) },
   ], isFamily);
   assert.equal(problems.length, 1);
-  assert.match(problems[0], /^apps\/camera-app\/package\.json: .*@kubohiroya\/turbowarp-jsqr@0\.6\.0$/u);
+  assert.match(problems[0], /^apps\/camera-app\/package\.json: .*@kubohiroya\/turbowarp-zxing@0\.6\.0$/u);
 });
 
 test('an unreadable nested manifest is reported instead of being skipped', () => {
