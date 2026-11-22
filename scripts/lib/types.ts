@@ -130,6 +130,7 @@ export interface RepositoryNode {
   fixedEditorSource?: { text?: string } | null;
   fixedEditorContract?: { text?: string } | null;
   fixedEditorBuild?: { text?: string } | null;
+  fixedEditorLockedPins?: { text?: string } | null;
 }
 
 export interface RevisionStatus {

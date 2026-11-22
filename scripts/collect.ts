@@ -91,6 +91,7 @@ const REPO_FIELDS = `
   fixedEditorSource: object(expression: "HEAD:site/source.json") { ... on Blob { text } }
   fixedEditorContract: object(expression: "HEAD:scripts/site/source.ts") { ... on Blob { text } }
   fixedEditorBuild: object(expression: "HEAD:scripts/site/build.ts") { ... on Blob { text } }
+  fixedEditorLockedPins: object(expression: "HEAD:scripts/site/locked-pins.cts") { ... on Blob { text } }
 `;
 
 /**
@@ -351,7 +352,7 @@ async function main() {
       const result = fixedEditorBuildDependency({ sourceRevision: revision?.head?.oid ?? null,
         packageJson: node.packageJson?.text,
         sourceJson: node.fixedEditorSource?.text, contract: node.fixedEditorContract?.text,
-        build: node.fixedEditorBuild?.text, owner, catalogRepos: repoNames });
+        build: node.fixedEditorBuild?.text, lockedPins: node.fixedEditorLockedPins?.text, owner, catalogRepos: repoNames });
       record.buildDependencies = [];
       if (!result.error) {
         for (const dependency of result.dependencies) {
