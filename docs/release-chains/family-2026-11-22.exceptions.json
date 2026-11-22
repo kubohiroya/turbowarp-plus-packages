@@ -158,12 +158,6 @@
           "corepack",
           "pnpm",
           "run",
-          "pin:extensions"
-        ],
-        [
-          "corepack",
-          "pnpm",
-          "run",
           "build"
         ]
       ]
