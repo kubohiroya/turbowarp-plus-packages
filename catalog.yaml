@@ -505,8 +505,6 @@ overrides:
     npm: false
     npmReason: {"en": "An end-user app scaffold with UI and SB3 build output, not an importable library.", "ja": "UIとSB3をビルドする利用者向けアプリの雛形です。importして使うライブラリではありません。"}
   turbowarp-webrtc-qrcode-pairing-app:
-    releaseHold: >-
-      一時的（2026-11-22）: jsqr→zxing の改名中。pairing 0.7.0 は拡張を ext_kubohiroyazxing で探すので、アプリ側の切り替え（pairing-app#15）を入れてから連鎖にかける。
     application: true
     npm: false
     npmReason: {"en": "An end-user app scaffold with UI and SB3 build output, not an importable library.", "ja": "UIとSB3をビルドする利用者向けアプリの雛形です。importして使うライブラリではありません。"}
