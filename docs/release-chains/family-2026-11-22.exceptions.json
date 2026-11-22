@@ -254,5 +254,8 @@
       ]
     }
   },
-  "reviewedRepositories": []
+  "reviewedRepositories": [
+    "kubohiroya/turbowarp-realtime-motion-capture",
+    "kubohiroya/turbowarp-webrtc-qrcode-pairing"
+  ]
 }
