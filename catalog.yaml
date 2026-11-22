@@ -472,8 +472,6 @@ overrides:
   turbowarp-realtime-motion-capture-app:
     application: true
     npm: '@kubohiroya/turbowarp-realtime-motion-capture-app'
-    releaseHold: >-
-      一時的（2026-11-22）: jsqr→zxing の改名中。改名と依存元の切り替え（zxing への PR）が終わったら外して、依存更新の連鎖にかけ直す。
   turbowarp-kamishibai-app:
     application: true
     releaseHold: >-
