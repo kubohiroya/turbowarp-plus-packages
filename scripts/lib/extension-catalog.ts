@@ -301,6 +301,9 @@ async function readPublishedExtensions(pkg: DashboardPackage, allowPrerelease: b
   }
   const declared = declaredCatalog(manifest);
   if (declared) return readDeclaredExtensions(pkg, manifest, base, declared, signal);
+  // The declaration is noticed on the repository's main branch, which can run ahead of npm.
+  // A package collected only because of it has nothing to list until a version carrying it is published.
+  if (pkg.extensionCatalog && pkg.unsandboxed === undefined) return [];
   return [await readDiscoveredExtension(pkg, manifest, base, tree, signal)];
 }
 
