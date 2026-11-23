@@ -633,6 +633,22 @@ test('a package naming its extensions in package.json yields one entry per exten
   assert.equal(script!.entry.variants!.length, 1);
 });
 
+test('a package declared only on its main branch lists nothing until npm has a version carrying the declaration', async t => {
+  serve(t, {
+    [`${declaredBase}/package.json`]: {name: '@owner/kamishibai', version: '4.0.7'},
+    'https://data.jsdelivr.com/v1/package/npm/@owner/kamishibai@4.0.7/flat': {files: [{name: '/dist/builder/assets.js'}]},
+  });
+  assert.deepEqual(await publishedExtensions(declaredPackage), []);
+  const report = {generatedAt: 'now', categories: [{id: 'kamishibai', title: 'Kamishibai'}],
+    packages: [declaredPackage]} as unknown as DashboardReport;
+  const {catalog, carriedOver} = await collectEditorCatalog(report);
+  assert.deepEqual(catalog.extensions, []);
+  assert.deepEqual(carriedOver, []);
+  // A package with its own extension config is still expected to publish a runnable header.
+  await assert.rejects(publishedExtensions({...declaredPackage, unsandboxed: 'required'} as DashboardPackage),
+    /No runnable extension header/);
+});
+
 test('a declared variant must be a build of the extension it is listed under', async t => {
   serve(t, declaredResponses([{artifact: 'dist/runtime-authoring.js', variants: ['dist/script-a.js']}]));
   await assert.rejects(publishedExtensions(declaredPackage), /is not a build of kruntime/);
