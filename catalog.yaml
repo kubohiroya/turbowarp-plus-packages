@@ -134,6 +134,8 @@ categories:
       - turbowarp-plus-editor-code-views
       - turbowarp-plus-editor-fonts
       - turbowarp-plus-editor-opfs-project
+      - turbowarp-plus-editor-test
+      - turbowarp-test
 
   # Editor libraries and extension contracts both use the test runtime.
   # Keep its host interface and pinned blocks here with the runtime so this
