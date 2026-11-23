@@ -30,7 +30,7 @@ import { declaredDependencies, evaluateRange, nestedFamilyDependencies, nestedMa
 import { describeFromReadme, looksJapanese } from './lib/descriptions.ts';
 import { checkLive } from './lib/pages.ts';
 import { publishedDemo } from './lib/demos.ts';
-import { inheritedUnsandboxedRequirements, extensionUnsandboxed } from './lib/sandbox.ts';
+import { inheritedUnsandboxedRequirements, extensionUnsandboxed, declaresExtensionCatalog } from './lib/sandbox.ts';
 import { fixedEditorBuildDependency } from './lib/build-dependencies.ts';
 
 interface PagesResponse {
@@ -327,6 +327,7 @@ async function main() {
     record.descriptions = describe(node, entry);
     record.icon = blockIcon(node);
     record.unsandboxed = extensionUnsandboxed(node.extensionConfig?.text, node.viteConfig?.text);
+    if (declaresExtensionCatalog(node.packageJson?.text)) record.extensionCatalog = true;
 
     const [revision, pages, deps] = await Promise.all([
       revisionStatus(owner, entry.repo, node).catch((error) => {

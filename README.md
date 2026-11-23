@@ -213,6 +213,21 @@ two identical images, so the dark copy is dropped and `<picture>` falls back to
 the light one — only the sites that actually change get a second file.
 
 `npm run build` does collect, editor:catalog, thumbnails and render in order.
+
+`editor:catalog` normally finds one extension per package by its `dist/*.js` header. A package that ships
+several extensions, or one extension in several builds, names them in `package.json` instead:
+
+```json
+{"turbowarpExtension": {"catalog": [
+  {"artifact": "dist/runtime.js", "variants": ["dist/runtime-playback.js"]},
+  {"artifact": "dist/script.js", "dependencies": ["runtimeid"], "resourceDeclaration": {"schemaVersion": 1, "resources": []}}
+]}}
+```
+
+Each item becomes one catalog entry read from the exact published version. Every variant must state the same
+`ID` in its header and is listed as `variants: [{url, sha256}]`; identical bytes are listed once. `dependencies`
+are extension IDs (none by default: a bundle's npm dependencies are what it carries), and an item's
+`resourceDeclaration` replaces the package's. Such a package is collected without a `src/config.ts`.
 The Editor catalog contains version-pinned extension URLs and extension-ID dependencies;
 see the [JSON contract and generation rules](docs/editor-extension-catalog.md).
 `npm run build:no-thumbnails` skips the slow part.

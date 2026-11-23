@@ -182,6 +182,13 @@ npm run serve                     # http://localhost:4180/
 `<picture>` がライト側にフォールバックします。実際に見た目が変わるサイトだけが2枚目を持ちます。
 
 `npm run build` は collect → editor:catalog → thumbnails → render を順に実行します。
+
+`editor:catalog` は通常、`dist/*.js` のヘッダーからパッケージごとに1つの拡張を見つけます。複数の拡張、または
+1つの拡張の複数ビルドを配るパッケージは、`package.json` の `turbowarpExtension.catalog` に列挙します
+（形式は英語版 README を参照）。各項目は公開済みの版から読む1つのカタログ項目になり、`variants` の各ビルドは
+ヘッダーの `ID` が同じでなければならず、`variants: [{url, sha256}]` として載ります（同じバイト列は1回だけ）。
+`dependencies` は拡張IDで、既定は空です（バンドルのnpm依存は同梱物であり、作品が読み込むものではないため）。
+項目の `resourceDeclaration` はパッケージのものより優先します。このパッケージは `src/config.ts` がなくても収集します。
 `npm run build:no-thumbnails` は時間のかかる部分を飛ばします。
 
 サムネイルは前回の画像と版情報を `site/thumbs/` に保存し、package.jsonの版・Gitタグ・

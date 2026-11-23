@@ -230,6 +230,8 @@ export interface DashboardPackage {
   };
   icon?: string | null;
   unsandboxed?: UnsandboxedRequirement;
+  /** package.json names the extensions this package publishes (`turbowarpExtension.catalog`). */
+  extensionCatalog?: true;
   /** Repositories whose required declarations are inherited by this app or extension. */
   unsandboxedRequiredBy?: string[];
   demo?: DemoProject | null;

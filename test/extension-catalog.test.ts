@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { extensionHeader, extensionDocsURL, extensionAuthor, extensionDisplayName, catalogEntryPresentation, assembleEditorCatalog, publishedExtension, collectEditorCatalog, excludeIncompatible, type CatalogState, type EditorExtension } from '../scripts/lib/extension-catalog.ts';
+import { extensionHeader, extensionDocsURL, extensionAuthor, extensionDisplayName, catalogEntryPresentation, assembleEditorCatalog, publishedExtension, publishedExtensions, collectEditorCatalog, excludeIncompatible, isExtensionPackage, type CatalogState, type EditorExtension } from '../scripts/lib/extension-catalog.ts';
 import type {DashboardPackage, DashboardReport} from '../scripts/lib/types.ts';
 const entry = (id: string): EditorExtension => ({id, name: id, package: `@owner/${id}`, version: '1.2.3', url: `https://cdn.test/${id}.js`, sha256: '0'.repeat(64), repository: 'https://github.com/owner/repo', dependencies: []});
 
@@ -585,4 +585,107 @@ test('collecting leaves out an incompatible extension instead of failing the bui
   assert.deepEqual(excluded.map(({package: name}) => name), ['@owner/a']);
   // The fallback only holds what was published.
   assert.deepEqual(state.published.map(({entry}) => entry.package), ['@owner/b']);
+});
+
+const declaredBase = 'https://cdn.jsdelivr.net/npm/@owner/kamishibai@4.0.7';
+const runtimeHeader = '// Name: Runtime\n// ID: kruntime\n// By: Header\n// Banner: data:image/svg+xml,%3Csvg%2F%3E\n// Unsandboxed: required\n';
+const scriptHeader = '// Name: Script\n// ID: kscript\n// Unsandboxed: required\n';
+const declaredResponses = (catalog: unknown, extra: Record<string, unknown> = {}): Record<string, unknown> => ({
+  [`${declaredBase}/package.json`]: {name: '@owner/kamishibai', version: '4.0.7', author: {name: 'Owner'},
+    dependencies: {'@owner/bundled': '0.1.0'},
+    turbowarpExtension: {catalog, resourceDeclaration: {schemaVersion: 1, resources: [{type: 'camera', usage: 'conditional',
+      purpose: {en: 'Recognise poses'}, condition: {en: 'When a scene waits for a pose'}}]}}},
+  'https://data.jsdelivr.com/v1/package/npm/@owner/kamishibai@4.0.7/flat': {files: []},
+  [`${declaredBase}/dist/runtime-authoring.js`]: `${runtimeHeader}// authoring\n`,
+  [`${declaredBase}/dist/runtime-playback.js`]: `${runtimeHeader}// playback\n`,
+  [`${declaredBase}/dist/runtime-playback-copy.js`]: `${runtimeHeader}// playback\n`,
+  [`${declaredBase}/dist/script-a.js`]: `${scriptHeader}// a\n`,
+  [`${declaredBase}/dist/script-b.js`]: `${scriptHeader}// b\n`,
+  ...extra,
+});
+const declaredPackage = {repo: 'kamishibai', category: 'kamishibai', extensionCatalog: true,
+  npm: {name: '@owner/kamishibai', latest: '4.0.7', published: true}, github: {url: 'https://github.com/owner/kamishibai'}} as DashboardPackage;
+const serve = (t: TestContext, responses: Record<string, unknown>) => t.mock.method(globalThis, 'fetch', async (url: string) => {
+  if (!Object.hasOwn(responses, url)) return new Response('missing', {status: 404});
+  const value = responses[url];
+  return new Response(typeof value === 'string' ? value : JSON.stringify(value));
+});
+const digest = (text: string) => createHash('sha256').update(text).digest('hex');
+
+test('a package naming its extensions in package.json yields one entry per extension, with its other builds', async t => {
+  serve(t, declaredResponses([
+    {artifact: 'dist/runtime-authoring.js', variants: ['dist/runtime-playback.js', 'dist/runtime-playback-copy.js']},
+    {artifact: 'dist/script-a.js', variants: ['dist/script-b.js'], resourceDeclaration: {schemaVersion: 1, resources: []}},
+  ]));
+  const [runtime, script] = await publishedExtensions(declaredPackage);
+  assert.equal(runtime!.entry.id, 'kruntime');
+  assert.equal(runtime!.entry.url, `${declaredBase}/dist/runtime-authoring.js`);
+  assert.equal(runtime!.entry.sha256, digest(`${runtimeHeader}// authoring\n`));
+  // Identical bytes at two addresses are one build.
+  assert.deepEqual(runtime!.entry.variants, [{url: `${declaredBase}/dist/runtime-playback.js`, sha256: digest(`${runtimeHeader}// playback\n`)}]);
+  assert.equal(runtime!.entry.banner, 'data:image/svg+xml,%3Csvg%2F%3E');
+  assert.equal(runtime!.entry.unsandboxed, 'required');
+  assert.equal(runtime!.entry.author, 'Owner');
+  assert.equal(runtime!.entry.resourceDeclaration!.resources[0]!.type, 'camera');
+  assert.deepEqual(runtime!.declaredDependencies, []);
+  assert.equal(script!.entry.id, 'kscript');
+  assert.deepEqual(script!.entry.resourceDeclaration, {schemaVersion: 1, resources: []});
+  assert.equal(script!.entry.variants!.length, 1);
+});
+
+test('a declared variant must be a build of the extension it is listed under', async t => {
+  serve(t, declaredResponses([{artifact: 'dist/runtime-authoring.js', variants: ['dist/script-a.js']}]));
+  await assert.rejects(publishedExtensions(declaredPackage), /is not a build of kruntime/);
+});
+
+test('a malformed declaration is refused rather than guessed at', async t => {
+  for (const catalog of [[], [{artifact: '../escape.js'}], [{artifact: 'dist/a.js', variants: 'dist/b.js'}],
+    [{artifact: 'dist/a.js', dependencies: ['not-an-id']}]]) {
+    serve(t, declaredResponses(catalog));
+    await assert.rejects(publishedExtensions(declaredPackage), /turbowarpExtension\.catalog/);
+    t.mock.restoreAll();
+  }
+});
+
+test('a declared bundle keeps its own dependencies and is not bound by the npm versions it bundles', async t => {
+  serve(t, declaredResponses([
+    {artifact: 'dist/runtime-authoring.js'},
+    {artifact: 'dist/script-a.js', dependencies: ['kruntime']},
+  ]));
+  const records = await publishedExtensions(declaredPackage);
+  const bundled = {entry: {...entry('bundled'), package: '@owner/bundled', version: '0.2.0'}, manifest: {name: '@owner/bundled', version: '0.2.0'}};
+  const {kept, excluded} = excludeIncompatible([...records, bundled]);
+  assert.deepEqual(excluded, []);
+  const catalog = assembleEditorCatalog('2026-11-23T00:00:00.000Z', kept, new Set(['@owner/bundled']));
+  assert.deepEqual(catalog.extensions.map(item => [item.id, item.dependencies]),
+    [['kruntime', []], ['kscript', ['kruntime']], ['bundled', []]]);
+  assert.ok(catalog.extensions[0]!.variants === undefined);
+  assert.throws(() => assembleEditorCatalog('2026-11-23T00:00:00.000Z',
+    [{...records[1]!, declaredDependencies: ['missing']}]), /Missing extension dependency: kscript requires missing/);
+});
+
+test('only declared packages may contribute more than one entry, and apps never do', () => {
+  const plain = {entry: entry('a'), manifest: {name: '@owner/a', version: '1.2.3'}};
+  assert.throws(() => assembleEditorCatalog('2026-11-23T00:00:00.000Z', [plain, {...plain, entry: {...entry('b'), package: '@owner/a'}}]),
+    /Duplicate extension package/);
+  assert.equal(isExtensionPackage({...declaredPackage}), true);
+  assert.equal(isExtensionPackage({...declaredPackage, category: 'apps'}), false);
+  assert.equal(isExtensionPackage({...declaredPackage, extensionCatalog: undefined}), false);
+});
+
+test('a declared package that cannot be read right now keeps every entry it published last time', async t => {
+  serve(t, {});
+  const report = {generatedAt: 'now', categories: [{id: 'kamishibai', title: 'Kamishibai'}],
+    packages: [declaredPackage]} as unknown as DashboardReport;
+  const previous = (['kruntime', 'kscript'] as const).map(id => ({
+    entry: {...entry(id), package: '@owner/kamishibai', category: 'kamishibai',
+      variants: [{url: `https://cdn.test/${id}-b.js`, sha256: '2'.repeat(64)}]},
+    manifest: {name: '@owner/kamishibai', version: '4.0.6'}, declaredDependencies: []}));
+  const {catalog, state, carriedOver} = await collectEditorCatalog(report, {
+    previous: {schemaVersion: 1, savedAt: 'before', published: previous, failures: {}},
+  });
+  assert.deepEqual(catalog.extensions.map(item => item.id), ['kruntime', 'kscript']);
+  assert.equal(catalog.extensions[0]!.variants!.length, 1);
+  assert.deepEqual(state.published.map(record => record.declaredDependencies), [[], []]);
+  assert.deepEqual(carriedOver.map(({package: name}) => name), ['@owner/kamishibai']);
 });
