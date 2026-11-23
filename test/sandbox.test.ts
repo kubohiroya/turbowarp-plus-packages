@@ -36,3 +36,12 @@ test('ignores other packages and does not execute repository code', () => {
   assert.equal(extensionUnsandboxed(null, '// turboWarpExtension({unsandboxed: "required"})'), undefined);
   assert.equal(extensionUnsandboxed('throw new Error("must not run"); const extensionConfig = {unsandboxed: true};', null), 'required');
 });
+
+test('a package.json that names its extensions is recognised without running anything', async () => {
+  const {declaresExtensionCatalog} = await import('../scripts/lib/sandbox.ts');
+  assert.equal(declaresExtensionCatalog(JSON.stringify({turbowarpExtension: {catalog: [{artifact: 'dist/a.js'}]}})), true);
+  assert.equal(declaresExtensionCatalog(JSON.stringify({turbowarpExtension: {catalog: []}})), false);
+  assert.equal(declaresExtensionCatalog(JSON.stringify({turbowarpExtension: {resourceDeclaration: {}}})), false);
+  assert.equal(declaresExtensionCatalog('{not json'), false);
+  assert.equal(declaresExtensionCatalog(null), false);
+});

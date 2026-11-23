@@ -27,7 +27,16 @@ export interface EditorExtension {
   banner?: string;
   unsandboxed?: 'required' | 'optional' | 'not-needed' | 'unknown';
   resourceDeclaration?: ResourceDeclaration;
+  /**
+   * Other builds of this extension that one published version ships, each pinned to its own
+   * bytes. A project may carry any of them; the Editor and its review match each by digest.
+   */
+  variants?: EditorExtensionVariant[];
   dependencies: string[];
+}
+export interface EditorExtensionVariant {
+  url: string;
+  sha256: string;
 }
 export interface EditorCategory {
   id: string;
@@ -40,8 +49,23 @@ export interface EditorCatalog {
   categories?: EditorCategory[];
   extensions: EditorExtension[];
 }
+/**
+ * One extension a package declares in `package.json` at `turbowarpExtension.catalog`.
+ *
+ * A package that ships several extensions, or one extension in several builds, cannot be read by
+ * guessing a `dist/*.js` file. It names them instead: the main build, the other builds of the same
+ * extension, the extension IDs it needs beside it (none for a self-contained bundle — its npm
+ * dependencies are what it bundles, not what a project must load), and optionally a resource
+ * declaration of its own instead of the package's.
+ */
+export interface DeclaredCatalogExtension {
+  artifact: string;
+  variants?: string[];
+  dependencies?: string[];
+  resourceDeclaration?: unknown;
+}
 export interface PublishedManifest {
-  turbowarpExtension?: {resourceDeclaration?: unknown};
+  turbowarpExtension?: {resourceDeclaration?: unknown; catalog?: unknown};
   name?: string;
   version?: string;
   jsdelivr?: string;
@@ -55,6 +79,11 @@ export interface PublishedManifest {
 export interface PublishedExtension {
   entry: EditorExtension;
   manifest: PublishedManifest;
+  /**
+   * Extension IDs this entry needs, when its package declared them. Without it the dependencies
+   * are read from the package manifest's npm dependencies.
+   */
+  declaredDependencies?: string[];
 }
 
 export interface ExtensionDisplayNameException {
@@ -103,6 +132,15 @@ export function extensionHeader(source: string): Record<string, string> {
   }
   return values;
 }
+/** A picture the catalog can show as it is: an HTTPS address, or a small inline image. */
+const banner = (value: string, base: string): string | undefined => {
+  if (/^data:image\/(?:svg\+xml|png|webp)[;,]/i.test(value)) return value.length <= 16384 ? value : undefined;
+  try {
+    return secure(value, base);
+  } catch {
+    return undefined;
+  }
+};
 const secure = (value: string, base?: string): string => {
   const url = new URL(value, base);
   if (url.protocol !== 'https:' || url.username || url.password) throw new Error(`Expected HTTPS: ${value}`);
@@ -208,11 +246,19 @@ async function publishedVersion(name: string, latest: string, allowPrerelease: b
  */
 export async function publishedExtension(
   pkg: DashboardPackage,
-  {allowPrerelease = false, signal}: {allowPrerelease?: boolean; signal?: AbortSignal} = {},
+  options: {allowPrerelease?: boolean; signal?: AbortSignal} = {},
 ): Promise<PublishedExtension> {
+  return (await publishedExtensions(pkg, options))[0]!;
+}
+
+/** Every extension one exact published version provides: the declared ones, or the one discovered. */
+export async function publishedExtensions(
+  pkg: DashboardPackage,
+  {allowPrerelease = false, signal}: {allowPrerelease?: boolean; signal?: AbortSignal} = {},
+): Promise<PublishedExtension[]> {
   const scope = new AbortController();
   try {
-    return await readPublishedExtension(pkg, allowPrerelease,
+    return await readPublishedExtensions(pkg, allowPrerelease,
       signal ? AbortSignal.any([signal, scope.signal]) : scope.signal);
   } catch (error) {
     scope.abort(error);
@@ -220,10 +266,32 @@ export async function publishedExtension(
   }
 }
 
-async function readPublishedExtension(pkg: DashboardPackage, allowPrerelease: boolean, signal: AbortSignal): Promise<PublishedExtension> {
+/** `turbowarpExtension.catalog`, checked for shape only; the artifacts themselves are read next. */
+export function declaredCatalog(manifest: PublishedManifest): DeclaredCatalogExtension[] | undefined {
+  const declared = manifest.turbowarpExtension?.catalog;
+  if (declared === undefined) return undefined;
+  const path = (value: unknown) => typeof value === 'string' && /^dist\/[\w./-]+\.js$/.test(value) && !value.includes('..');
+  if (!Array.isArray(declared) || declared.length === 0 || declared.length > 16) {
+    throw new Error(`${manifest.name}: turbowarpExtension.catalog must list 1-16 extensions`);
+  }
+  return declared.map((item: unknown) => {
+    const record = item as Record<string, unknown>;
+    if (!record || typeof record !== 'object' || !path(record.artifact) ||
+      (record.variants !== undefined && (!Array.isArray(record.variants) || record.variants.length > 32 || !record.variants.every(path))) ||
+      (record.dependencies !== undefined && (!Array.isArray(record.dependencies) ||
+        !record.dependencies.every(id => typeof id === 'string' && /^[a-zA-Z0-9]+$/.test(id))))) {
+      throw new Error(`${manifest.name}: invalid turbowarpExtension.catalog entry`);
+    }
+    return record as unknown as DeclaredCatalogExtension;
+  });
+}
+
+async function readPublishedExtensions(pkg: DashboardPackage, allowPrerelease: boolean, signal: AbortSignal): Promise<PublishedExtension[]> {
   const name = pkg.npm!.name!;
   const version = await publishedVersion(name, pkg.npm!.latest!, allowPrerelease, signal);
   const base = `https://cdn.jsdelivr.net/npm/${name}@${version}`;
+  // The listing is only needed when the package declares nothing, but asking for both at once
+  // keeps the common case to one round trip.
   const [manifest, tree] = await Promise.all([
     request(`${base}/package.json`, {signal}).then(r => r.json()) as Promise<PublishedManifest>,
     request(`https://data.jsdelivr.com/v1/package/npm/${name}@${version}/flat`, {signal}).then(r => r.json()) as Promise<{ files: { name: string }[] }>,
@@ -231,6 +299,88 @@ async function readPublishedExtension(pkg: DashboardPackage, allowPrerelease: bo
   if (manifest.name !== name || manifest.version !== version) {
     throw new Error(`Published manifest mismatch: ${name}@${version}`);
   }
+  const declared = declaredCatalog(manifest);
+  if (declared) return readDeclaredExtensions(pkg, manifest, base, declared, signal);
+  return [await readDiscoveredExtension(pkg, manifest, base, tree, signal)];
+}
+
+/** The fields every catalog entry takes from one published artifact's header. */
+function headerEntry(pkg: DashboardPackage, manifest: PublishedManifest, url: string, bytes: Uint8Array,
+  metadata: Record<string, string>, descriptions: Record<string, string>, picture: string | undefined,
+  resourceDeclaration: ResourceDeclaration | undefined): EditorExtension {
+  const unsandboxed = metadata.unsandboxed === 'true' ? 'required' : metadata.unsandboxed === 'false' ? 'not-needed' :
+    ['required', 'optional', 'not-needed'].includes(metadata.unsandboxed) ? metadata.unsandboxed as EditorExtension['unsandboxed'] : 'unknown';
+  if (!pkg.github?.url) throw new Error(`Missing repository URL: ${pkg.repo}`);
+  const docsURL = extensionDocsURL(pkg);
+  return {
+    id: metadata.id, name: metadata.name, package: manifest.name!, version: manifest.version!, url,
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+    category: pkg.category,
+    repository: secure(pkg.github.url),
+    ...(docsURL ? {docsURL} : {}),
+    description: metadata.description,
+    descriptions,
+    ...extensionAuthor(metadata, manifest),
+    license: metadata.license ?? manifest.license,
+    ...(picture ? { banner: picture } : {}),
+    unsandboxed,
+    ...(resourceDeclaration !== undefined ? {resourceDeclaration} : {}),
+    dependencies: [],
+  };
+}
+
+const headerDescriptions = (metadata: Record<string, string>): Record<string, string> =>
+  Object.fromEntries(Object.entries(metadata).flatMap(([key, value]) => {
+    const locale = /^description\[([a-z]{2,8}(?:-[a-z0-9]{1,8})*)\]$/.exec(key)?.[1];
+    return locale ? [[locale, value]] : [];
+  }));
+
+/**
+ * The extensions a package names in `turbowarpExtension.catalog`, each with its other builds.
+ *
+ * Every build must state the same extension ID in its header, so a variant can only ever be the
+ * extension it is listed under. Builds whose bytes are identical are listed once.
+ */
+async function readDeclaredExtensions(pkg: DashboardPackage, manifest: PublishedManifest, base: string,
+  declared: DeclaredCatalogExtension[], signal: AbortSignal): Promise<PublishedExtension[]> {
+  const packageDeclaration = readPackageResourceDeclaration(manifest);
+  const read = async (artifact: string) => {
+    const url = `${base}/${artifact}`;
+    const bytes = new Uint8Array(await (await request(url, {signal})).arrayBuffer());
+    return {url, bytes, metadata: extensionHeader(new TextDecoder().decode(bytes))};
+  };
+  const records: PublishedExtension[] = [];
+  for (const item of declared) {
+    const main = await read(item.artifact);
+    const {metadata} = main;
+    if (!/^[a-zA-Z0-9]+$/.test(metadata.id ?? '') || !metadata.name) {
+      throw new Error(`No runnable extension header in ${manifest.name}@${manifest.version}/${item.artifact}`);
+    }
+    const resourceDeclaration = item.resourceDeclaration !== undefined ?
+      parseResourceDeclaration(item.resourceDeclaration) : packageDeclaration;
+    const entry = headerEntry(pkg, manifest, main.url, main.bytes, metadata, headerDescriptions(metadata),
+      metadata.banner ? banner(metadata.banner, main.url) : undefined, resourceDeclaration);
+    const seen = new Set([entry.sha256]);
+    const variants: EditorExtensionVariant[] = [];
+    for (const artifact of item.variants ?? []) {
+      const variant = await read(artifact);
+      if (variant.metadata.id !== metadata.id) {
+        throw new Error(`${manifest.name}@${manifest.version}/${artifact} is not a build of ${metadata.id}`);
+      }
+      const sha256 = createHash('sha256').update(variant.bytes).digest('hex');
+      if (seen.has(sha256)) continue;
+      seen.add(sha256);
+      variants.push({url: variant.url, sha256});
+    }
+    records.push({manifest, declaredDependencies: [...(item.dependencies ?? [])],
+      entry: {...entry, ...(variants.length ? {variants} : {})}});
+  }
+  return records;
+}
+
+async function readDiscoveredExtension(pkg: DashboardPackage, manifest: PublishedManifest, base: string,
+  tree: { files: { name: string }[] }, signal: AbortSignal): Promise<PublishedExtension> {
+  const name = manifest.name!;
   const resourceDeclaration = readPackageResourceDeclaration(manifest);
   const paths = tree.files.map(f => f.name).filter(path => /^\/dist\/[^/]+\.js$/.test(path));
   const preferred = [manifest.jsdelivr, manifest.unpkg].filter((path): path is string => typeof path === 'string')
@@ -247,10 +397,7 @@ async function readPublishedExtension(pkg: DashboardPackage, allowPrerelease: bo
     const source = new TextDecoder().decode(bytes);
     const metadata = extensionHeader(source);
     if (!/^[a-zA-Z0-9]+$/.test(metadata.id ?? '') || !metadata.name) continue;
-    const descriptions: Record<string, string> = Object.fromEntries(Object.entries(metadata).flatMap(([key, value]) => {
-      const locale = /^description\[([a-z]{2,8}(?:-[a-z0-9]{1,8})*)\]$/.exec(key)?.[1];
-      return locale ? [[locale, value]] : [];
-    }));
+    const descriptions = headerDescriptions(metadata);
     if (!descriptions.ja && tree.files.some(file => file.name === '/README.ja.md')) {
       const readme = await request(`${base}/README.ja.md`, {signal}).then(response => response.text());
       const summary = describeFromReadme(readme, {names: [name, pkg.repo]});
@@ -258,28 +405,17 @@ async function readPublishedExtension(pkg: DashboardPackage, allowPrerelease: bo
     }
     const bannerPath = ['/assets/banner.svg', '/assets/banner.png', '/assets/block-icon.svg']
       .find(candidate => tree.files.some(file => file.name === candidate));
-    const banner = metadata.banner ? secure(metadata.banner, url) : bannerPath ? `${base}${bannerPath}` : undefined;
-    const unsandboxed = metadata.unsandboxed === 'true' ? 'required' : metadata.unsandboxed === 'false' ? 'not-needed' :
-      ['required', 'optional', 'not-needed'].includes(metadata.unsandboxed) ? metadata.unsandboxed as EditorExtension['unsandboxed'] : 'unknown';
-    if (!pkg.github?.url) throw new Error(`Missing repository URL: ${pkg.repo}`);
-    const docsURL = extensionDocsURL(pkg);
-    return { manifest, entry: {
-      id: metadata.id, name: metadata.name, package: name, version, url,
-      sha256: createHash('sha256').update(bytes).digest('hex'),
-      category: pkg.category,
-      repository: secure(pkg.github.url),
-      ...(docsURL ? {docsURL} : {}),
-      description: metadata.description,
-      descriptions,
-      ...extensionAuthor(metadata, manifest),
-      license: metadata.license ?? manifest.license,
-      ...(banner ? { banner } : {}),
-      unsandboxed,
-      ...(resourceDeclaration !== undefined ? {resourceDeclaration} : {}),
-      dependencies: [],
-    } };
+    const picture = metadata.banner ? secure(metadata.banner, url) : bannerPath ? `${base}${bannerPath}` : undefined;
+    return { manifest, entry: headerEntry(pkg, manifest, url, bytes, metadata, descriptions, picture, resourceDeclaration) };
   }
-  throw new Error(`No runnable extension header in ${name}@${version}`);
+  throw new Error(`No runnable extension header in ${name}@${manifest.version}`);
+}
+
+/** A package's first record stands for it when another package depends on it by npm name. */
+function firstByPackage(published: readonly PublishedExtension[]): Map<string, PublishedExtension> {
+  const byPackage = new Map<string, PublishedExtension>();
+  for (const record of published) if (!byPackage.has(record.entry.package)) byPackage.set(record.entry.package, record);
+  return byPackage;
 }
 
 /** Dependencies are extension IDs, not npm build libraries. The published manifest is authoritative. */
@@ -297,17 +433,22 @@ export function assembleEditorCatalog(
     categoryIds.add(id);
     return {id, title, ...(titleJa !== undefined ? {titleJa} : {})};
   });
-  const byPackage = new Map(published.map(record => [record.entry.package, record]));
-  if (byPackage.size !== published.length) throw new Error('Duplicate extension package');
+  const byPackage = firstByPackage(published);
+  // Only a package that declares its extensions may provide more than one.
+  for (const [name, record] of byPackage) {
+    if (!record.declaredDependencies && published.filter(other => other.entry.package === name).length > 1) {
+      throw new Error('Duplicate extension package');
+    }
+  }
   const ids = new Set<string>();
-  const extensions = published.map(({entry, manifest}) => {
+  const extensions = published.map(({entry, manifest, declaredDependencies}) => {
     if (categories !== undefined && (!entry.category || !categoryIds.has(entry.category))) {
       throw new Error(`Unknown extension category: ${entry.package} refers to ${entry.category ?? '(missing)'}`);
     }
     if (!/^[a-zA-Z0-9]+$/.test(entry.id)) throw new Error(`Invalid extension ID: ${entry.id}`);
     if (ids.has(entry.id)) throw new Error(`Duplicate extension ID: ${entry.id}`);
     ids.add(entry.id);
-    const dependencyIds = manifestDependencies(manifest).flatMap(([name, range]) => {
+    const dependencyIds = declaredDependencies ? [...declaredDependencies] : manifestDependencies(manifest).flatMap(([name, range]) => {
       const dependency = byPackage.get(name);
       if (!dependency) {
         if (knownExtensions.has(name)) throw new Error(`Missing extension dependency: ${entry.package} requires ${name}`);
@@ -323,6 +464,11 @@ export function assembleEditorCatalog(
   const visiting = new Set<string>();
   const visited = new Set<string>();
   const byId = new Map(extensions.map(entry => [entry.id, entry]));
+  for (const entry of extensions) {
+    for (const dependency of entry.dependencies) {
+      if (!byId.has(dependency)) throw new Error(`Missing extension dependency: ${entry.id} requires ${dependency}`);
+    }
+  }
   const visit = (id: string) => {
     if (visiting.has(id)) throw new Error(`Cyclic extension dependency: ${id}`);
     if (visited.has(id)) return;
@@ -386,13 +532,14 @@ const manifestDependencies = (manifest: PublishedManifest) =>
 export function excludeIncompatible(published: PublishedExtension[], held: ReadonlyMap<string, string> = new Map()): {
   kept: PublishedExtension[]; excluded: CatalogCollection['excluded'];
 } {
-  const byPackage = new Map(published.map(record => [record.entry.package, record]));
+  const byPackage = firstByPackage(published);
   const excluded = new Map<string, string>(published.flatMap(({entry}) =>
     held.has(entry.package) ? [[entry.package, `held: ${held.get(entry.package)}`] as const] : []));
   for (let changed = true; changed;) {
     changed = false;
-    for (const {entry, manifest} of published) {
-      if (excluded.has(entry.package)) continue;
+    for (const {entry, manifest, declaredDependencies} of published) {
+      // A declared bundle carries what its npm dependencies provide; their versions bind nothing here.
+      if (excluded.has(entry.package) || declaredDependencies) continue;
       for (const [name, range] of manifestDependencies(manifest)) {
         const dependency = byPackage.get(name);
         const reason = excluded.has(name) ? `${name} is left out` :
@@ -438,6 +585,14 @@ function withCurrentLocalFields(kept: PublishedExtension, pkg: DashboardPackage)
 }
 
 /**
+ * A package whose build declares an extension, or which names its extensions in package.json.
+ * Apps and toolchains are never catalog entries, whatever they declare.
+ */
+export function isExtensionPackage(pkg: DashboardPackage): boolean {
+  return (pkg.unsandboxed !== undefined || pkg.extensionCatalog === true) && !['apps', 'toolchain'].includes(pkg.category);
+}
+
+/**
  * Collect every publishable extension, falling back to the previous run for
  * any package that cannot be read right now.
  *
@@ -455,12 +610,11 @@ export async function collectEditorCatalog(report: DashboardReport, {allowPrerel
   previous?: CatalogState;
   maxAttempts?: number;
 } = {}): Promise<CatalogCollection> {
-  const candidates = report.packages.filter(pkg => pkg.unsandboxed !== undefined &&
-    !['apps', 'toolchain'].includes(pkg.category) && pkg.npm?.published && pkg.npm.latest &&
+  const candidates = report.packages.filter(pkg => isExtensionPackage(pkg) && pkg.npm?.published && pkg.npm.latest &&
     !pkg.npm.deprecated && !pkg.github?.isArchived);
   const results = await pool(candidates, 4, async pkg => {
     try {
-      return {pkg, record: await publishedExtension(pkg, {allowPrerelease})};
+      return {pkg, records: await publishedExtensions(pkg, {allowPrerelease})};
     } catch (error) {
       // Held, not thrown: the other packages are still worth collecting, and
       // whether this one is fatal depends on what the previous run left us.
@@ -468,7 +622,10 @@ export async function collectEditorCatalog(report: DashboardReport, {allowPrerel
     }
   });
 
-  const keptByPackage = new Map((previous?.published ?? []).map(record => [record.entry.package, record]));
+  const keptByPackage = new Map<string, PublishedExtension[]>();
+  for (const record of previous?.published ?? []) {
+    keptByPackage.set(record.entry.package, [...(keptByPackage.get(record.entry.package) ?? []), record]);
+  }
   const savedAt = new Date().toISOString();
   const published: PublishedExtension[] = [];
   const failures: Record<string, CatalogFailure> = {};
@@ -476,8 +633,8 @@ export async function collectEditorCatalog(report: DashboardReport, {allowPrerel
   const fatal: string[] = [];
 
   for (const result of results) {
-    if (result.record) {
-      published.push(result.record);
+    if (result.records) {
+      published.push(...result.records);
       continue;
     }
     const name = result.pkg.npm!.name!;
@@ -492,7 +649,7 @@ export async function collectEditorCatalog(report: DashboardReport, {allowPrerel
       fatal.push(`${name}: ${result.error} (${attempts} consecutive runs have failed since ${previousFailure!.since})`);
       continue;
     }
-    published.push(withCurrentLocalFields(kept, result.pkg));
+    published.push(...kept.map(record => withCurrentLocalFields(record, result.pkg)));
     failures[name] = {attempts, error: result.error!, since: previousFailure?.since ?? savedAt};
     carriedOver.push({package: name, attempts, error: result.error!});
   }
@@ -500,8 +657,7 @@ export async function collectEditorCatalog(report: DashboardReport, {allowPrerel
     throw new Error(`Cannot build the extension catalog:\n  ${fatal.join('\n  ')}`);
   }
 
-  const knownExtensions = new Set(report.packages.filter(pkg => pkg.unsandboxed !== undefined &&
-    !['apps', 'toolchain'].includes(pkg.category)).flatMap(pkg => pkg.npm?.name ? [pkg.npm.name] : []));
+  const knownExtensions = new Set(report.packages.filter(isExtensionPackage).flatMap(pkg => pkg.npm?.name ? [pkg.npm.name] : []));
   const categories = report.categories.map(({id, title, titleJa}) => ({id, title, ...(titleJa != null ? {titleJa} : {})}));
   const held = new Map(report.packages.flatMap(pkg =>
     pkg.editorCatalogHold && pkg.npm?.name ? [[pkg.npm.name, pkg.editorCatalogHold] as const] : []));

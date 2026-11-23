@@ -104,3 +104,18 @@ export function inheritedUnsandboxedRequirements(
   }
   return result;
 }
+
+/**
+ * Whether a repository's package.json names the extensions it publishes
+ * (`turbowarpExtension.catalog`). Such a package needs no extension config file to be collected;
+ * what it declares is read and checked from the published version itself.
+ */
+export function declaresExtensionCatalog(packageJsonText: string | null | undefined): boolean {
+  if (!packageJsonText) return false;
+  try {
+    const catalog = JSON.parse(packageJsonText)?.turbowarpExtension?.catalog;
+    return Array.isArray(catalog) && catalog.length > 0;
+  } catch {
+    return false;
+  }
+}
