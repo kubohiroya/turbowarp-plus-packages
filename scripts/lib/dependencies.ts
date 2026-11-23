@@ -77,15 +77,45 @@ export function declaredDependencies(
   isFamily: (name: string) => boolean,
 ): DeclaredDependency[] {
   const declared: DeclaredDependency[] = [];
+  const testOnly = new Set(testOnlyDependencyNames(manifest));
   for (const field of Object.keys(DEPENDENCY_KINDS) as (keyof typeof DEPENDENCY_KINDS)[]) {
     const kind = DEPENDENCY_KINDS[field];
     for (const [name, range] of Object.entries(manifest?.[field] ?? {})) {
       const family = isFamily(name);
       if (kind === 'dev' && !family) continue;
-      declared.push({ name, range, kind, family });
+      declared.push({ name, range, kind, family, ...(kind === 'dev' && testOnly.has(name) ? { testOnly: true as const } : {}) });
     }
   }
   return declared;
+}
+
+function testOnlyDependencyNames(manifest: PackageManifest | null): string[] {
+  const names = manifest?.turbowarpPlus?.testOnlyDependencies;
+  return Array.isArray(names) ? names.filter((name): name is string => typeof name === 'string') : [];
+}
+
+/**
+ * Mistakes in `turbowarpPlus.testOnlyDependencies`. A name that is not a devDependency would be
+ * silently ignored, so it is reported instead: the planner would keep republishing for it.
+ */
+export function testOnlyDependencyProblems(manifest: PackageManifest | null): string[] {
+  const declared = manifest?.turbowarpPlus?.testOnlyDependencies;
+  if (declared === undefined) return [];
+  if (!Array.isArray(declared) || declared.some(name => typeof name !== 'string')) {
+    return ['package.json: turbowarpPlus.testOnlyDependencies must be an array of package names'];
+  }
+  const problems: string[] = [];
+  for (const name of declared) {
+    if (!Object.hasOwn(manifest?.devDependencies ?? {}, name)) {
+      problems.push(`package.json: turbowarpPlus.testOnlyDependencies names ${name}, which is not a devDependency`);
+    }
+    for (const field of ['dependencies', 'peerDependencies', 'optionalDependencies'] as const) {
+      if (Object.hasOwn(manifest?.[field] ?? {}, name)) {
+        problems.push(`package.json: ${name} is test-only but also listed in ${field}`);
+      }
+    }
+  }
+  return problems;
 }
 
 /** package.json files below the repository root that are part of the repository's own source. */

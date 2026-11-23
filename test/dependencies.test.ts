@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   declaredDependencies,
+  testOnlyDependencyProblems,
   evaluateRange,
   isLocalRange,
 } from '../scripts/lib/dependencies.ts';
@@ -72,4 +73,27 @@ test('dev dependencies are kept only when they are one of ours', () => {
     declared.map((d) => `${d.name}:${d.kind}`).sort(),
     ['@scope/runtime:peer', '@scope/toolchain:dev', 'three:prod'],
   );
+});
+
+test('test-only dev dependencies are marked, and mistakes in the declaration are reported', () => {
+  const manifest = {
+    dependencies: { '@scope/contract': '^1' },
+    devDependencies: { '@scope/editor': '^2', '@scope/toolchain': '^3' },
+    turbowarpPlus: { testOnlyDependencies: ['@scope/editor'] },
+  };
+  const declared = declaredDependencies(manifest, (name) => name.startsWith('@scope/'));
+  assert.deepEqual(declared.filter((d) => d.testOnly).map((d) => d.name), ['@scope/editor']);
+  assert.deepEqual(testOnlyDependencyProblems(manifest), []);
+  assert.deepEqual(testOnlyDependencyProblems({}), []);
+
+  assert.deepEqual(testOnlyDependencyProblems({
+    dependencies: { '@scope/contract': '^1' },
+    devDependencies: { '@scope/contract': '^1' },
+    turbowarpPlus: { testOnlyDependencies: ['@scope/contract', '@scope/missing'] },
+  }), [
+    'package.json: @scope/contract is test-only but also listed in dependencies',
+    'package.json: turbowarpPlus.testOnlyDependencies names @scope/missing, which is not a devDependency',
+  ]);
+  assert.deepEqual(testOnlyDependencyProblems({ turbowarpPlus: { testOnlyDependencies: 'x' as unknown as string[] } }),
+    ['package.json: turbowarpPlus.testOnlyDependencies must be an array of package names']);
 });

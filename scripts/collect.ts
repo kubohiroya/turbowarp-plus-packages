@@ -26,7 +26,7 @@ import type {
 import { loadCatalog } from './lib/catalog.ts';
 import { graphql, rest, pool } from './lib/github.ts';
 import { packageStatus, allVersions } from './lib/npm.ts';
-import { declaredDependencies, evaluateRange, nestedFamilyDependencies, nestedManifestPaths } from './lib/dependencies.ts';
+import { declaredDependencies, evaluateRange, nestedFamilyDependencies, nestedManifestPaths, testOnlyDependencyProblems } from './lib/dependencies.ts';
 import { describeFromReadme, looksJapanese } from './lib/descriptions.ts';
 import { checkLive } from './lib/pages.ts';
 import { publishedDemo } from './lib/demos.ts';
@@ -209,7 +209,7 @@ async function pagesStatus(owner: string, repo: string, discoverFavicon = false)
 
 /** Works out what to say about one declared dependency. */
 async function analyseDependency(
-  { name, range, kind, family, localProtocols }: DeclaredDependency & Pick<Catalog, 'localProtocols'>,
+  { name, range, kind, family, testOnly, localProtocols }: DeclaredDependency & Pick<Catalog, 'localProtocols'>,
 ): Promise<Dependency> {
   let versions = null;
   let error = null;
@@ -220,7 +220,7 @@ async function analyseDependency(
   }
 
   const verdict = evaluateRange({ range, versions, localProtocols });
-  return { name, range, kind, family, ...verdict, ...(error ? { error } : {}) };
+  return { name, range, kind, family, ...(testOnly ? { testOnly } : {}), ...verdict, ...(error ? { error } : {}) };
 }
 
 async function analyseDependencies(
@@ -237,6 +237,7 @@ async function analyseDependencies(
   }
 
   const declared = declaredDependencies(manifest, (name) => npmToRepo.has(name));
+  const problems = testOnlyDependencyProblems(manifest);
   const dependencies = await pool(declared, 8, (entry) =>
     analyseDependency({ ...entry, localProtocols }),
   );
@@ -249,6 +250,7 @@ async function analyseDependencies(
       license: manifest.license ?? null,
     },
     dependencies,
+    ...(problems.length ? { error: problems.join('; ') } : {}),
   };
 }
 

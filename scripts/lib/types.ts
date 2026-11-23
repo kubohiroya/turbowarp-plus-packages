@@ -84,6 +84,14 @@ export interface PackageManifest {
   peerDependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
+  /** Settings read by this dashboard and its release planner. */
+  turbowarpPlus?: {
+    /**
+     * Family devDependencies used only by tests. Their releases are not a reason to publish this
+     * package: the range is raised the next time it is published for another reason.
+     */
+    testOnlyDependencies?: string[];
+  };
 }
 
 export interface Commit {
@@ -185,6 +193,8 @@ export interface DeclaredDependency {
   range: string;
   kind: 'prod' | 'peer' | 'optional' | 'dev';
   family: boolean;
+  /** A dev dependency declared in `turbowarpPlus.testOnlyDependencies`. */
+  testOnly?: true;
 }
 
 export interface Dependency extends DeclaredDependency, RangeVerdict {

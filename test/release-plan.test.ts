@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
-import { createReleasePlan, formatReleasePlan } from '../scripts/lib/release-plan.ts';
+import { createDownstreamReleasePlan, createReleasePlan, formatReleasePlan } from '../scripts/lib/release-plan.ts';
 import type { DashboardPackage, DashboardReport, Dependency } from '../scripts/lib/types.ts';
 
 function pkg(repo: string, changes: Partial<DashboardPackage> = {}): DashboardPackage {
@@ -92,6 +92,50 @@ test('published upstream updates preserve exact, caret and tilde dependency styl
   ]);
   assert.equal(plan.steps[0].action, 'none');
   assert.equal(plan.steps[1].nextVersion, '1.3.0');
+});
+
+test('a test-only dependency release alone does not publish the dependent or its own dependents', () => {
+  const testOnly = { ...dep('editor', '^1.2.3', 'dev'), testOnly: true as const };
+  const input = report(ahead('editor'), pkg('extension', { dependencies: [testOnly] }),
+    pkg('app', { dependencies: [dep('extension', '^1.2.3')] }));
+  const plan = createDownstreamReleasePlan(input, 'editor');
+  const step = (repo: string) => plan.steps.find(s => s.repo === repo)!;
+  assert.equal(step('editor').action, 'publish');
+  assert.equal(step('extension').action, 'none');
+  assert.deepEqual(step('extension').dependencyUpdates, []);
+  assert.equal(step('app').action, 'none');
+  assert.deepEqual(plan.publishTargets.map(t => t.name), ['@family/editor']);
+});
+
+test('a test-only range is raised together when the dependent publishes for another reason', () => {
+  const testOnly = { ...dep('editor', '^1.2.3', 'dev'), testOnly: true as const };
+  const input = report(ahead('editor'), ahead('contract'),
+    pkg('extension', { dependencies: [dep('contract', '^1.2.3'), testOnly] }));
+  const plan = createDownstreamReleasePlan(input, ['editor', 'contract']);
+  const extension = plan.steps.find(s => s.repo === 'extension')!;
+  assert.equal(extension.action, 'publish');
+  assert.deepEqual(extension.reasons, ['dependency-update']);
+  assert.deepEqual(extension.dependencyUpdates.map(u => [u.field, u.name, u.to]), [
+    ['dependencies', '@family/contract', '^1.3.0'], ['devDependencies', '@family/editor', '^1.3.0'],
+  ]);
+});
+
+test('a blocked test-only upstream does not block a dependent that is not publishing', () => {
+  const testOnly = { ...dep('editor', '^1.2.3', 'dev'), testOnly: true as const };
+  const blocked = pkg('editor', { errors: ['collection failed'] });
+  const plan = createReleasePlan(report(blocked, pkg('extension', { dependencies: [testOnly] })), 'extension');
+  const extension = plan.steps.find(s => s.repo === 'extension')!;
+  assert.equal(extension.action, 'none');
+  assert(!extension.issues.some(i => i.code === 'upstream-blocked'));
+  const ahead2 = ahead('extension', { dependencies: [testOnly] });
+  const publishing = createReleasePlan(report(blocked, ahead2), 'extension').steps.find(s => s.repo === 'extension')!;
+  assert(publishing.issues.some(i => i.code === 'upstream-blocked'));
+  assert.equal(publishing.action, 'blocked');
+});
+
+test('testOnly is accepted in snapshots only on dev dependencies', () => {
+  const bad = report(pkg('a', { dependencies: [{ ...dep('b', '^1.2.3', 'prod'), testOnly: true as const }] }), pkg('b'));
+  assert.throws(() => createReleasePlan(bad, 'a'), /パッケージ情報が不正/);
 });
 
 test('compatible broad and peer ranges remain unchanged; external dependencies are not traversed', () => {

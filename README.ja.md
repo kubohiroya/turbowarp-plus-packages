@@ -227,6 +227,11 @@ npm run --silent bump -- turbowarp-title-menu --json > /tmp/release-plan.json
 - 上流の予定公開版、予定がなければ解析済みnpm公開版を依存元へ伝播します。通常依存の
   完全固定・`^`・`~` は記法を保って下限を更新します。新しい依存指定を古い版へ下げません。
   複雑な通常依存レンジは対象版を含む場合に維持し、未対応のレンジ・workspace・aliasは保留します。
+- package.json の `turbowarpPlus.testOnlyDependencies` に名前を挙げた devDependencies は、
+  テスト専用の依存として扱います。その依存先の公開だけでは、依存元を公開の対象にしません。
+  依存元が別の理由（先行コミット、ほかの依存の更新など）で公開されるときに、一緒に下限を
+  更新します。devDependencies にない名前や、通常依存・peer にもある名前は、collect が
+  エラーとして報告します。
 - peerは対象版を許容する場合に維持し、許容しない場合は完全固定・`^`・`~` の記法を保って
   対象版へ更新する案を出します。複雑なpeerレンジは `|| <対象版>` を追加する案です。
   ファミリーの記録済みGitHub repoへのGit参照は、すでにnpm公開済みならnpmの完全固定版へ
