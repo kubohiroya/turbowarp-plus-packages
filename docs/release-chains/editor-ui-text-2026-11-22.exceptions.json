@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "reviewedRepositories": [
+    "kubohiroya/turbowarp-extension-security-dialog",
+    "kubohiroya/turbowarp-plus-editor-code-views",
+    "kubohiroya/turbowarp-plus-editor-workbench"
+  ],
+  "repositories": {
+    "kubohiroya/turbowarp-plus-desktop": {
+      "install": [
+        [
+          "npx",
+          "--yes",
+          "npm@11.21.0",
+          "install",
+          "--package-lock-only",
+          "--ignore-scripts"
+        ],
+        [
+          "npx",
+          "--yes",
+          "npm@11.21.0",
+          "ci"
+        ]
+      ]
+    },
+    "kubohiroya/turbowarp-kamishibai-app": {
+      "prepare": [
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "build:lib"
+        ],
+        [
+          "corepack",
+          "pnpm",
+          "run",
+          "build"
+        ]
+      ]
+    }
+  }
+}
