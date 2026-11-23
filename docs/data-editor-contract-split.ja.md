@@ -1,6 +1,6 @@
 # data-editor の契約と実装の分離（設計案）
 
-状態: 案（2026-11-24 改訂）。未決定の事項は末尾の「決めること」にまとめる。
+状態: 案（2026-11-24 改訂）。「決めること」1 は (a) に決めた（2026-11-24）。残りの未決定の事項は末尾にまとめる。
 
 ## 背景
 
@@ -106,12 +106,14 @@ contract とは別のパッケージにする。0.11.1 のように ajv まわ�
 
 分けただけでは連鎖は減らない。拡張機能のテストが data-editor（実装）を devDependencies に持ち続けるからである。今の計画（`scripts/lib/release-plan.ts`）は、devDependencies の caret の下限も上げる（`^0.11.4` → `^0.11.5`）。その結果、その拡張機能の公開と、さらにその下流の更新につながる。
 
-そこで、次のどちらかを足す（「決めること」1）。
+そこで、次のどちらかを足す。**(a) に決めた**（2026-11-24、#154 で実装）。
 
 - (a) テスト専用の依存を宣言できるようにする。例: package.json の `turbowarpPlus.testOnlyDependencies`、または catalog.yaml。計画は、その依存の更新を公開の理由にしない。下限の引き上げは、別の理由で公開するときに一緒に行う。
 - (b) devDependencies の範囲がすでに新しい版を含むとき、計画は下限を上げない。
 
-(a) を勧める。(b) は、ビルドに使い bundle に入る依存まで止めてしまうからである。
+(b) は、ビルドに使い bundle に入る依存まで止めてしまうので採らない。
+
+宣言は package.json の `turbowarpPlus.testOnlyDependencies`（devDependencies の名前の配列）に置く。devDependencies にない名前や、通常依存・peer と重なる名前は、collect がエラーとして報告する。
 
 (a) は data-editor 自身にも効く。0.10.1、0.11.0、0.11.2 は、data-editor 自身のテスト用の依存（Playwright、test-runtime）が変わっただけで、版を上げて公開していた。
 
@@ -128,7 +130,7 @@ contract とは別のパッケージにする。0.11.1 のように ajv まわ�
 
 1. **境界を作る。** data-editor のリポジトリの中で、拡張機能の型をホストの型から切り出し、contract と validation にあたるファイルへ分ける。公開物には変化がない。
 2. **contract と validation を作る。** 新しいパッケージとして公開し、data-editor はそれに依存して再 export する。data-editor の利用側には変化がない。
-3. **計画の規則を足す。** (a) または (b) を `release-plan.ts` に足してテストする。
+3. **計画の規則を足す。** (a) を `release-plan.ts` に足した（#154）。依存元は、data-editor をテスト専用にした時点で package.json に宣言する。
 4. **依存元を移す。** 拡張機能の src の import を contract と validation に替える。依存元すべてに触れることになるので、次に全体を更新する連鎖と同じ機会に行う。連鎖の例外設定に、import を書き換えるフックを足す。
 5. **再 export をやめる。** 0.12 系以降で、data-editor の root と `/schema` から contract と validation の記号を外す。
 
@@ -136,7 +138,7 @@ contract とは別のパッケージにする。0.11.1 のように ajv まわ�
 
 ## 決めること
 
-1. 計画の規則を (a) テスト専用の宣言にするか、(b) devDependencies の下限を上げないことにするか。
+1. ~~計画の規則を (a) テスト専用の宣言にするか、(b) devDependencies の下限を上げないことにするか。~~ (a) に決めた。
 2. contract と validation のパッケージ名と置き場所。
    - 名前の案: `@kubohiroya/turbowarp-extension-data-editor-contract`、`@kubohiroya/turbowarp-extension-data-editor-validation`。
    - 置き場所: 新しいリポジトリにするか、data-editor のリポジトリから複数のパッケージを出すか。executor は 1 リポジトリ = 1 パッケージを前提にしているので、新しいリポジトリのほうが手間が少ない。
