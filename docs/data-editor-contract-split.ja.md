@@ -126,7 +126,98 @@ contract とは別のパッケージにする。0.11.1 のように ajv まわ�
 
 契約が後方互換な追加（新しい型を足すだけ）の場合でも、今の計画は依存元の範囲の下限を上げ、全件を更新の対象にする。これを避けるかどうかは、深さ優先の方針（依存先が上がれば依存元も上げる）をどこまで適用するかという、別の判断である（「決めること」4）。
 
+## family 全体で連鎖をさらに狭める
+
+data-editor の分離だけでは、連鎖の大部分は残る。family 全体を調べると、data-editor より下流の多い上流があり、再公開した版の中身もほとんど変わっていなかった。
+
+### 実測: 再公開した 35 件の中身
+
+2026-11-24 の連鎖では、依存の更新を理由に 35 件の新しい版を公開した。前の版とファイルのハッシュを比べた（jsDelivr の一覧で、package.json を除く）。
+
+- 22 件は、実行時に読み込むファイルが 1 バイトも変わっていなかった。
+- 残る 13 件について、変わったファイルの差分を見た。機能に関わる違いは 1 件もなかった。違いは次のものだけである。
+  - パッケージ自身の版の文字列
+  - bundler が入れる注釈（`//#region node_modules/.pnpm/@kubohiroya+turbowarp-extension-data-editor@0.11.4…`）。依存先のパスと版を含む。
+  - dist に埋め込んだ依存の範囲（teachable-machine の `"@kubohiroya/turbowarp-camera-source": "^0.25.1"`）、rmc-app の `embedded-extensions.json` の版
+  - http-server の許可リストへの 0.12.2 の追加。連鎖を通すために、例外設定のフックで足したもの。
+
+つまり、35 件の公開はどれも、利用者にとって中身が同じ版を出し直していた。
+
+### 連鎖の大きな上流
+
+下流の件数（推移的に依存する数）が多い上流は次のとおり。今の構成で、起点に 1 つ変更があったときに更新の対象になる件数を、計画で試算した（依存の範囲がすべて最新にそろっている状態を仮定）。
+
+| 起点 | 依存元の使い方 | 今 | test-runtime をテスト専用に | 開発用の依存もすべて除く |
+| --- | --- | --- | --- | --- |
+| plus-editor-host | → test-runtime-blocks → test-runtime → 7 件の devDependencies | 50 | **3** | 3 |
+| plus-editor-test-runtime | 7 件すべてテストだけ（`test/runtime/*.browser.ts` など） | 49 | **1** | 1 |
+| vite-plugin-turbowarp-extension | 46 件すべて `vite.config.ts` だけ（ビルド専用） | 50 | 50 | **1** |
+| extension-manifest | 38 件が devDependencies で、テストとビルド設定だけ。src で使うのは asset-cache と security-dialog | 48 | 48 | **5** |
+| extension-data-editor | 25 件が devDependencies、9 件が dependencies | 38 | 38 | **13** |
+| sb3-toolchain | 12 件が devDependencies（ビルド専用） | 14 | 14 | **4** |
+| app-shell | 8 件が dependencies | 18 | 18 | 18 |
+| camera-source | 実行時の依存と peer | 12 | 12 | 12 |
+| named-data | 実行時の依存と peer | 10 | 10 | 10 |
+
+「開発用の依存もすべて除く」は、test-runtime、data-editor、extension-manifest、vite-plugin、sb3-toolchain の devDependencies を、すべて公開の理由にしないと仮定した場合である。
+
+### 方策 1: テスト専用の依存を宣言する（すぐできる）
+
+plus-editor-test-runtime は、依存元 7 件のすべてでテストだけに使われている。7 件の package.json に `turbowarpPlus.testOnlyDependencies` を書けば、plus-editor-host の変更による連鎖は 50 件から 3 件になる（#154 の規則）。
+
+data-editor も、契約を分けた後は、拡張機能の側ではテスト専用になる。
+
+### 方策 2: ビルド専用の依存は、成果物が変わったときだけ公開する
+
+vite-plugin、extension-manifest、sb3-toolchain は、ビルドに使う依存である。テスト専用と違い、更新すると成果物が変わることがある。そのため、宣言だけでは公開をやめられない。
+
+ただ、上の実測のとおり、ビルドし直しても成果物はほとんど変わらない。そこで、executor に次を足す。
+
+1. 依存の更新だけで計画に入った対象は、prepare でビルドしたあと、`npm pack` の結果を公開済みの版の tarball と比べる。
+2. 比べるときは、パッケージ自身の版の文字列と、package.json の devDependencies の範囲を除く。
+3. 同じなら、その対象を取りやめる（push、PR、タグ、公開をしない）。今の「不要な対象の取りやめ」と同じ扱いにするので、その依存元も、ほかに理由がなければ取りやめになる。
+
+この比較が実際に効くには、成果物に依存先の版が入らないようにする必要がある。
+
+- bundler の `//#region node_modules/.pnpm/…@版…` という注釈を出さない設定にする。または、比べる前にその注釈を取り除く。
+- dist に依存の範囲や版を埋め込まない（teachable-machine、rmc-app の `embedded-extensions.json`）。埋め込む必要があるなら、比べる対象から外す。
+
+試算では、vite-plugin の変更による連鎖は 50 件から 1 件、extension-manifest は 48 件から 5 件、sb3-toolchain は 14 件から 4 件になる。
+
+この比較は、ビルド専用の依存に限らず効く。依存の更新だけで公開しようとしている対象なら、どれでも成果物が同じかどうかで判定できる。2026-11-24 の 35 件は、すべて取りやめになっていたはずである。
+
+### 方策 3: data-editor を契約と実装に分ける
+
+この文書の前半の案である。依存元の 25 件が data-editor をテスト専用にでき、9 件は dependencies を contract と validation に替えられる。試算の 38 件（方策 1・2 の後は 13 件）が、document-editor → plus-editor（→ plus-desktop）の 3 件前後になる。
+
+方策 2 があれば、分けなくても成果物は同じになるので連鎖は止まる。ただし、テストが古い実装に対して通ったままになることと、d.ts の参照の不具合は残る。分ける意味は、境界をはっきりさせ、その 2 つを解消することにある。
+
+### 方策 4: テストを分ける
+
+拡張機能のテストは、拡張機能の固定入力の定義（`FixedInputEditorOptions`）を data-editor の実装に通して動かしている（`createFixedInputEditor`、`EditorRegistry`、`createBlockEditorService`）。読み書き、検証、競合の扱い、ホストへの登録を確かめる、実装との結合テストである。
+
+テスト専用の宣言をすると、このテストは依存元が次に公開されるまで、古い実装に対して通ったままになる。実装が拡張機能を壊しても、拡張機能の側では気付かない。そこで、テストを 2 つに分ける。
+
+- **拡張機能の側の単体テスト。** contract と validation だけで書ける部分（`read`、`encode`、`validateCandidate` を直接呼ぶ）に寄せる。ホストへの登録は、契約の型に沿った小さな偽のホストで確かめる。偽のホストは contract のパッケージで用意する（テスト用の subpath）。
+- **data-editor の側の結合テスト。** 拡張機能が公開した定義（`editor-schema` などの export）を data-editor の CI で読み込み、今の実装に通す。実装の変更が拡張機能を壊すことを、data-editor を公開する前に見つけられる。壊したときに直すのは data-editor の側であり、拡張機能を出し直す必要はない。
+
+### 方策 5: 実行時の依存（app-shell、camera-source、named-data、yaml-json）
+
+これらは実行時の依存なので、宣言では外せない。ただし、bundle される依存なら、方策 2 の比較で、コードが変わらない更新は止まる。bundle されない依存（`editor-schema` が実行時に import する data-editor の `/schema` など）は、依存元の範囲がすでに新しい版を含むので、本来は出し直す必要がない。今の計画は下限を上げるので出し直すことになる。これを止めるかどうかは「決めること」4 で判断する。
+
+### 効果の見込み
+
+方策 1・2 だけで、今日の 2 回の連鎖（35 件と 41 件）は、ほぼすべて取りやめになる。方策 3・4 は、契約の境界とテストの正しさを保つためのもので、連鎖の件数を減らすことはその結果である。
+
 ## 進め方
+
+family 全体の方策（上の 1〜5）は、効果が大きく手間の少ない順に進める。
+
+1. **方策 1：** test-runtime の依存元 7 件に、テスト専用の宣言を書く。
+2. **方策 2：** executor に、成果物が同じなら取りやめる判定を足す。あわせて、成果物に依存先の版が入らないようにする。
+3. **方策 3・4：** data-editor を分ける（下の手順）。
+
+data-editor の分離の手順は次のとおり。
 
 1. **境界を作る。** data-editor のリポジトリの中で、拡張機能の型をホストの型から切り出し、contract と validation にあたるファイルへ分ける。公開物には変化がない。
 2. **contract と validation を作る。** 新しいパッケージとして公開し、data-editor はそれに依存して再 export する。data-editor の利用側には変化がない。
@@ -143,4 +234,5 @@ contract とは別のパッケージにする。0.11.1 のように ajv まわ�
    - 名前の案: `@kubohiroya/turbowarp-extension-data-editor-contract`、`@kubohiroya/turbowarp-extension-data-editor-validation`。
    - 置き場所: 新しいリポジトリにするか、data-editor のリポジトリから複数のパッケージを出すか。executor は 1 リポジトリ = 1 パッケージを前提にしているので、新しいリポジトリのほうが手間が少ない。
 3. 最初の版。0.1.0 から始めるか、data-editor の 0.11 にそろえるか。
-4. 契約が後方互換な追加だけのとき、依存元の下限を上げるか。
+4. 契約が後方互換な追加だけのとき、依存元の下限を上げるか。bundle されない実行時の依存（方策 5）も同じ判断になる。
+5. 方策 2 の比較で、何を除いて「同じ」とみなすか。パッケージ自身の版の文字列、devDependencies の範囲、bundler の注釈のほかに、d.ts の変化をどう扱うか（型が変われば利用者に影響する）。
