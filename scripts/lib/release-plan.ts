@@ -97,7 +97,7 @@ function snapshot(value: unknown): DashboardReport {
     if (pkg.dependencies !== undefined && (!Array.isArray(pkg.dependencies) ||
         pkg.dependencies.some((dep: unknown) => !object(dep) || !text(dep.name) ||
           !text(dep.range) || !KINDS.includes(dep.kind as Dependency['kind']) ||
-          typeof dep.family !== 'boolean'))) throw invalid();
+          typeof dep.family !== 'boolean' || (dep.testOnly !== undefined && (dep.testOnly !== true || dep.kind !== 'dev'))))) throw invalid();
     if (pkg.github != null && (!object(pkg.github) ||
         typeof pkg.github.isArchived !== 'boolean')) throw invalid();
   }
@@ -292,14 +292,20 @@ function planPackage(
     } else issue('revision-review', 'タグとHEADが異なりますが、先行コミット数が不明なためソース変更は未判定です。', 'warning');
   }
 
+  // A test-only dependency's release is not a reason to publish. Its update is held here and
+  // applied only when this package is published for another reason.
+  const deferred: {update?: PackagePlan['dependencyUpdates'][number]; issues: (() => void)[]}[] = [];
   for (const dep of (pkg.dependencies ?? []).filter((dep) => dep.family)) {
     const upstream = names.get(dep.name)!;
     const upstreamPlan = planned.get(upstream.repo)!;
-    if (upstreamPlan.action === 'blocked') issue('upstream-blocked', `${dep.name}: 上流の計画に未解決事項があります。`);
+    const held = dep.testOnly ? {issues: [] as (() => void)[]} as (typeof deferred)[number] : null;
+    if (held) deferred.push(held);
+    const later = (record: () => void) => held ? held.issues.push(record) : record();
+    if (upstreamPlan.action === 'blocked') later(() => issue('upstream-blocked', `${dep.name}: 上流の計画に未解決事項があります。`));
     const plannedRelease = isPublishable(upstream) && upstreamPlan.versionChange !== 'none';
     const version = plannedRelease ? upstreamPlan.nextVersion : upstreamPlan.publishedVersion;
     if (!version || !semver.valid(version)) {
-      issue('upstream-unavailable', `${dep.name}: 利用できる公開版または公開予定版がありません。`);
+      later(() => issue('upstream-unavailable', `${dep.name}: 利用できる公開版または公開予定版がありません。`));
       continue;
     }
     if (referenceOnly || (affected && !affected.has(upstream.repo))) continue;
@@ -308,7 +314,7 @@ function planPackage(
     const match = /^(\^|~)?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/.exec(range);
     const simple = match && semver.valid(match[2]) ? match : null;
     if (simple && semver.gt(simple[2], version)) {
-      issue('dependency-ahead', `${dep.name}: 依存指定 ${range} が解析結果の ${version} より新しいため下げられません。`);
+      later(() => issue('dependency-ahead', `${dep.name}: 依存指定 ${range} が解析結果の ${version} より新しいため下げられません。`));
       continue;
     }
     if (simple && range === `${simple[1] ?? ''}${version}`) continue;
@@ -321,12 +327,14 @@ function planPackage(
       to = version;
       review('git-to-npm', `${dep.name}: Git参照をnpm版 ${version} に置換する案です。Git固有の変更・配布内容の同等性は未検証です。`);
     }
-    step.dependencyUpdates.push({
+    const update = {
       field: FIELDS.find((field) => DEPENDENCY_KINDS[field] === dep.kind)!,
       name: dep.name, upstreamRepo: upstream.repo, from: dep.range, to,
-      targetVersion: version, source: plannedRelease ? 'planned' : 'published',
-    });
-    if (to === null) issue('range-review', `${dep.name}: ${dep.kind === 'peer' ? 'peer互換性' : '依存指定'} ${range} → ${version} の変更方法を確認してください。`);
+      targetVersion: version, source: plannedRelease ? 'planned' as const : 'published' as const,
+    };
+    if (to === null) later(() => issue('range-review', `${dep.name}: ${dep.kind === 'peer' ? 'peer互換性' : '依存指定'} ${range} → ${version} の変更方法を確認してください。`));
+    if (held) held.update = update;
+    else step.dependencyUpdates.push(update);
   }
   if (step.dependencyUpdates.length) step.reasons.push('dependency-update');
   if (!referenceOnly && step.sourceChanges === 'ahead') step.reasons.push('commits-ahead');
@@ -341,6 +349,12 @@ function planPackage(
   const prepared = Boolean(current && published && semver.gt(current, published) && !versions.includes(current));
   if (prepared && !referenceOnly) {
     step.reasons.push('prepared-version');
+  }
+  if (step.reasons.length) {
+    for (const entry of deferred) {
+      if (entry.update) step.dependencyUpdates.push(entry.update);
+      for (const record of entry.issues) record();
+    }
   }
 
   if (step.reasons.length && current) {

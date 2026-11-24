@@ -269,6 +269,11 @@ publish to npm. There is no `--apply` option.
   exact, caret and tilde styles for ordinary dependencies, raising their minimum
   versions without downgrading. Preserve complex ranges that include the target;
   leave unsupported complex ranges, workspace references and aliases blocked.
+- Treat the devDependencies named in package.json `turbowarpPlus.testOnlyDependencies`
+  as test-only. Their releases alone do not make the dependent a publish target;
+  the range is raised when the dependent is published for another reason. Collect
+  reports a name that is not a devDependency, or that is also a regular or peer
+  dependency.
 - Preserve compatible peer ranges. For excluded versions, preserve exact/caret/tilde
   styles, or extend a complex peer range with `|| <target>`. These are proposals;
   peer compatibility remains unverified. A Git URL identifying the recorded family
