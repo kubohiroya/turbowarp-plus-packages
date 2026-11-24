@@ -40,7 +40,7 @@ interface PagesResponse {
   cname?: string;
 }
 
-type DependencyOptions = Pick<Catalog, 'npmToRepo' | 'localProtocols'>;
+type DependencyOptions = Pick<Catalog, 'npmToRepo' | 'localProtocols'> & { testOnly: readonly string[] };
 interface DependencyAnalysis {
   manifest: DashboardPackage['manifest'];
   dependencies: Dependency[];
@@ -225,7 +225,7 @@ async function analyseDependency(
 
 async function analyseDependencies(
   packageJsonText: string | null,
-  { npmToRepo, localProtocols }: DependencyOptions,
+  { npmToRepo, localProtocols, testOnly }: DependencyOptions,
 ): Promise<DependencyAnalysis> {
   if (!packageJsonText) return { manifest: null, dependencies: [] };
 
@@ -236,8 +236,8 @@ async function analyseDependencies(
     return { manifest: null, dependencies: [], error: `package.json: ${errorMessage(error)}` };
   }
 
-  const declared = declaredDependencies(manifest, (name) => npmToRepo.has(name));
-  const problems = testOnlyDependencyProblems(manifest);
+  const declared = declaredDependencies(manifest, (name) => npmToRepo.has(name), testOnly);
+  const problems = testOnlyDependencyProblems(manifest, testOnly);
   const dependencies = await pool(declared, 8, (entry) =>
     analyseDependency({ ...entry, localProtocols }),
   );
@@ -339,7 +339,7 @@ async function main() {
       entry.pages
         ? pagesStatus(owner, entry.repo, entry.application === true || entry.category === 'apps')
         : Promise.resolve<PagesStatus>({ enabled: false }),
-      analyseDependencies(node.packageJson?.text ?? null, { npmToRepo, localProtocols }),
+      analyseDependencies(node.packageJson?.text ?? null, { npmToRepo, localProtocols, testOnly: entry.testOnlyDependencies ?? [] }),
     ]);
 
     record.revision = revision;

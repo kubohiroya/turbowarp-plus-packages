@@ -40,6 +40,7 @@ export interface RawCatalog {
     buildSource?: 'fixed-editor-gui';
     editorCatalogHold?: string;
     releaseHold?: string;
+    testOnlyDependencies?: string[];
   }>;
 }
 
@@ -62,6 +63,8 @@ export interface CatalogEntry {
   editorCatalogHold?: string;
   /** Why a dependency release must not bump and publish this repository; its owner releases it. */
   releaseHold?: string;
+  /** Family devDependencies this repository uses only in tests (see `turbowarpPlus.testOnlyDependencies`). */
+  testOnlyDependencies?: string[];
 }
 
 export interface Catalog {

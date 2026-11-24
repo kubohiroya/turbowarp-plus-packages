@@ -50,6 +50,11 @@ export async function loadCatalog(path = 'catalog.yaml'): Promise<Catalog> {
         (typeof override.releaseHold !== 'string' || !override.releaseHold.trim())) {
         throw new Error(`${path}: "releaseHold" for "${repo}" must say why it is held`);
       }
+      if (override.testOnlyDependencies !== undefined && (!Array.isArray(override.testOnlyDependencies) ||
+        !override.testOnlyDependencies.length ||
+        override.testOnlyDependencies.some((name: unknown) => typeof name !== 'string' || !name.trim()))) {
+        throw new Error(`${path}: "testOnlyDependencies" for "${repo}" must list package names`);
+      }
       if (override.npmReason !== undefined && (override.npm !== false ||
         !override.npmReason || typeof override.npmReason.en !== 'string' || !override.npmReason.en.trim() ||
         typeof override.npmReason.ja !== 'string' || !override.npmReason.ja.trim())) {
@@ -72,6 +77,7 @@ export async function loadCatalog(path = 'catalog.yaml'): Promise<Catalog> {
         ...(override.buildSource ? { buildSource: override.buildSource } : {}),
         ...(override.editorCatalogHold ? { editorCatalogHold: override.editorCatalogHold.trim() } : {}),
         ...(override.releaseHold ? { releaseHold: override.releaseHold.trim() } : {}),
+        ...(override.testOnlyDependencies ? { testOnlyDependencies: [...override.testOnlyDependencies] } : {}),
       });
     }
   }

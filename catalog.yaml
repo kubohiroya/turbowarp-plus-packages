@@ -416,6 +416,12 @@ categories:
 # bumping and publishing that repository: its owner decides each version and
 # folds dependency updates into its own release. Its dependents are planned
 # only through their other updated dependencies.
+# `testOnlyDependencies: [<npm name>, ...]` names family devDependencies the
+# repository uses only in tests. A release of one of them alone does not make
+# the repository a publish target; the range is raised the next time it is
+# published for another reason. The same declaration can live in the
+# repository's package.json (`turbowarpPlus.testOnlyDependencies`); declaring
+# it here avoids a commit that would itself become a reason to publish.
 overrides:
   turbowarp-title-menu:
     dashboardGroup: extensions
@@ -508,3 +514,17 @@ overrides:
     application: true
     npm: false
     npmReason: {"en": "An end-user app scaffold with UI and SB3 build output, not an importable library.", "ja": "UIとSB3をビルドする利用者向けアプリの雛形です。importして使うライブラリではありません。"}
+  turbowarp-extension-data-editor:
+    testOnlyDependencies: ["@kubohiroya/turbowarp-plus-editor-test-runtime"]
+  turbowarp-extension-loader:
+    testOnlyDependencies: ["@kubohiroya/turbowarp-plus-editor-test-runtime"]
+  turbowarp-plus-editor-code-views:
+    testOnlyDependencies: ["@kubohiroya/turbowarp-plus-editor-test-runtime"]
+  turbowarp-plus-editor-git:
+    testOnlyDependencies: ["@kubohiroya/turbowarp-plus-editor-test-runtime"]
+  turbowarp-plus-editor-project-folder:
+    testOnlyDependencies: ["@kubohiroya/turbowarp-plus-editor-test-runtime"]
+  turbowarp-plus-editor-test:
+    testOnlyDependencies: ["@kubohiroya/turbowarp-plus-editor-test-runtime"]
+  turbowarp-test:
+    testOnlyDependencies: ["@kubohiroya/turbowarp-plus-editor-test-runtime"]

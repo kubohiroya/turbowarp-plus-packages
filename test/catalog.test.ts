@@ -115,3 +115,23 @@ overrides:
     /"releaseHold" for "hidden-site" must say why it is held/,
   );
 });
+
+test('test-only dependencies are a list of package names', async () => {
+  const entries = (await loadCatalog(await catalog(`${BASE}
+overrides:
+  hidden-site:
+    testOnlyDependencies: ["@scope/test-runtime"]
+`))).entries;
+  assert.deepEqual(entries.find((entry) => entry.repo === 'hidden-site')?.testOnlyDependencies, ['@scope/test-runtime']);
+  assert.equal(entries.find((entry) => entry.repo === 'shown-site')?.testOnlyDependencies, undefined);
+  for (const value of ['"@scope/test-runtime"', '[]', '[" "]']) {
+    await assert.rejects(
+      loadCatalog(await catalog(`${BASE}
+overrides:
+  hidden-site:
+    testOnlyDependencies: ${value}
+`)),
+      /"testOnlyDependencies" for "hidden-site" must list package names/,
+    );
+  }
+});

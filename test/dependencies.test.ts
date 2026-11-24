@@ -91,9 +91,24 @@ test('test-only dev dependencies are marked, and mistakes in the declaration are
     devDependencies: { '@scope/contract': '^1' },
     turbowarpPlus: { testOnlyDependencies: ['@scope/contract', '@scope/missing'] },
   }), [
-    'package.json: @scope/contract is test-only but also listed in dependencies',
+    'package.json: turbowarpPlus.testOnlyDependencies: @scope/contract is test-only but also listed in dependencies',
     'package.json: turbowarpPlus.testOnlyDependencies names @scope/missing, which is not a devDependency',
   ]);
   assert.deepEqual(testOnlyDependencyProblems({ turbowarpPlus: { testOnlyDependencies: 'x' as unknown as string[] } }),
     ['package.json: turbowarpPlus.testOnlyDependencies must be an array of package names']);
+});
+
+test('catalog.yaml can declare test-only dependencies, checked like the package.json declaration', () => {
+  const manifest = {
+    dependencies: { '@scope/contract': '^1' },
+    devDependencies: { '@scope/test-runtime': '^2' },
+  };
+  const declared = declaredDependencies(manifest, (name) => name.startsWith('@scope/'), ['@scope/test-runtime']);
+  assert.deepEqual(declared.filter((d) => d.testOnly).map((d) => d.name), ['@scope/test-runtime']);
+  assert.deepEqual(testOnlyDependencyProblems(manifest, ['@scope/test-runtime']), []);
+  assert.deepEqual(testOnlyDependencyProblems(manifest, ['@scope/contract', '@scope/missing']), [
+    'catalog.yaml: testOnlyDependencies names @scope/contract, which is not a devDependency',
+    'catalog.yaml: testOnlyDependencies: @scope/contract is test-only but also listed in dependencies',
+    'catalog.yaml: testOnlyDependencies names @scope/missing, which is not a devDependency',
+  ]);
 });
