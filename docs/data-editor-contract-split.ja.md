@@ -113,7 +113,7 @@ contract とは別のパッケージにする。0.11.1 のように ajv まわ�
 
 (b) は、ビルドに使い bundle に入る依存まで止めてしまうので採らない。
 
-宣言は package.json の `turbowarpPlus.testOnlyDependencies`（devDependencies の名前の配列）に置く。devDependencies にない名前や、通常依存・peer と重なる名前は、collect がエラーとして報告する。
+宣言は package.json の `turbowarpPlus.testOnlyDependencies`（devDependencies の名前の配列）か、catalog.yaml の各リポジトリの `testOnlyDependencies` に置く。既存のリポジトリには、コミットを生まない catalog.yaml を使う。devDependencies にない名前や、通常依存・peer と重なる名前は、collect がエラーとして報告する。
 
 (a) は data-editor 自身にも効く。0.10.1、0.11.0、0.11.2 は、data-editor 自身のテスト用の依存（Playwright、test-runtime）が変わっただけで、版を上げて公開していた。
 
@@ -163,7 +163,9 @@ data-editor の分離だけでは、連鎖の大部分は残る。family 全体�
 
 ### 方策 1: テスト専用の依存を宣言する（すぐできる）
 
-plus-editor-test-runtime は、依存元 7 件のすべてでテストだけに使われている。7 件の package.json に `turbowarpPlus.testOnlyDependencies` を書けば、plus-editor-host の変更による連鎖は 50 件から 3 件になる（#154 の規則）。
+plus-editor-test-runtime は、依存元 7 件のすべてでテストだけに使われている。7 件をテスト専用と宣言すれば、plus-editor-host の変更による連鎖は 50 件から 3 件になる（#154 の規則）。
+
+宣言は catalog.yaml の `testOnlyDependencies` に置く（#156）。7 件の package.json に書くと、そのコミットが未公開の変更になり、次の連鎖で 7 件（と data-editor の下流）を公開する理由になってしまう。方策 2 の取りやめは、自分の変更がある対象には効かない。
 
 data-editor も、契約を分けた後は、拡張機能の側ではテスト専用になる。
 
@@ -213,8 +215,8 @@ vite-plugin、extension-manifest、sb3-toolchain は、ビルドに使う依存�
 
 family 全体の方策（上の 1〜5）は、効果が大きく手間の少ない順に進める。
 
-1. **方策 1：** test-runtime の依存元 7 件に、テスト専用の宣言を書く。
-2. **方策 2：** executor に、成果物が同じなら取りやめる判定を足す。あわせて、成果物に依存先の版が入らないようにする。
+1. **方策 1：** test-runtime の依存元 7 件を、catalog.yaml でテスト専用と宣言する（#156）。
+2. **方策 2：** executor に、成果物が同じなら取りやめる判定を足す（#155 で実装済み）。あわせて、成果物に依存先の版が入らないようにする（teachable-machine、rmc-app はまだ）。
 3. **方策 3・4：** data-editor を分ける（下の手順）。
 
 data-editor の分離の手順は次のとおり。
