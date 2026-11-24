@@ -271,9 +271,11 @@ publish to npm. There is no `--apply` option.
   leave unsupported complex ranges, workspace references and aliases blocked.
 - Treat the devDependencies named in package.json `turbowarpPlus.testOnlyDependencies`
   as test-only. Their releases alone do not make the dependent a publish target;
-  the range is raised when the dependent is published for another reason. Collect
-  reports a name that is not a devDependency, or that is also a regular or peer
-  dependency.
+  the range is raised when the dependent is published for another reason. The
+  same declaration can be made as `testOnlyDependencies` for the repository in
+  catalog.yaml, which avoids a repository commit that would itself be a reason
+  to publish. Collect reports a name that is not a devDependency, or that is
+  also a regular or peer dependency.
 - Preserve compatible peer ranges. For excluded versions, preserve exact/caret/tilde
   styles, or extend a complex peer range with `|| <target>`. These are proposals;
   peer compatibility remains unverified. A Git URL identifying the recorded family
