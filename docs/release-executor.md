@@ -250,7 +250,16 @@ peer/Git/RC変更は従来どおり明示レビューが必要です。レビュ
 依存先の検証・PR/CI/Squash Merge・タグ/Release・公開・provenance/公開元commit/latest/next照合が完了するまで依存元へ進みません。
 依存しあわない対象は並列に進みます。同時に進める数は`--concurrency <n>`で指定します（既定4、`1`で計画の順に直列）。1つが失敗すると新しい対象は始めず、進行中の対象を区切りまで進めてから停止します。並列数は実行結果を変えないので、digestには含めません。
 
-不要な対象は取りやめます。依存の更新だけで計画に入った対象（`reasons`が`dependency-update`だけ）で、依存先がすべて取りやめになり、更新するものが残らないときは、push・PR・タグ・公開をせずにその対象を終えます。理由は`state.json`の`cancelled`に残り、再開しても取りやめたままです。公開済みの版と中身が同じかどうかは、tarballを比べないと分からないので判定しません。
+不要な対象は取りやめます。依存の更新だけで計画に入った対象（`reasons`が`dependency-update`だけ）で、依存先がすべて取りやめになり、更新するものが残らないときは、push・PR・タグ・公開をせずにその対象を終えます。理由は`state.json`の`cancelled`に残り、再開しても取りやめたままです。
+
+依存の更新だけで計画に入った対象は、準備と検証が終わったあと、成果物を公開済みの版と比べます。候補は`npm pack --ignore-scripts`で固め（ビルドは準備で済んでいるため）、公開済みの版は`npm pack <name>@<公開済みの版>`で取得して、展開した中身を比べます。同じなら、push・PR・タグ・公開をせずにその対象を取りやめます。違いは`state.json`の`artifactDifferences`に残ります。「同じ」の判定は次のとおりです（`scripts/lib/release-equivalence.ts`）。
+
+- `package.json`は、`version`・`devDependencies`・`gitHead`を除いて比べます。`dependencies`・`peerDependencies`・`optionalDependencies`の範囲が変われば違いです。利用者がインストールするものが変わるからです。
+- Markdownと`docs/`の下は比べません。公開の手続きそのものが書き換える文書（版の固定、CHANGELOG、依存先の版の表記）だからです。
+- ほかのテキストファイルは、パッケージ自身の版の文字列と、pnpmの格納先のパス（`node_modules/.pnpm/<名前>@<版>…/node_modules/`）をそろえてから比べます。bundlerが入れる注釈に依存先の版が入るためです。
+- バイナリはバイト単位で比べます。
+
+2026-11-24に依存の更新だけで公開した35件にこの判定を当てると、上流の取りやめが依存元に伝わる分も含めて22件が取りやめになります。残る13件のうち8件は、`dependencies`の範囲が変わったものです。そのほかは、成果物に依存の範囲や版を埋め込んでいるもの（teachable-machine、rmc-appの`embedded-extensions.json`）と、中身が実際に変わったものです。
 
 取りやめた対象への依存の更新は、依存元では外します。依存元の今の範囲は、出ている版を受け入れるからです。自分の変更がある対象（`commits-ahead`など）は取りやめません。
 private更新はPR/CI/mergeまでです。既存タグや公開版を推測・上書きしません。

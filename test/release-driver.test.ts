@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { GithubNpmReleaseDriver, CommandFailure, runCommand } from '../scripts/lib/release-driver.ts';
 import type { Runner } from '../scripts/lib/release-driver.ts';
 import { executeReleasePlan, executionDigest } from '../scripts/lib/release-execution.ts';
-import type { ExecutionConfig } from '../scripts/lib/release-execution.ts';
+import type { ExecutionConfig, ExecutionEntry } from '../scripts/lib/release-execution.ts';
 import type { ReleasePlan, PackagePlan } from '../scripts/lib/release-plan.ts';
 
 for (const resumedMismatch of [false, true]) test(`pre-existing unpublished tags fail before checkout or publication (resumed mismatch=${resumedMismatch})`, async () => {
@@ -249,5 +249,68 @@ for (const { privatePackage, interruption, prepared, withoutNext = false } of li
     assert.equal(await git(['--git-dir', remote, 'branch', '--list', state.entries.tool.branch!]), '');
     await execute();
     assert.equal(events.filter(event => event === 'publish').length, privatePackage ? 0 : 1, 'resume must not publish again');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+for (const changed of [false, true]) test(`a dependency-only step is cancelled when its artifact equals the published one (code changed=${changed})`, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'release-equivalent-'));
+  const gitEnv = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_AUTHOR_NAME: 'Release Test', GIT_AUTHOR_EMAIL: 'release@example.invalid', GIT_COMMITTER_NAME: 'Release Test', GIT_COMMITTER_EMAIL: 'release@example.invalid' };
+  const git = (args: string[], cwd?: string) => runCommand(['git', ...args], { cwd, env: gitEnv });
+  try {
+    const workspace = join(root, 'workspace');
+    const checkout = join(workspace, 'checkouts', 'tool');
+    await mkdir(checkout, { recursive: true });
+    await git(['init', '--initial-branch=main'], checkout);
+    const manifest = (version: string, editor: string) => JSON.stringify({ name: '@family/tool', version,
+      devDependencies: { '@family/editor': editor } }, null, 2) + '\n';
+    await writeFile(join(checkout, 'package.json'), manifest('1.0.0', '^0.11.4'));
+    await writeFile(join(checkout, 'tool.js'), '// @family/tool 1.0.0\nexport const value = 1;\n');
+    await git(['add', '.'], checkout); await git(['commit', '-m', 'initial'], checkout);
+    const sha = await git(['rev-parse', 'HEAD'], checkout);
+    // What the registry serves for 1.0.0.
+    const published = join(root, 'published', 'package');
+    await mkdir(published, { recursive: true });
+    await writeFile(join(published, 'package.json'), manifest('1.0.0', '^0.11.4'));
+    await writeFile(join(published, 'tool.js'), '// @family/tool 1.0.0\nexport const value = 1;\n');
+    const step: PackagePlan = { repo: 'tool', repository: 'family/tool', name: '@family/tool', headSha: sha,
+      currentVersion: '1.0.0', publishedVersion: '1.0.0', nextVersion: '1.0.1', versionChange: 'patch',
+      sourceChanges: 'none', action: 'publish', reasons: ['dependency-update'], issues: [],
+      dependencyUpdates: [{ field: 'devDependencies', name: '@family/editor', upstreamRepo: 'editor', from: '^0.11.4', to: '^0.11.5', targetVersion: '0.11.5', source: 'published' }] };
+    const profile = { npm: ['fixture-npm'], install: [['fixture-install']], verify: [['fixture-verify']], publish: { mode: 'cli' as const, provenance: false } };
+    const entry: ExecutionEntry = { phase: 'preflight' as never };
+    const packed: string[] = [];
+    const runner: Runner = async (command, options) => {
+      if (command[0] === 'git') return runCommand(command, { ...options, env: gitEnv });
+      if (command[0] === 'fixture-install' || command[0] === 'fixture-verify') {
+        if (command[0] === 'fixture-install') {
+          await writeFile(join(options!.cwd!, 'tool.js'), `// @family/tool 1.0.1\nexport const value = ${changed ? 2 : 1};\n`);
+        }
+        return '';
+      }
+      if (command[0] === 'tar') return runCommand(command, options);
+      assert.deepEqual(command.slice(0, 2), ['fixture-npm', 'pack']);
+      const destination = command[command.indexOf('--pack-destination') + 1];
+      const source = command[2] === '@family/tool@1.0.0' ? published : options!.cwd!;
+      if (source === options!.cwd) assert(command.includes('--ignore-scripts'));
+      const filename = `family-tool-${packed.length}.tgz`;
+      await runCommand(['tar', '-czf', join(destination, filename), '-C', dirname(source), '--exclude=.git',
+        '-s', `,^${basename(source)},package,`, basename(source)]);
+      packed.push(source === published ? 'published' : 'candidate');
+      return JSON.stringify([{ filename }]);
+    };
+    const driver = new GithubNpmReleaseDriver(workspace, { schemaVersion: 1, repositories: { 'family/tool': profile } },
+      { schemaVersion: 1, digest: 'c'.repeat(64), entries: { tool: entry } }, async () => {}, runner);
+    await driver.prepared(step, profile, entry);
+    assert.deepEqual(packed, ['published', 'candidate']);
+    if (changed) {
+      assert.equal(entry.cancelled, undefined);
+      assert.deepEqual(entry.artifactDifferences, ['changed tool.js']);
+      assert(entry.publication, 'a different artifact goes on to publication');
+    } else {
+      assert.match(entry.cancelled!, /公開済みの1\.0\.0と同じ/);
+      assert.deepEqual(entry.artifactDifferences, []);
+      assert.equal(entry.publication, undefined);
+    }
+    assert(!(await readdir(workspace)).some(name => name.startsWith('compare-')), 'the comparison leaves nothing behind');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
