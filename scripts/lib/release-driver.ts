@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 import semver from 'semver';
@@ -10,6 +10,7 @@ import type { PackagePlan } from './release-plan.ts';
 import { profileFromContract } from './release-contract.ts';
 import { effectiveUpdates, onlyDependencyUpdate } from './release-unneeded.ts';
 import { provenanceSource } from './release-provenance.ts';
+import { artifactDifferences } from './release-equivalence.ts';
 
 export class CommandFailure extends Error {
   constructor(readonly command: Command, readonly stdout: string, readonly stderr: string, readonly status: number | null) {
@@ -283,6 +284,14 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     }
     assert.equal(await this.git(step, 'rev-parse', 'HEAD'), entry.commit, '検証コマンドが候補commitを変更しました。');
     assert.equal(await this.git(step, 'status', '--porcelain'), '', '検証後に未コミット変更があります。');
+    // A rebuild that only follows dependency updates often yields what the registry already serves.
+    if (step.action === 'publish' && onlyDependencyUpdate(step) && step.publishedVersion) {
+      entry.artifactDifferences ??= await this.publishedDifferences(step, profile, cwd);
+      if (!entry.artifactDifferences.length) {
+        entry.cancelled = `成果物が公開済みの${step.publishedVersion}と同じため、公開を取りやめました。`;
+        return;
+      }
+    }
     this.publication(step, entry);
     if (step.action === 'publish') {
       await mkdir(this.artifacts(step), { recursive: true });
@@ -305,6 +314,29 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     const after = JSON.parse(await readFile(join(cwd, 'package.json'), 'utf8'));
     assert(after.name === step.name && after.version === versionOf(step), '検証コマンドがname/versionを変更しました。');
     for (const change of updates) assert.equal(after[change.field]?.[change.name], change.to);
+  }
+
+  /** Pack the candidate and fetch the published tarball, then compare them by the equivalence rules. */
+  private async publishedDifferences(step: PackagePlan, profile: ReleaseProfile, cwd: string): Promise<string[]> {
+    await mkdir(this.root, { recursive: true });
+    const scratch = await mkdtemp(join(this.root, 'compare-'));
+    try {
+      const pack = async (side: string, args: string[], from: string) => {
+        const destination = join(scratch, `${side}-pack`);
+        const root = join(scratch, side);
+        await mkdir(destination);
+        await mkdir(root);
+        const [packed] = JSON.parse(await this.npm(profile, ['pack', ...args, '--json', '--pack-destination', destination], from)) as { filename: string }[];
+        await this.run(['tar', '-xzf', join(destination, basename(packed.filename)), '-C', root]);
+        return join(root, 'package');
+      };
+      // Scripts stay off: the candidate was already built by prepare, and a lifecycle script must not change it.
+      const published = await pack('published', [`${step.name}@${step.publishedVersion}`], scratch);
+      const candidate = await pack('candidate', ['--ignore-scripts'], cwd);
+      return await artifactDifferences(published, candidate, { published: step.publishedVersion!, candidate: versionOf(step) });
+    } finally {
+      await rm(scratch, { recursive: true, force: true });
+    }
   }
 
   private publication(step: PackagePlan, entry: ExecutionEntry) {
