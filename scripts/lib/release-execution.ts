@@ -44,6 +44,8 @@ export interface ExecutionEntry {
   dispatchHeadSha?: string;
   /** Why the step turned out to be unnecessary; it then stops without pushing, tagging or publishing. */
   cancelled?: string;
+  /** For a cancelled step: the published version its dependents keep using instead of the cancelled release. */
+  keptVersion?: string;
   /** For a step that only follows dependency updates: how its artifact differs from the published version. */
   artifactDifferences?: string[];
   error?: string;

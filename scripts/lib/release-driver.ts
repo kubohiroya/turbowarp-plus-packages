@@ -219,7 +219,8 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
   }
 
   private updates(step: PackagePlan) {
-    const cancelled = new Set(Object.entries(this.state.entries).filter(([, entry]) => entry.cancelled).map(([repo]) => repo));
+    const cancelled = new Map(Object.entries(this.state.entries).filter(([, entry]) => entry.cancelled)
+      .map(([repo, entry]) => [repo, entry.keptVersion]));
     return effectiveUpdates(step, cancelled);
   }
 
@@ -249,6 +250,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
     const updates = this.updates(step);
     if (onlyDependencyUpdate(step) && !updates.length) {
       entry.cancelled = '依存の更新先がすべて取りやめになり、更新するものがありません。';
+      if (step.publishedVersion) entry.keptVersion = step.publishedVersion;
       return;
     }
     const cwd = this.path(step);
@@ -289,6 +291,7 @@ export class GithubNpmReleaseDriver implements ReleaseDriver {
       entry.artifactDifferences ??= await this.publishedDifferences(step, profile, cwd);
       if (!entry.artifactDifferences.length) {
         entry.cancelled = `成果物が公開済みの${step.publishedVersion}と同じため、公開を取りやめました。`;
+        entry.keptVersion = step.publishedVersion;
         return;
       }
     }
