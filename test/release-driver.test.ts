@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, join } from 'node:path';
 import { test } from 'node:test';
 import { GithubNpmReleaseDriver, CommandFailure, runCommand } from '../scripts/lib/release-driver.ts';
 import type { Runner } from '../scripts/lib/release-driver.ts';
@@ -293,8 +293,11 @@ for (const changed of [false, true]) test(`a dependency-only step is cancelled w
       const source = command[2] === '@family/tool@1.0.0' ? published : options!.cwd!;
       if (source === options!.cwd) assert(command.includes('--ignore-scripts'));
       const filename = `family-tool-${packed.length}.tgz`;
-      await runCommand(['tar', '-czf', join(destination, filename), '-C', dirname(source), '--exclude=.git',
-        '-s', `,^${basename(source)},package,`, basename(source)]);
+      // Stage under `package/`, as npm does, with options GNU and BSD tar share.
+      const stage = join(root, `stage-${packed.length}`);
+      await mkdir(join(stage, 'package'), { recursive: true });
+      for (const file of ['package.json', 'tool.js']) await writeFile(join(stage, 'package', file), await readFile(join(source, file)));
+      await runCommand(['tar', '-czf', join(destination, filename), '-C', stage, 'package']);
       packed.push(source === published ? 'published' : 'candidate');
       return JSON.stringify([{ filename }]);
     };
