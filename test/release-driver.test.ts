@@ -311,6 +311,7 @@ for (const changed of [false, true]) test(`a dependency-only step is cancelled w
       assert(entry.publication, 'a different artifact goes on to publication');
     } else {
       assert.match(entry.cancelled!, /公開済みの1\.0\.0と同じ/);
+      assert.equal(entry.keptVersion, '1.0.0', 'dependents are retargeted to the version kept on the registry');
       assert.deepEqual(entry.artifactDifferences, []);
       assert.equal(entry.publication, undefined);
     }
