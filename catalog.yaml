@@ -40,8 +40,8 @@ localProtocols: [file:, link:, workspace:, portal:, patch:]
 #   4. Is it a standalone project-development command?             -> toolchain
 #      Is it a build plugin or reusable tool library?               -> toolchain-components
 #      Is it a shared extension template or manifest contract?      -> contracts
-#   5. Does it define the editor host interface or provide the
-#      minimal runtime used in package tests?                       -> editor-testing
+#   5. Does it define the editor host interface or provide a shared
+#      project test runner or minimal runtime used in package tests? -> editor-testing
 #   6. Is it an editor distribution (web or desktop)?               -> foundation
 #      Is it a library that only the editor uses?                   -> editor-extensions
 #   7. Does a packaged app use it to host the TurboWarp runtime in
@@ -113,7 +113,8 @@ categories:
 
   # Includes: editor-only libraries, such as the security dialog and workspace UI.
   # Excludes: contracts shared by extensions (-> contracts), packaged-app
-  #   infrastructure (-> shell), and host interfaces and test runtimes (-> editor-testing).
+  #   infrastructure (-> shell), and host interfaces, shared project test runners
+  #   and test runtimes (-> editor-testing).
   - id: editor-extensions
     title: Editor Extensions
     titleJa: エディター拡張
@@ -134,18 +135,19 @@ categories:
       - turbowarp-plus-editor-code-views
       - turbowarp-plus-editor-fonts
       - turbowarp-plus-editor-opfs-project
-      - turbowarp-plus-editor-test
       - turbowarp-test
 
-  # Editor libraries and extension contracts both use the test runtime.
-  # Keep its host interface and pinned blocks here with the runtime so this
+  # Editor libraries, extension contracts and standalone tools use test support.
+  # The project test runner is shared by the editor and sb3-toolchain.
+  # Keep it, the host interface and pinned blocks here with the runtime so this
   # category does not depend back on the editor distribution or its libraries.
   - id: editor-testing
     title: Editor Test Support
     titleJa: エディターのテスト基盤
-    description: Editor host interface and minimal runtime for testing editor libraries and extensions.
-    descriptionJa: エディター用ライブラリや拡張のテストに使うホストの共通仕様と最小ランタイム。
+    description: Shared project test runner, editor host interface and minimal runtime for testing editor libraries and extensions.
+    descriptionJa: エディターとツールで共有するプロジェクトのテストランナー、およびライブラリや拡張のテストに使うホストの共通仕様と最小ランタイム。
     packages:
+      - turbowarp-plus-editor-test
       - turbowarp-plus-editor-host
       - turbowarp-plus-editor-test-runtime
       - turbowarp-plus-editor-test-runtime-blocks
