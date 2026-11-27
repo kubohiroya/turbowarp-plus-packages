@@ -17,7 +17,7 @@ import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { DashboardPackage, DashboardReport, GitHubSummary, NpmStatus } from './lib/types.ts';
-import { categoryCycles, categoryRelationships } from './lib/relationships.ts';
+import { categoryCycles, categoryNetwork, categoryRelationships } from './lib/relationships.ts';
 
 interface Thumbnail {
   light: string | null;
@@ -287,13 +287,119 @@ picture { display: block; }
 .chip.local { background: var(--bad-bg); color: var(--bad-fg); }
 .chip.external[hidden] { display: none; }
 
+
+.category-overview { grid-column: 1 / -1; min-width: 0; margin: 0; padding: 18px 22px; }
+.category-overview figcaption h2 { margin: 0; font-size: 21px; }
+.category-overview figcaption p { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
+.overview-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 12px 0; font-size: 13px; }
+.overview-controls label { display: inline-flex; align-items: center; gap: 7px; }
+.overview-controls select {
+  max-width: 100%; padding: 6px 9px; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); background: var(--panel); font: inherit;
+}
+.overview-legend { display: flex; flex-wrap: wrap; gap: 7px 16px; margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+.overview-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.overview-line { display: inline-block; width: 20px; border-top: 2px solid var(--runtime-edge); }
+.overview-line.development { border-top-style: dashed; border-top-color: var(--muted); }
+.overview-scroll, .overview-matrix-scroll {
+  overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--bg);
+}
+.overview-flow {
+  display: grid; grid-template-columns: minmax(158px, 1fr) 88px minmax(166px, .88fr) 88px minmax(158px, 1fr);
+  align-items: center; min-width: 682px; max-width: 1110px; margin-inline: auto; padding: 12px;
+}
+.overview-flow[hidden] { display: none; }
+.overview-column-label {
+  grid-row: 1; margin: 0 0 8px; padding-bottom: 5px; border-bottom: 1px solid var(--border);
+  font-size: 12px; font-weight: 700; color: var(--muted); text-align: center;
+}
+.overview-incoming { grid-column: 1; }
+.overview-selected { grid-column: 3; }
+.overview-outgoing { grid-column: 5; }
+.overview-fan, .overview-column, .overview-center { grid-row: 2; }
+.overview-column { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.overview-node, .overview-center {
+  display: flex; align-items: center; gap: 7px; width: 100%; padding: 5px 9px; text-align: left;
+  border: 1px solid var(--border); border-radius: 7px; box-sizing: border-box;
+  background: var(--panel); color: var(--text); font: inherit; font-size: 12px;
+  font-weight: 600; line-height: 1.2; overflow-wrap: anywhere;
+}
+.overview-node { height: 44px; cursor: pointer; }
+.overview-node:hover, .overview-node:focus-visible { border-color: var(--accent); color: var(--accent); }
+.overview-center { min-height: 82px; border-color: var(--accent); }
+.overview-center strong { display: block; margin-bottom: 5px; font-size: 14px; }
+.overview-center button {
+  padding: 0; border: 0; background: none; color: var(--accent);
+  font: inherit; text-align: left; text-decoration: underline; cursor: pointer;
+}
+.overview-count { margin-left: auto; flex: 0 0 auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.overview-fan { display: block; width: 88px; color: var(--runtime-edge); }
+.overview-fan.incoming { grid-column: 2; }
+.overview-fan.outgoing { grid-column: 4; }
+.overview-arrow { fill: none; stroke: var(--runtime-edge); stroke-width: 1.65; }
+.overview-arrow.development { stroke: var(--muted); stroke-dasharray: 4 3; stroke-width: 1.25; }
+.overview-empty { grid-row: 2; margin: 0; color: var(--muted); text-align: center; font-size: 12px; }
+.overview-scroll-hint { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+.category-icon { flex: 0 0 auto; width: 18px; height: 18px; color: var(--accent); }
+.overview-node .category-icon, .overview-center .category-icon {
+  width: 23px; height: 23px; padding: 3px; border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+}
+.overview-details { margin: 12px 0 0; }
+.overview-details > p { margin: 6px 0; color: var(--muted); font-size: 12px; }
+.overview-matrix { min-width: 0; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 12px; }
+.overview-matrix th, .overview-matrix td { padding: 5px 4px; vertical-align: middle; text-align: center; }
+.overview-matrix thead th { white-space: normal; overflow-wrap: anywhere; text-transform: none; letter-spacing: 0; line-height: 1.17; }
+.overview-matrix th:first-child {
+  position: sticky; left: 0; z-index: 1; width: 156px; padding-left: 9px;
+  background: var(--panel); text-align: left; box-shadow: 1px 0 var(--border);
+}
+.overview-matrix .category-icon { width: 16px; height: 16px; vertical-align: middle; }
+.overview-matrix thead th > .category-icon { display: block; margin: 0 auto 4px; }
+.overview-matrix tbody th { font-size: 11px; }
+.overview-matrix tbody th > .category-icon { margin-right: 4px; }
+.overview-matrix td { color: var(--muted); font-variant-numeric: tabular-nums; }
+.overview-matrix td[data-matrix-primary] {
+  color: var(--text); font-weight: 700; background: color-mix(in srgb, var(--runtime-edge) 14%, var(--panel));
+}
+.overview-matrix td[data-matrix-primary="0"] { color: var(--muted); font-weight: 400; background: transparent; }
+.overview-matrix td[data-matrix-same] { background: var(--idle-bg); }
+.overview-matrix td[data-matrix-dev-only] { background: color-mix(in srgb, var(--runtime-edge) 8%, var(--panel)); }
+.category-overview:not([data-overview-development]) .overview-matrix td[data-matrix-dev-only] { background: transparent; }
+.category-overview[data-overview-development] [data-count-kind="primary"],
+.category-overview:not([data-overview-development]) [data-count-kind="all"] { display: none; }
+.overview-mobile-arrow { display: none; }
+@media (max-width: 720px) {
+  .category-overview { padding: 13px 10px; }
+  .overview-flow { grid-template-columns: minmax(0, 1fr); min-width: 0; row-gap: 4px; }
+  .overview-column-label { margin: 0; padding-bottom: 4px; text-align: left; }
+  .overview-incoming, .overview-selected, .overview-outgoing { grid-column: 1; }
+  .overview-column.overview-incoming, .overview-empty.overview-incoming { grid-row: 2; }
+  .overview-mobile-arrow {
+    display: block; grid-column: 1; justify-self: center;
+    color: var(--runtime-edge); font-size: 19px; line-height: 1.1;
+  }
+  .overview-mobile-arrow.incoming { grid-row: 3; }
+  .overview-column-label.overview-selected { grid-row: 4; }
+  .overview-center { grid-row: 5; min-height: 56px; }
+  .overview-mobile-arrow.outgoing { grid-row: 6; }
+  .overview-column-label.overview-outgoing { grid-row: 7; }
+  .overview-column.overview-outgoing, .overview-empty.overview-outgoing { grid-row: 8; }
+  .overview-fan { display: none; }
+  .overview-column { gap: 4px; }
+  .overview-node { height: 38px; }
+  .overview-node.development { border-inline-start: 2px dashed var(--muted); }
+}
+
 .graph-panel { padding: 12px; }
 .relationship-svg { display: block; width: 100%; min-width: 1000px; color: var(--text); }
 .category-boundary { fill: var(--idle-bg); stroke: var(--border); stroke-width: 2; }
 .graph-node rect { fill: var(--panel); stroke: var(--accent); stroke-width: 1.5; }
 .graph-node.external { opacity: .7; }
 .graph-node.external rect { stroke-dasharray: 5 4; }
-.graph-node.external .node-label { height: 60px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; text-align: center; }
+.graph-node.external .node-label { height: 60px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 9px; text-align: center; }
+.node-label.package-graph-label { height: 60px; display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: center; gap: 9px; }
+.package-graph-label .icon { width: 20px; height: 20px; object-fit: contain; }
 .node-label { font: 12px/1.3 system-ui, sans-serif; overflow-wrap: anywhere; padding: 9px 12px; color: var(--text); }
 .node-label strong { display: block; font-size: 12px; }
 .node-label small { display: block; margin-top: 5px; font-size: 10px; }
@@ -481,6 +587,43 @@ function apply() {
   updateCurrentCategory();
   document.getElementById('view-status').textContent = document.documentElement.lang === 'ja'
     ? matching + ' 件が一致' : matching + ' packages match';
+}
+
+
+const overview = document.querySelector('.category-overview');
+if (overview) {
+  const views = [...overview.querySelectorAll('[data-overview-category]')];
+  const selectors = [...overview.querySelectorAll('[data-overview-picker]')];
+  const development = overview.querySelector('[data-overview-show-dev]');
+  const scroll = overview.querySelector('.overview-scroll');
+  const scrollHint = overview.querySelector('.overview-scroll-hint');
+  let selected = selectors[0].value;
+  function updateScrollHint() {
+    const overflow = scroll.scrollWidth > scroll.clientWidth;
+    scrollHint.hidden = !overflow;
+    scroll.tabIndex = overflow ? 0 : -1;
+  }
+  function showOverview() {
+    const mode = development.checked ? 'all' : 'primary';
+    overview.toggleAttribute('data-overview-development', development.checked);
+    for (const view of views) view.hidden = view.dataset.overviewCategory !== selected || view.dataset.overviewMode !== mode;
+    for (const dropdown of selectors) dropdown.value = selected;
+    updateScrollHint();
+  }
+  for (const dropdown of selectors) dropdown.addEventListener('change', () => {
+    selected = dropdown.value;
+    showOverview();
+  });
+  development.addEventListener('change', showOverview);
+  overview.addEventListener('click', (event) => {
+    const node = event.target.closest('[data-overview-select]');
+    if (!node) return;
+    selected = node.dataset.overviewSelect;
+    showOverview();
+    selectors.find((dropdown) => dropdown.lang === document.documentElement.lang)?.focus();
+  });
+  new ResizeObserver(updateScrollHint).observe(scroll);
+  showOverview();
 }
 
 const dialogState = new WeakMap();
@@ -814,6 +957,42 @@ function sandboxBadge(pkg: DashboardPackage) {
   return `<div class="sandbox-status"><span class="tag ${style}"${title}><span aria-hidden="true">${icon}</span>${t(en, ja)}</span></div>`;
 }
 
+const categoryIconPaths: Record<string, string> = {
+  toolchain: 'M4 6h16M4 12h16M4 18h16M8 4v4m8 2v4m-6 2v4',
+  'toolchain-components': 'm12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 16l9 5 9-5',
+  foundation: 'M3 4h18v13H3zM8 21h8m-4-4v4M3 8h18',
+  'editor-extensions': 'M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm11 3h5m-2.5-2.5v5',
+  'editor-testing': 'M9 4h6m-5 0v6L5 18a1.2 1.2 0 0 0 1 2h12a1.2 1.2 0 0 0 1-2l-5-8V4M8 15h8',
+  forks: 'M7 6a2 2 0 1 0 0 .01M7 18a2 2 0 1 0 0 .01M19 6a2 2 0 1 0 0 .01M7 8v8m12-8a5 5 0 0 1-5 5H7',
+  shell: 'M3 5h18v14H3zM7 10l2 2-2 2m5 1h5',
+  contracts: 'M8 5H5v14h3m8-14h3v14h-3m-5-4 2-6',
+  data: 'M6 3h8l4 4v14H6zM14 3v5h4M9 12h6m-6 4h6',
+  media: 'M3 5h18v14H3zM10 9l5 3-5 3z',
+  spatial: 'm12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Zm-8 4.5 8 4.5 8-4.5M12 12v9',
+  camera: 'M4 7h4l2-3h4l2 3h4v12H4zM15 13a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
+  sensing: 'M4 16a8 8 0 0 1 16 0M7 16a5 5 0 0 1 10 0m-7 0a2 2 0 0 1 4 0m-2 4h.01',
+  network: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18Z',
+  wraps: 'M5 6h14v12H5zM9 10H3v11h11v-3M13 14h8V3H10v3',
+  kamishibai: 'M3 4h7a2 2 0 0 1 2 2v14a3 3 0 0 0-3-2H3zm18 0h-7a2 2 0 0 0-2 2v14a3 3 0 0 1 3-2h6z',
+  'in-development': 'M4 19h16l-5-9h-6zm3-6h10M10 10l1-3h2l1 3M4 22h16',
+  package: 'm12 3 8 4v10l-8 4-8-4V7zm-8 4 8 4 8-4m-8 4v10m-4-16 8 4',
+};
+
+function categoryIcon(id: string) {
+  const d = Object.hasOwn(categoryIconPaths, id) ? categoryIconPaths[id] : categoryIconPaths.package;
+  return `<svg class="category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+}
+
+function packageIcon(pkg: DashboardPackage, asImage = false) {
+  // Favicons stay in an image context; only vetted palette drawings can be inlined.
+  const favicon = pkg.application || pkg.category === 'apps' ? pkg.pages?.svgFaviconUrl ?? pkg.pages?.faviconUrl : null;
+  // The same icon appears in both graph variants. An image keeps its SVG IDs private.
+  const source = favicon || (asImage && pkg.icon ? `data:image/svg+xml,${encodeURIComponent(pkg.icon)}` : null);
+  return source
+    ? `<img class="icon" src="${esc(source)}" alt="" width="20" height="20">`
+    : pkg.icon ? `<span class="icon" aria-hidden="true">${pkg.icon}</span>` : '';
+}
+
 function row(pkg: DashboardPackage, thumb: Thumbnail | undefined, editorUrl: string) {
   const gh: Partial<GitHubSummary> = pkg.github ?? {};
   const { en = '', ja = '' } = pkg.descriptions ?? {};
@@ -825,11 +1004,7 @@ function row(pkg: DashboardPackage, thumb: Thumbnail | undefined, editorUrl: str
     .toLowerCase();
 
   const archived = gh.isArchived ? ` <span class="tag">${t('archived', 'アーカイブ')}</span>` : '';
-  // Favicons stay in an image context; only vetted palette drawings are inlined.
-  const favicon = pkg.application || pkg.category === 'apps' ? pkg.pages?.svgFaviconUrl ?? pkg.pages?.faviconUrl : null;
-  const icon = favicon
-    ? `<img class="icon" src="${esc(favicon)}" alt="" width="20" height="20">`
-    : pkg.icon ? `<span class="icon" aria-hidden="true">${pkg.icon}</span>` : '';
+  const icon = packageIcon(pkg);
   const note = pkg.note ? `<span class="sub">${esc(pkg.note)}</span>` : '';
   // With no Japanese summary the English one stands in, untagged, so it shows
   // in both languages rather than leaving an empty cell.
@@ -885,6 +1060,201 @@ const FILTERS = [
   ['local', 'local upstream', 'ローカル参照'],
 ];
 
+
+function improveNodePositions<T>(positions: Map<string, T>, cost: () => number, canSwap = (_a: string, _b: string) => true) {
+  const ids = [...positions.keys()];
+  let best = cost();
+  for (let pass = 0; pass < 2 && best > 0; pass++) {
+    for (const [i, first] of ids.entries()) {
+      for (const second of ids.slice(i + 1)) {
+        if (!canSwap(first, second)) continue;
+        const a = positions.get(first)!;
+        const b = positions.get(second)!;
+        positions.set(first, b);
+        positions.set(second, a);
+        const next = cost();
+        if (next < best) {
+          best = next;
+        } else {
+          positions.set(first, a);
+          positions.set(second, b);
+        }
+      }
+    }
+  }
+}
+
+interface LayoutSpring {
+  source: string;
+  target: string;
+  strength: number;
+}
+
+interface SpringPosition {
+  y: number;
+  home: number;
+  force: number;
+  weight: number;
+}
+
+function springOrder<T>(
+  columns: { prefix: string; slots: Map<string, T> }[],
+  springs: LayoutSpring[],
+  rowOf: (slot: T) => number,
+) {
+  if (!springs.length) return columns.map(({ slots }) => [...slots]);
+  // Move nodes vertically within their columns. Connected nodes attract,
+  // nearby nodes repel, and a weak anchor limits drift from the original row.
+  const states = new Map<string, SpringPosition>();
+  const strips = columns.map(({ prefix, slots }) => {
+    const ids = [...slots.keys()];
+    const rows = [...slots.values()].sort((a, b) => rowOf(a) - rowOf(b));
+    const nodes = ids.map((id) => {
+      const home = rowOf(slots.get(id)!);
+      const state = { y: home, home, force: 0, weight: 0 };
+      states.set(prefix + id, state);
+      return { id, state };
+    });
+    const gap = rows.length < 2 ? 0 : (rowOf(rows.at(-1)!) - rowOf(rows[0]!)) / (rows.length - 1) * .2;
+    return { nodes, rows, gap };
+  });
+  const links = springs.map(({ source, target, strength }) => ({ a: states.get(source)!, b: states.get(target)!, strength }));
+  const pull = (a: SpringPosition, b: SpringPosition, force: number, weight: number) => {
+    a.force += force;
+    b.force -= force;
+    a.weight += weight;
+    b.weight += weight;
+  };
+  for (let step = 0; step < 48; step++) {
+    for (const state of states.values()) {
+      state.force = (state.home - state.y) * .2;
+      state.weight = 1.2;
+    }
+    for (const { a, b, strength } of links) pull(a, b, (b.y - a.y) * strength, strength);
+    for (const { nodes, gap } of strips) {
+      for (const [i, { state: a }] of nodes.entries()) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const b = nodes[j]!.state;
+          const delta = b.y - a.y;
+          const compression = gap - Math.abs(delta);
+          if (compression > 0) pull(a, b, (delta < 0 ? 1 : -1) * compression, 1);
+        }
+      }
+    }
+    for (const state of states.values()) state.y += .6 * state.force / state.weight;
+  }
+  // Snap the continuous ordering back onto the original rows to guarantee spacing.
+  return strips.map(({ nodes, rows }) => nodes.sort((a, b) => a.state.y - b.state.y)
+    .map(({ id }, index) => [id, rows[index]!] as const));
+}
+
+function categoryOverview(categories: DashboardReport['categories'], connections: ReturnType<typeof categoryNetwork>): string {
+  if (!categories.length) return '';
+  const byId = new Map(categories.map((category) => [category.id, category]));
+  const edges = connections.filter(({ source, target }) => byId.has(source) && byId.has(target));
+  const label = (id: string) => {
+    const category = byId.get(id)!;
+    return t(esc(category.title), esc(category.titleJa ?? category.title));
+  };
+  const neighbors = categories.map(({ id }) => ({
+    id, incoming: edges.filter(({ target }) => target === id), outgoing: edges.filter(({ source }) => source === id),
+  }));
+  // Open on an example with traffic on both sides, if the catalog has one.
+  const prominence = ({ incoming, outgoing }: (typeof neighbors)[number]) => {
+    const left = incoming.filter(({ primary }) => primary).length;
+    const right = outgoing.filter(({ primary }) => primary).length;
+    return Number(left > 0 && right > 0) * (edges.length + 1) + left + right;
+  };
+  const initial = neighbors.reduce((best, node) => prominence(node) > prominence(best) ? node : best).id;
+  const picker = (lang: 'en' | 'ja') => {
+    const options = categories.map(({ id, title, titleJa }) =>
+      `<option value="${esc(id)}"${id === initial ? ' selected' : ''}>${esc(lang === 'ja' ? titleJa ?? title : title)}</option>`).join('');
+    return `<label lang="${lang}">${lang === 'ja' ? '表示するカテゴリ' : 'Category'} <select lang="${lang}" data-overview-picker>${options}</select></label>`;
+  };
+  const card = (id: string, count: number, developmentOnly: boolean) =>
+    `<li><button type="button" class="overview-node${developmentOnly ? ' development' : ''}" data-overview-select="${esc(id)}">
+      ${categoryIcon(id)}<span>${label(id)}</span><span class="overview-count">${count}</span></button></li>`;
+  const lane = (edgesOnSide: typeof edges, side: 'incoming' | 'outgoing', height: number, includeDev: boolean) => {
+    if (!edgesOnSide.length) return `<p class="overview-empty overview-${side}">${t('None', '該当なし')}</p>`;
+    const incoming = side === 'incoming';
+    const cards = edgesOnSide.map((edge) => card(incoming ? edge.source : edge.target,
+      edge.primary + (includeDev ? edge.development : 0), !edge.primary));
+    const arrows = edgesOnSide.map(({ source, target, primary, development }, i) => {
+      // Match the vertical order at both ends. Shared control-point X coordinates
+      // keep the paths from intersecting as they fan out at the center box.
+      const offset = i - (edgesOnSide.length - 1) / 2;
+      const outerY = height / 2 + offset * 52;
+      const innerY = height / 2 + offset * Math.min(9, 48 / Math.max(1, edgesOnSide.length - 1));
+      const [fromY, toY] = incoming ? [outerY, innerY] : [innerY, outerY];
+      const kind = primary ? '' : ' development';
+      return `<path class="overview-arrow${kind}" data-overview-source="${esc(source)}" data-overview-target="${esc(target)}"
+        data-primary="${primary}" data-development="${development}" d="M 0 ${fromY} C 39 ${fromY} 49 ${toY} 86 ${toY}" marker-end="url(#overview-arrow${primary ? '' : '-dev'})"/>`;
+    }).join('');
+    return `<ul class="overview-column overview-${side}">${cards.join('')}</ul>
+      <span class="overview-mobile-arrow ${side}" aria-hidden="true">↓</span>
+      <svg class="overview-fan ${side}" viewBox="0 0 88 ${height}" height="${height}" aria-hidden="true">${arrows}</svg>`;
+  };
+  const views = neighbors.flatMap(({ id, incoming, outgoing }) => [false, true].map((includeDev) => {
+    const left = includeDev ? incoming : incoming.filter(({ primary }) => primary);
+    const right = includeDev ? outgoing : outgoing.filter(({ primary }) => primary);
+    const height = Math.max(82, Math.max(left.length, right.length) * 52 - 8);
+    return `<div class="overview-flow" data-overview-category="${esc(id)}" data-overview-mode="${includeDev ? 'all' : 'primary'}"${id !== initial || includeDev ? ' hidden' : ''}>
+      <h3 class="overview-column-label overview-incoming">${t('Uses this category', 'このカテゴリを使う')}</h3>
+      ${lane(left, 'incoming', height, includeDev)}
+      <h3 class="overview-column-label overview-selected">${t('Selected category', '選択中のカテゴリ')}</h3>
+      <div class="overview-center overview-selected">${categoryIcon(id)}<div><strong>${label(id)}</strong>
+        <button type="button" data-graph-open="relationships-${esc(id)}" aria-haspopup="dialog" aria-controls="relationships-${esc(id)}">${t('Package graph', 'パッケージ相関図')}</button>
+      </div></div>
+      <h3 class="overview-column-label overview-outgoing">${t('This category uses', 'このカテゴリが使う')}</h3>
+      ${lane(right, 'outgoing', height, includeDev)}
+    </div>`;
+  })).join('');
+  const headers = categories.map(({ id }) => `<th scope="col">${categoryIcon(id)}${label(id)}</th>`).join('');
+  const matrix = neighbors.map(({ id, outgoing }) => {
+    const counts = new Map(outgoing.map((edge) => [edge.target, edge]));
+    const cells = categories.map(({ id: target }) => {
+      const edge = counts.get(target);
+      if (target === id) return '<td data-matrix-same>–</td>';
+      if (!edge) return '<td>·</td>';
+      const { primary, development } = edge;
+      const value = development
+        ? `<span data-count-kind="primary">${primary || '·'}</span><span data-count-kind="all">${primary + development}</span>`
+        : String(primary);
+      return `<td data-matrix-primary="${primary}" data-matrix-development="${development}"${primary ? '' : ' data-matrix-dev-only'}>${value}</td>`;
+    }).join('');
+    return `<tr><th scope="row">${categoryIcon(id)}${label(id)}</th>${cells}</tr>`;
+  }).join('');
+  return `<figure class="panel category-overview" id="category-dependency-overview" aria-labelledby="category-network-heading">
+  <figcaption>
+    <h2 id="category-network-heading">${t('Category dependencies', 'カテゴリ間の依存関係')}</h2>
+    <p>${t('Arrows go from the category that uses a package to its dependency. Numbers count package pairs.', '矢印は利用側から依存先へ向かいます。数字は依存するパッケージの組数です。')}</p>
+  </figcaption>
+  <div class="overview-controls">
+    ${picker('ja')}${picker('en')}
+    <label class="development-toggle"><input type="checkbox" data-overview-show-dev> ${t('Include development dependencies', '開発時の依存も表示')}</label>
+  </div>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+    <marker id="overview-arrow" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M 0 0 L 8 4 L 0 8 Z" fill="var(--runtime-edge)"/></marker>
+    <marker id="overview-arrow-dev" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M 0 0 L 8 4 L 0 8 Z" fill="var(--muted)"/></marker>
+  </defs></svg>
+  <div class="overview-scroll" tabindex="0" role="region" aria-labelledby="category-network-heading">${views}</div>
+  <p class="overview-scroll-hint" hidden>${t('Scroll sideways to see both sides of the diagram.', '図を横にスクロールすると左右の関係を確認できます。')}</p>
+  <div class="overview-legend">
+    <span><i class="overview-line" aria-hidden="true"></i>${t('Runtime, build and other', '実行・ビルドなど')}</span>
+    <span data-count-kind="all"><i class="overview-line development" aria-hidden="true"></i>${t('Development only', '開発時のみ')}</span>
+  </div>
+  <details class="relationship-details overview-details">
+    <summary id="overview-matrix-heading">${t('All category pairs', '全カテゴリの依存を一覧')}</summary>
+    <p>${t('Read from the category using a package in the row to its dependency in the column.', '行が利用側、列が依存先です。')}</p>
+    <div class="overview-matrix-scroll" tabindex="0" role="region" aria-labelledby="overview-matrix-heading">
+      <table class="overview-matrix" style="min-width:${166 + categories.length * 62}px">
+        <thead><tr><th scope="col">${t('Uses ↓ / Dependency →', '利用側 ↓ ／ 依存先 →')}</th>${headers}</tr></thead><tbody>${matrix}</tbody>
+      </table>
+    </div>
+  </details>
+</figure>`;
+}
+
 function relationshipDiagram(report: DashboardReport, categoryId: string, freshness = '', provenance = '', options: { includeDev?: boolean; diagramOnly?: boolean } = {}): string {
   const category = report.categories.find((entry) => entry.id === categoryId)!;
   const includeDev = options.includeDev !== false;
@@ -893,9 +1263,71 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
   const title = t(esc(category.title), esc(category.titleJa ?? category.title));
   // Dependents sit on the left and dependencies on the right, so every arrow
   // points left to right; a category related both ways appears on both sides.
-  const left = graph.external.filter((group) => group.incoming.length);
-  const right = graph.external.filter((group) => group.outgoing.length);
-  const height = Math.max(graph.primary.length * 76 + 90, left.length * 108 + 90, right.length * 108 + 90, 240);
+  const layoutGraph = includeDev ? graph : categoryRelationships(report.packages, categoryId);
+  const positions = new Map(graph.primary.map((pkg, i) => [pkg.repo, 64 + i * 76]));
+  const sides = (['incoming', 'outgoing'] as const).map((direction) => {
+    const incoming = direction === 'incoming';
+    const groups = layoutGraph.external.filter((group) => group[direction].length);
+    return {
+      direction,
+      rows: new Map(groups.map((group, i) => [group.category, 64 + i * 108])),
+      links: groups.flatMap((group) => [...new Set(group[direction].map((edge) => incoming ? edge.target : edge.source))]
+        .map((repo) => ({ category: group.category, repo }))),
+    };
+  });
+  const height = Math.max(graph.primary.length * 76 + 90, ...sides.map(({ rows }) => rows.size * 108 + 90), 240);
+  // Keep boxes stable across the development toggle and reduce crossings between columns.
+  const cost = () => {
+    let total = layoutGraph.internal.reduce((distance, edge) =>
+      distance + Math.abs(positions.get(edge.source)! - positions.get(edge.target)!), 0);
+    for (const { rows, links } of sides) {
+      for (let i = 0; i < links.length; i++) {
+        const link = links[i]!;
+        const outside = rows.get(link.category)!;
+        const inside = positions.get(link.repo)!;
+        total += Math.abs(outside - inside) / 4;
+        for (let j = i + 1; j < links.length; j++) {
+          const other = links[j]!;
+          if ((outside - rows.get(other.category)!) * (inside - positions.get(other.repo)!) < 0) total += height;
+        }
+      }
+    }
+    return total;
+  };
+  const polish = () => {
+    for (const { rows } of sides) improveNodePositions(rows, cost);
+    improveNodePositions(positions, cost);
+    for (const { rows } of sides) improveNodePositions(rows, cost);
+  };
+  const columns = [{ prefix: 'package:', slots: positions },
+    ...sides.map(({ rows, direction }) => ({ prefix: direction + ':', slots: rows }))];
+  const snapshot = () => columns.map(({ prefix, slots }) => ({ prefix, slots: new Map(slots) }));
+  const applyRows = (ordering: Iterable<readonly [string, number]>[]) => {
+    for (const [index, rows] of ordering.entries()) {
+      for (const [id, y] of rows) columns[index]!.slots.set(id, y);
+    }
+  };
+  const initial = snapshot();
+  const springs: LayoutSpring[] = [
+    ...layoutGraph.internal.map(({ source, target, kinds }) => ({
+      source: 'package:' + source, target: 'package:' + target, strength: kinds.every((kind) => kind === 'dev') ? .2 : 1,
+    })),
+    ...sides.flatMap(({ direction, links }) => links.map(({ category, repo }) =>
+      ({ source: direction + ':' + category, target: 'package:' + repo, strength: 1 }))),
+  ];
+  polish();
+  let best = snapshot();
+  let bestCost = cost();
+  for (const seed of [initial, best]) {
+    applyRows(springOrder(seed, springs, (y) => y));
+    polish();
+    const score = cost();
+    if (score < bestCost) {
+      best = snapshot();
+      bestCost = score;
+    }
+  }
+  applyRows(best.map(({ slots }) => slots));
   const variantId = `${categoryId}-${includeDev ? 'all' : 'primary'}`;
   const marker = `arrow-${variantId}`;
   const byRepo = new Map(report.packages.map((pkg) => [pkg.repo, pkg]));
@@ -918,15 +1350,15 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
     `<g class="graph-node primary" data-repo="${esc(pkg.repo)}">
       <a href="${esc(pkg.github?.url ?? `https://github.com/${report.owner}/${pkg.repo}`)}">
         <rect x="${x}" y="${y}" width="250" height="60" rx="9"/>
-        <foreignObject x="${x}" y="${y}" width="250" height="60"><div xmlns="http://www.w3.org/1999/xhtml" class="node-label"><strong>${esc(pkg.label)}</strong>${caption}</div></foreignObject>
+        <foreignObject x="${x}" y="${y}" width="250" height="60"><div xmlns="http://www.w3.org/1999/xhtml" class="node-label package-graph-label">${packageIcon(pkg, true) || categoryIcon('package')}<div><strong>${esc(pkg.label)}</strong>${caption}</div></div></foreignObject>
       </a>
     </g>`;
   // Solid blue arrows are dependencies needed outside development;
   // development-only ones are thin and dashed, inside the category and toward
   // other categories alike.
   const developmentOnly = (edge: (typeof graph.edges)[number]) => edge.kinds.every((kind) => kind === 'dev');
-  const positions = new Map(graph.primary.map((pkg, i) => [pkg.repo, 64 + i * 76]));
-  const primaryNodes = graph.primary.map((pkg) => {
+  const orderedPackages = [...graph.primary].sort((a, b) => positions.get(a.repo)! - positions.get(b.repo)!);
+  const primaryNodes = orderedPackages.map((pkg) => {
     const pin = graph.edges.find((edge) => edge.target === pkg.repo && edge.build)?.build;
     const caption = (pkg.repo === 'turbowarp-extension-data-editor'
       ? `<small>${t('Data editing contract / API', 'データ編集の契約・API')}</small>` : '')
@@ -944,21 +1376,25 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
   // Each count explains itself on hover with its rows of the exact list below,
   // without links, since the tooltip closes when the pointer leaves the count.
   const tooltips: string[] = [];
-  for (const [groups, x, packageX, incoming] of [[left, 14, 390, true], [right, 756, 640, false]] as const) {
-    groups.forEach((group, i) => {
-      const y = 64 + i * 108;
+  for (const { rows, direction } of sides) {
+    const incoming = direction === 'incoming';
+    const x = incoming ? 14 : 756;
+    const packageX = incoming ? 390 : 640;
+    for (const group of graph.external) {
+      const edges = group[direction];
+      if (!edges.length) continue;
+      const y = rows.get(group.category)!;
       const outsideY = y + 30;
       const outsideX = incoming ? x + 250 : x;
       const c = report.categories.find((entry) => entry.id === group.category);
       const categoryTitle = t(esc(c?.title ?? group.category), esc(c?.titleJa ?? c?.title ?? group.category));
-      const direction = incoming ? 'incoming' : 'outgoing';
       outsideNodes.push(`<g class="graph-node external" data-category="${esc(group.category)}" data-direction="${direction}">
         <rect x="${x}" y="${y}" width="250" height="60" rx="9"/>
-        <foreignObject x="${x}" y="${y}" width="250" height="60"><div xmlns="http://www.w3.org/1999/xhtml" class="node-label"><strong>${categoryTitle}</strong></div></foreignObject>
+        <foreignObject x="${x}" y="${y}" width="250" height="60"><div xmlns="http://www.w3.org/1999/xhtml" class="node-label">${categoryIcon(group.category)}<strong>${categoryTitle}</strong></div></foreignObject>
       </g>`);
       // Aggregate outside packages only; preserve the actual central endpoint.
       const endpoints = new Map<string, typeof group.incoming>();
-      for (const edge of incoming ? group.incoming : group.outgoing) {
+      for (const edge of edges) {
         const repo = incoming ? edge.target : edge.source;
         const groupEdges = endpoints.get(repo) ?? [];
         groupEdges.push(edge);
@@ -998,7 +1434,7 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
           </g>`);
         }
       }
-    });
+    }
   }
   const details = graph.external.map((group) => {
     const c = report.categories.find((entry) => entry.id === group.category);
@@ -1113,6 +1549,7 @@ async function main() {
   const head = HEADERS.map(([en, ja]) => `<th>${t(en, ja)}</th>`).join('');
 
   const visibleCategories = report.categories.filter((category) => byCategory.get(category.id)?.length);
+  const overview = categoryOverview(visibleCategories, categoryNetwork(report.packages));
   const defaultGroup = (category: string) => {
     if (['kamishibai', 'in-development', 'apps', 'docs'].includes(category)) return 'use';
     if (['foundation', 'editor-extensions', 'editor-testing'].includes(category)) return 'editor';
@@ -1279,6 +1716,7 @@ ${rows}
 </header>
 
 <main class="catalog-layout">
+${overview}
 ${toc}
 <section id="package-list" class="main-content" aria-labelledby="list-heading">
 <h2 id="list-heading">${t('Package list', 'パッケージ一覧')}</h2>

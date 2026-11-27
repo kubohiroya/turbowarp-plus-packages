@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import { createHash } from 'node:crypto';
 import type { DashboardPackage, DashboardReport, Dependency } from '../scripts/lib/types.ts';
 
-test('renders category graph buttons and labelled dialogs while keeping the dashboard list-only', async () => {
+test('renders the category overview above the package list and preserves detailed dialogs', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dashboard-relationships-'));
   const pkg = (repo: string, category: string): DashboardPackage => ({
     repo, category, label: repo, note: null, errors: [],
@@ -20,8 +20,8 @@ test('renders category graph buttons and labelled dialogs while keeping the dash
     kind: 'dev', family: true, local: false, stale: false }));
   const report: DashboardReport = {
     generatedAt: '2026-10-30', owner: 'test', scope: '@test', site: {},
-    categories: [{ id: 'focus', title: 'Focus', titleJa: '対象' }, { id: 'other', title: 'Other' }, { id: 'isolated', title: 'Isolated' }],
-    packages: [one, pkg('two', 'focus'), pkg('outside', 'other'), pkg('alone', 'isolated')],
+    categories: [{ id: 'focus', title: 'Focus', titleJa: '対象' }, { id: 'other', title: 'Other' }, { id: 'network', title: 'Isolated' }],
+    packages: [one, pkg('two', 'focus'), pkg('outside', 'other'), pkg('alone', 'network')],
   };
   try {
     for (const directory of ['scripts/lib', 'data', 'site']) await mkdir(join(root, directory), { recursive: true });
@@ -37,6 +37,26 @@ test('renders category graph buttons and labelled dialogs while keeping the dash
     const html = await readFile(join(root, 'site/index.html'), 'utf8');
     assert.doesNotMatch(html, /class="content-nav"|role="tab"|id="package-relationships"|id="graph-category"/);
     const list = html.indexOf('<section id="package-list"');
+    const top = html.indexOf('<figure class="panel category-overview"');
+    assert.ok(top > html.indexOf('<main class="catalog-layout">') && top < html.indexOf('<nav class="category-toc"'));
+    const overview = html.slice(top, html.indexOf('</figure>', top));
+    assert.equal([...html.matchAll(/id="category-network"/g)].length, 1);
+    assert.match(overview, /id="category-dependency-overview"/);
+    assert.match(overview, /Category dependencies<\/span><span lang="ja">カテゴリ間の依存関係<\/span>/);
+    const visibleOverview = overview.match(/<div class="overview-flow" data-overview-category="focus" data-overview-mode="primary">([\s\S]*?)(?=<div class="overview-flow")/)![1]!;
+    assert.doesNotMatch(visibleOverview, /class="overview-arrow"/);
+    assert.match(visibleOverview, /data-graph-open="relationships-focus" aria-haspopup="dialog"/);
+    assert.match(overview, /data-overview-category="focus" data-overview-mode="all" hidden/);
+    assert.match(overview, /data-overview-category="network" data-overview-mode="primary" hidden/);
+    assert.match(overview, /<option value="focus" selected>対象<\/option>/);
+    assert.match(overview, /<option value="focus" selected>Focus<\/option>/);
+    assert.match(overview, /overview-arrow development" data-overview-source="focus" data-overview-target="other"/);
+    assert.doesNotMatch(overview, /data-overview-target="focus"|unlisted/);
+    assert.match(overview, /data-overview-show-dev>/);
+    assert.match(overview, /class="overview-matrix"/);
+    assert.match(overview, /<td data-matrix-primary="0" data-matrix-development="1" data-matrix-dev-only><span data-count-kind="primary">·<\/span><span data-count-kind="all">1<\/span><\/td>/);
+    assert.match(overview, /<th scope="row"><svg class="category-icon"/);
+    assert.ok(top < list);
     const end = html.indexOf('</main>', list);
     const listHtml = html.slice(list, end);
     assert.match(listHtml, /class="stats"/);
@@ -144,10 +164,21 @@ test('renders category graph buttons and labelled dialogs while keeping the dash
       { id: 'data', title: 'Data & Documents', titleJa: 'データ・ドキュメント' },
       { id: 'toolchain', title: '<Toolchain>', titleJa: 'ツールチェーン' }];
     const editorHtml = await rerender();
+    const editorOverview = editorHtml.slice(editorHtml.indexOf('<figure'), editorHtml.indexOf('</figure>'));
+    assert.match(editorOverview, /data-overview-source="data" data-overview-target="foundation"/);
+    assert.match(editorOverview, /data-overview-source="foundation" data-overview-target="data"/);
+    assert.match(editorOverview, /<td data-matrix-primary="3" data-matrix-development="1"><span data-count-kind="primary">3<\/span><span data-count-kind="all">4<\/span><\/td>/);
+    assert.match(editorOverview, /&lt;Toolchain&gt;/);
     const editorDialog = editorHtml.slice(editorHtml.indexOf('id="relationships-foundation"'), editorHtml.indexOf('</dialog>'));
-    const variants = [...editorDialog.matchAll(/<svg class="relationship-svg"[\s\S]*?<\/svg>/g)].map(([svg]) => svg);
+    const variants = [...editorDialog.matchAll(/<svg class="relationship-svg"[\s\S]*?<\/svg>(?=\s*(?:<div class="edge-tooltip"|<\/div>))/g)].map(([svg]) => svg);
     assert.equal(variants.length, 2);
     const [primary, all] = variants as [string, string];
+    // Common node positions stay fixed while development-only connections are toggled.
+    const nodeBoxes = (svg: string) => new Map([...svg.matchAll(/<g class="graph-node (?:primary|external)" ([^>]+)>\s*(?:<a[^>]+>\s*)?<rect x="(\d+)" y="(\d+)"/g)]
+      .map(([, node, x, y]) => [node, [x, y]]));
+    const allBoxes = nodeBoxes(all);
+    assert.equal(nodeBoxes(primary).size, 6);
+    for (const [node, position] of nodeBoxes(primary)) assert.deepEqual(allBoxes.get(node), position);
     for (const svg of variants) {
       const outside = [...svg.matchAll(/<g class="graph-node external"[^>]*>[\s\S]*?<\/g>/g)];
       for (const [node] of outside) assert.doesNotMatch(node, /data-repo=|<a\b|data-a|data-b|dev-only/);
