@@ -184,6 +184,25 @@ function createPlan(input: unknown, targets: readonly string[], downstream: bool
   const ordered: DashboardPackage[] = [];
   const done = new Set<string>();
   const path: string[] = [];
+  const testOnlyBaselines = new Map<string, Map<string, string>>();
+  function dependsOn(pkg: DashboardPackage, target: string, seen = new Set<string>()): boolean {
+    if (pkg.repo === target) return true;
+    if (seen.has(pkg.repo)) return false;
+    seen.add(pkg.repo);
+    return (pkg.dependencies ?? []).some((dep) => {
+      const upstream = dep.family ? names.get(dep.name) : undefined;
+      return upstream ? dependsOn(upstream, target, seen) : false;
+    });
+  }
+  function publishedTestBaseline(pkg: DashboardPackage, dep: Dependency, upstream: DashboardPackage): string | null {
+    // A published fixture can break release ordering without changing the dependency graph.
+    if (!dep.testOnly || dep.kind !== 'dev' || dep.local || pkg.repo === upstream.repo || upstream.errors.length ||
+        !upstream.npm?.published || upstream.npm.name !== dep.name || !upstream.npm.versions ||
+        !semver.validRange(dep.range) ||
+        !dependsOn(upstream, pkg.repo)) return null;
+    return semver.maxSatisfying(upstream.npm.versions.filter((version) =>
+      semver.valid(version) && !semver.prerelease(version)), dep.range);
+  }
   function visit(pkg: DashboardPackage): void {
     if (done.has(pkg.repo)) return;
     if (path.includes(pkg.repo)) {
@@ -195,6 +214,13 @@ function createPlan(input: unknown, targets: readonly string[], downstream: bool
     for (const dep of dependencies) {
       const upstream = names.get(dep.name);
       if (!upstream) throw new Error(`${pkg.repo}: 解析JSONに上流パッケージがありません: ${dep.name}`);
+      const baseline = publishedTestBaseline(pkg, dep, upstream);
+      if (baseline) {
+        const entries = testOnlyBaselines.get(pkg.repo) ?? new Map<string, string>();
+        entries.set(dep.name, baseline);
+        testOnlyBaselines.set(pkg.repo, entries);
+        continue;
+      }
       visit(upstream);
     }
     path.pop();
@@ -208,7 +234,7 @@ function createPlan(input: unknown, targets: readonly string[], downstream: bool
 
   const planned = new Map<string, PackagePlan>();
   for (const pkg of ordered) {
-    const step = planPackage(report.owner, pkg, names, planned, affected, reconcile, patch);
+    const step = planPackage(report.owner, pkg, names, planned, affected, reconcile, patch, testOnlyBaselines.get(pkg.repo));
     planned.set(pkg.repo, step);
   }
   const steps = [...planned.values()].filter((step) => !affected || affected.has(step.repo));
@@ -245,6 +271,7 @@ function planPackage(
   affected?: ReadonlySet<string>,
   reconcile = false,
   patch = false,
+  testOnlyBaselines: ReadonlyMap<string, string> = new Map(),
 ): PackagePlan {
   const referenceOnly = affected !== undefined && !affected.has(pkg.repo);
   const step: PackagePlan = {
@@ -297,13 +324,15 @@ function planPackage(
   const deferred: {update?: PackagePlan['dependencyUpdates'][number]; issues: (() => void)[]}[] = [];
   for (const dep of (pkg.dependencies ?? []).filter((dep) => dep.family)) {
     const upstream = names.get(dep.name)!;
-    const upstreamPlan = planned.get(upstream.repo)!;
+    const baseline = testOnlyBaselines.get(dep.name);
+    const upstreamPlan = planned.get(upstream.repo);
     const held = dep.testOnly ? {issues: [] as (() => void)[]} as (typeof deferred)[number] : null;
     if (held) deferred.push(held);
     const later = (record: () => void) => held ? held.issues.push(record) : record();
-    if (upstreamPlan.action === 'blocked') later(() => issue('upstream-blocked', `${dep.name}: 上流の計画に未解決事項があります。`));
-    const plannedRelease = isPublishable(upstream) && upstreamPlan.versionChange !== 'none';
-    const version = plannedRelease ? upstreamPlan.nextVersion : upstreamPlan.publishedVersion;
+    if (baseline) issue('test-only-cycle-baseline', `${dep.name}: 循環するテスト専用依存は公開済み ${baseline} を使い、公開予定版へ伝播しません。`, 'warning');
+    if (!baseline && upstreamPlan?.action === 'blocked') later(() => issue('upstream-blocked', `${dep.name}: 上流の計画に未解決事項があります。`));
+    const plannedRelease = !baseline && isPublishable(upstream) && upstreamPlan !== undefined && upstreamPlan.versionChange !== 'none';
+    const version = baseline ?? (plannedRelease ? upstreamPlan?.nextVersion : upstreamPlan?.publishedVersion);
     if (!version || !semver.valid(version)) {
       later(() => issue('upstream-unavailable', `${dep.name}: 利用できる公開版または公開予定版がありません。`));
       continue;
