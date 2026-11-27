@@ -551,7 +551,9 @@ function setLang(lang) {
   document.documentElement.lang = lang;
   search.placeholder = PLACEHOLDER[lang];
   for (const button of document.querySelectorAll('.demo-play')) {
-    button.title = lang === 'ja' ? 'TurboWarp-Plus-Editorでデモを開く' : 'Open demo in TurboWarp-Plus-Editor';
+    button.title = button.hasAttribute('data-course-story')
+      ? (lang === 'ja' ? 'TurboWarp-Plus-Editorで紙芝居を開く' : 'Open story in TurboWarp-Plus-Editor')
+      : (lang === 'ja' ? 'TurboWarp-Plus-Editorでデモを開く' : 'Open demo in TurboWarp-Plus-Editor');
   }
   if (header) header.setAttribute('site-lang', lang);
   try { localStorage.setItem('lang', lang); } catch (e) {}
@@ -768,9 +770,10 @@ function demoCell(pkg: DashboardPackage, editorUrl: string) {
     return empty;
   }
   const label = esc(`${pkg.label}: ${pkg.demo.title}`);
-  return `<a class="demo-play twpe-edit-button twpe-edit-button--small" href="${esc(editor.href)}" target="_blank" rel="noopener noreferrer" title="Open demo in TurboWarp-Plus-Editor">
+  const story = pkg.category === 'courses';
+  return `<a class="demo-play twpe-edit-button twpe-edit-button--small" href="${esc(editor.href)}" target="_blank" rel="noopener noreferrer" title="Open ${story ? 'story' : 'demo'} in TurboWarp-Plus-Editor"${story ? ' data-course-story' : ''}>
     <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
-    <span>${t('Demo', 'デモ')}</span>
+    <span>${story ? t('Open story', '紙芝居を開く') : t('Demo', 'デモ')}</span>
     <span class="sr-only">${t(`: ${label}; open in TurboWarp-Plus-Editor (new tab)`, `：${label}、TurboWarp-Plus-Editorで開く（新しいタブ）`)}</span>
   </a>`;
 }
@@ -846,9 +849,13 @@ function pagesCell(pkg: DashboardPackage, thumb: Thumbnail | undefined) {
   const [en, ja] = PAGES_LABEL[status] ?? [status, status];
   const label = t(esc(en), esc(ja));
 
-  if (!url) return `<span class="tag ${badgeClass}">${label}</span>`;
+  const course = pkg.category === 'courses';
+  if (!url || (course && pages.live !== true)) return `<span class="tag ${badgeClass}">${label}</span>`;
 
-  const badge = `<a class="tag ${badgeClass}" href="${esc(url)}">${label}</a>`;
+  const linkLabel = course
+    ? `${t('Read guide', '解説を読む')}<span class="sr-only">${t(`: ${esc(pkg.label)}`, `：${esc(pkg.label)}`)}</span>`
+    : label;
+  const badge = `<a class="tag ${badgeClass}" href="${esc(url)}">${linkLabel}</a>`;
   if (!thumb?.light) return badge;
 
   const alt = `${pkg.repo} home page`;

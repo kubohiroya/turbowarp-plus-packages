@@ -66,6 +66,22 @@ test('Demo precedes Issues and opens only available SB3s in TurboWarp-Plus-Edito
     assert.match(custom, /href="https:\/\/plus.example\/editor.html\?lang=ja&amp;project_url=/);
     report.site.demoEditorUrl = 'javascript:alert(1)';
     assert.doesNotMatch(await render(), /<a class="demo-play twpe-edit-button twpe-edit-button--small"/);
+
+    delete report.site.demoEditorUrl;
+    const guideUrl = 'https://example.github.io/course/';
+    report.categories.push({ id: 'courses', title: 'Courses' });
+    report.packages = [
+      { ...pkg('course'), category: 'courses', demo: { projectUrl, title },
+        pages: { enabled: true, url: guideUrl, live: true } },
+      { ...pkg('pending'), category: 'courses', demo: { projectUrl, title },
+        pages: { enabled: true, url: guideUrl, live: false, status: 'building' } },
+    ];
+    const [published, pending] = [...(await render()).matchAll(/<tr data-search=[\s\S]*?<\/tr>/g)].map(match => match[0]);
+    assert.match(published, /href="https:\/\/example\.github\.io\/course\/"[^>]*><span lang="en">Read guide<\/span><span lang="ja">解説を読む/);
+    assert.match(published, /<span lang="en">Open story<\/span><span lang="ja">紙芝居を開く/);
+    assert.match(published, /title="Open story in TurboWarp-Plus-Editor" data-course-story/);
+    assert.match(pending, /紙芝居を開く/);
+    assert.doesNotMatch(pending, /解説を読む|href="https:\/\/example\.github\.io\/course\/"/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
