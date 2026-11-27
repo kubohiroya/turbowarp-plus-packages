@@ -1551,7 +1551,7 @@ async function main() {
   const visibleCategories = report.categories.filter((category) => byCategory.get(category.id)?.length);
   const overview = categoryOverview(visibleCategories, categoryNetwork(report.packages));
   const defaultGroup = (category: string) => {
-    if (['kamishibai', 'in-development', 'apps', 'docs'].includes(category)) return 'use';
+    if (['courses', 'kamishibai', 'in-development', 'apps', 'docs'].includes(category)) return 'use';
     if (['foundation', 'editor-extensions', 'editor-testing'].includes(category)) return 'editor';
     if (['toolchain', 'toolchain-components'].includes(category)) return 'toolchain';
     if (category === 'forks') return 'forks';

@@ -29,7 +29,7 @@ import { packageStatus, allVersions } from './lib/npm.ts';
 import { declaredDependencies, evaluateRange, nestedFamilyDependencies, nestedManifestPaths, testOnlyDependencyProblems } from './lib/dependencies.ts';
 import { describeFromReadme, looksJapanese } from './lib/descriptions.ts';
 import { checkLive } from './lib/pages.ts';
-import { publishedDemo } from './lib/demos.ts';
+import { publishedDemo, publishedRepositoryDemo } from './lib/demos.ts';
 import { inheritedUnsandboxedRequirements, extensionUnsandboxed, declaresExtensionCatalog } from './lib/sandbox.ts';
 import { fixedEditorBuildDependency } from './lib/build-dependencies.ts';
 
@@ -344,7 +344,9 @@ async function main() {
 
     record.revision = revision;
     record.pages = pages;
-    record.demo = await publishedDemo(node.samplesManifest?.text, pages);
+    record.demo = entry.demoPath && !node.isPrivate
+      ? await publishedRepositoryDemo(owner, entry.repo, revision?.head?.oid, entry.demoPath, entry.label)
+      : await publishedDemo(node.samplesManifest?.text, pages);
     record.manifest = deps.manifest;
     record.dependencies = deps.dependencies;
     if (deps.error) record.errors.push(deps.error);

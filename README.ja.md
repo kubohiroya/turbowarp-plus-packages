@@ -110,6 +110,10 @@ Pages上の `samples/<name>.sb3` を確認します。公開CORSとZIPの先頭�
 既定の起動先は [TurboWarp-Plus-Editor](https://kubohiroya.github.io/turbowarp-plus-editor/) です。
 機能拡張の読み込みに必要な権限確認はTurboWarp-Plus-Editor側で行います。
 
+「プラとモコの講座」など、公開リポジトリでSB3を配布する作品は、
+`catalog.yaml` の `demoPath` にリポジトリ内のパスを指定できます。収集した既定ブランチの
+コミットに固定したURLを検証し、同じ「デモ」ボタンでPlus Editorを開きます。
+
 各パッケージの説明文はページの言語に追従します。英語は GitHub のリポジトリ
 description、無ければ `README.md` の冒頭段落から取ります。日本語は各リポジトリの
 `README.ja.md` の、冒頭見出し直下の最初の段落です。その上にあるバッジ行や
