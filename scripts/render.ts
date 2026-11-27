@@ -1035,9 +1035,73 @@ function improveNodePositions<T>(positions: Map<string, T>, cost: () => number, 
   }
 }
 
+interface LayoutSpring {
+  source: string;
+  target: string;
+  strength: number;
+}
+
+interface SpringPosition {
+  y: number;
+  home: number;
+  force: number;
+  weight: number;
+}
+
+function springOrder<T>(
+  columns: { prefix: string; slots: Map<string, T> }[],
+  springs: LayoutSpring[],
+  rowOf: (slot: T) => number,
+) {
+  if (!springs.length) return columns.map(({ slots }) => [...slots]);
+  // Move nodes vertically within their columns. Connected nodes attract,
+  // nearby nodes repel, and a weak anchor limits drift from the original row.
+  const states = new Map<string, SpringPosition>();
+  const strips = columns.map(({ prefix, slots }) => {
+    const ids = [...slots.keys()];
+    const rows = [...slots.values()].sort((a, b) => rowOf(a) - rowOf(b));
+    const nodes = ids.map((id) => {
+      const home = rowOf(slots.get(id)!);
+      const state = { y: home, home, force: 0, weight: 0 };
+      states.set(prefix + id, state);
+      return { id, state };
+    });
+    const gap = rows.length < 2 ? 0 : (rowOf(rows.at(-1)!) - rowOf(rows[0]!)) / (rows.length - 1) * .2;
+    return { nodes, rows, gap };
+  });
+  const links = springs.map(({ source, target, strength }) => ({ a: states.get(source)!, b: states.get(target)!, strength }));
+  const pull = (a: SpringPosition, b: SpringPosition, force: number, weight: number) => {
+    a.force += force;
+    b.force -= force;
+    a.weight += weight;
+    b.weight += weight;
+  };
+  for (let step = 0; step < 48; step++) {
+    for (const state of states.values()) {
+      state.force = (state.home - state.y) * .2;
+      state.weight = 1.2;
+    }
+    for (const { a, b, strength } of links) pull(a, b, (b.y - a.y) * strength, strength);
+    for (const { nodes, gap } of strips) {
+      for (const [i, { state: a }] of nodes.entries()) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const b = nodes[j]!.state;
+          const delta = b.y - a.y;
+          const compression = gap - Math.abs(delta);
+          if (compression > 0) pull(a, b, (delta < 0 ? 1 : -1) * compression, 1);
+        }
+      }
+    }
+    for (const state of states.values()) state.y += .6 * state.force / state.weight;
+  }
+  // Snap the continuous ordering back onto the original rows to guarantee spacing.
+  return strips.map(({ nodes, rows }) => nodes.sort((a, b) => a.state.y - b.state.y)
+    .map(({ id }, index) => [id, rows[index]!] as const));
+}
+
 type OverviewPoint = readonly [x: number, y: number];
 
-function overviewRoutingCost(routes: OverviewPoint[][]) {
+function overviewRoutingCost(routes: OverviewPoint[][], overlapScale = 12) {
   // Count crossings and shared stretches of wire, with a small preference for short routes.
   const segments = routes.flatMap((route, edge) => route.slice(1).flatMap(([x, y], i) => {
     const [prevX, prevY] = route[i]!;
@@ -1054,9 +1118,9 @@ function overviewRoutingCost(routes: OverviewPoint[][]) {
       const aHorizontal = a.top === a.bottom;
       const bHorizontal = b.top === b.bottom;
       if (aHorizontal && bHorizontal && a.top === b.top) {
-        score += Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) / 12;
+        score += Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) / overlapScale;
       } else if (!aHorizontal && !bHorizontal && a.left === b.left) {
-        score += Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)) / 12;
+        score += Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)) / overlapScale;
       } else if (aHorizontal !== bHorizontal) {
         const [h, v] = aHorizontal ? [a, b] : [b, a];
         if (h.left < v.left && v.left < h.right && v.top < h.top && h.top < v.bottom) score += 10;
@@ -1093,6 +1157,7 @@ function categoryOverview(categories: DashboardReport['categories'], connections
     return [id, { column, row, x: (column + .5) * cellWidth, y: (row + .5) * cellHeight }] as const;
   }));
   const developmentOnly = (primary: number) => primary ? '' : ' data-overview-development-only';
+  const lanes = edges.map((_, index) => index % 9 - 4);
   const route = ({ source, target }: (typeof edges)[number], index: number): OverviewPoint[] => {
     const a = nodes.get(source)!;
     const b = nodes.get(target)!;
@@ -1101,7 +1166,7 @@ function categoryOverview(categories: DashboardReport['categories'], connections
     const targetDirection = delta ? -direction : direction;
     const x1 = a.x + direction * nodeWidth / 2;
     const x2 = b.x + targetDirection * nodeWidth / 2;
-    const lane = index % 9 - 4;
+    const lane = lanes[index]!;
     const y1 = a.y + lane * 3;
     const y2 = b.y + lane * 3;
     const gap = cellWidth - nodeWidth;
@@ -1115,14 +1180,49 @@ function categoryOverview(categories: DashboardReport['categories'], connections
     return [[x1, y1], [out, y1], [out, track], [inside, track], [inside, y2], [x2, y2]];
   };
   const scored = edges.map((edge, index) => ({ edge, index })).filter(({ edge }) => edge.primary);
-  const cost = () => overviewRoutingCost(scored.map(({ edge, index }) => route(edge, index)));
+  const cost = (overlapScale?: number) => overviewRoutingCost(scored.map(({ edge, index }) => route(edge, index)), overlapScale);
   // Try swapping nearby boxes without moving a dependency far from its usual layer.
-  improveNodePositions(nodes, cost, (first, second) => {
+  const polish = () => improveNodePositions(nodes, cost, (first, second) => {
     const a = nodes.get(first)!;
     const b = nodes.get(second)!;
     return Math.abs(a.column - b.column) <= 1 &&
       (a.column === b.column || Math.abs(depth.get(first)! - depth.get(second)!) <= 1);
   });
+  const initial = [...nodes];
+  polish();
+  let best = [...nodes];
+  let bestCost = cost();
+  const springs = edges.map(({ source, target, primary, development }) =>
+    ({ source, target, strength: (primary ? 1 : .15) * Math.sqrt(primary || development) }));
+  const columnsOf = (layout: typeof initial) => Array.from({ length: columns }, (_, column) =>
+    ({ prefix: '', slots: new Map(layout.filter(([, slot]) => slot.column === column)) }));
+  // Try relaxation from both the dependency order and the locally refined order.
+  for (const seed of [initial, best]) {
+    for (const [id, slot] of springOrder(columnsOf(seed), springs, (slot) => slot.y).flat()) nodes.set(id, slot);
+    polish();
+    const score = cost();
+    if (score < bestCost) {
+      best = [...nodes];
+      bestCost = score;
+    }
+  }
+  for (const [id, slot] of best) nodes.set(id, slot);
+  // Keep the grid and choose a neighboring routing lane when paths share a long stretch.
+  let routingCost = cost(6);
+  for (const { index } of scored) {
+    const originalLane = lanes[index]!;
+    let bestLane = originalLane;
+    for (const lane of [originalLane - 1, originalLane + 1]) {
+      if (lane < -4 || lane > 4) continue;
+      lanes[index] = lane;
+      const score = cost(6);
+      if (score < routingCost) {
+        routingCost = score;
+        bestLane = lane;
+      }
+    }
+    lanes[index] = bestLane;
+  }
   const paths = edges.map((edge, index) => {
     const { source, target, primary } = edge;
     const points = route(edge, index);
@@ -1215,9 +1315,40 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
     }
     return total;
   };
-  for (const { rows } of sides) improveNodePositions(rows, cost);
-  improveNodePositions(positions, cost);
-  for (const { rows } of sides) improveNodePositions(rows, cost);
+  const polish = () => {
+    for (const { rows } of sides) improveNodePositions(rows, cost);
+    improveNodePositions(positions, cost);
+    for (const { rows } of sides) improveNodePositions(rows, cost);
+  };
+  const columns = [{ prefix: 'package:', slots: positions },
+    ...sides.map(({ rows, direction }) => ({ prefix: direction + ':', slots: rows }))];
+  const snapshot = () => columns.map(({ prefix, slots }) => ({ prefix, slots: new Map(slots) }));
+  const applyRows = (ordering: Iterable<readonly [string, number]>[]) => {
+    for (const [index, rows] of ordering.entries()) {
+      for (const [id, y] of rows) columns[index]!.slots.set(id, y);
+    }
+  };
+  const initial = snapshot();
+  const springs: LayoutSpring[] = [
+    ...layoutGraph.internal.map(({ source, target, kinds }) => ({
+      source: 'package:' + source, target: 'package:' + target, strength: kinds.every((kind) => kind === 'dev') ? .2 : 1,
+    })),
+    ...sides.flatMap(({ direction, links }) => links.map(({ category, repo }) =>
+      ({ source: direction + ':' + category, target: 'package:' + repo, strength: 1 }))),
+  ];
+  polish();
+  let best = snapshot();
+  let bestCost = cost();
+  for (const seed of [initial, best]) {
+    applyRows(springOrder(seed, springs, (y) => y));
+    polish();
+    const score = cost();
+    if (score < bestCost) {
+      best = snapshot();
+      bestCost = score;
+    }
+  }
+  applyRows(best.map(({ slots }) => slots));
   const variantId = `${categoryId}-${includeDev ? 'all' : 'primary'}`;
   const marker = `arrow-${variantId}`;
   const byRepo = new Map(report.packages.map((pkg) => [pkg.repo, pkg]));
