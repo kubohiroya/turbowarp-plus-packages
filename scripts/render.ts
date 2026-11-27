@@ -291,46 +291,104 @@ picture { display: block; }
 .category-overview { grid-column: 1 / -1; min-width: 0; margin: 0; padding: 18px 22px; }
 .category-overview figcaption h2 { margin: 0; font-size: 21px; }
 .category-overview figcaption p { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
-.overview-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; margin: 12px 0; font-size: 12px; }
-.overview-controls > span { display: inline-flex; align-items: center; gap: 6px; }
+.overview-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 12px 0; font-size: 13px; }
+.overview-controls label { display: inline-flex; align-items: center; gap: 7px; }
+.overview-controls select {
+  max-width: 100%; padding: 6px 9px; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); background: var(--panel); font: inherit;
+}
+.overview-legend { display: flex; flex-wrap: wrap; gap: 7px 16px; margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+.overview-legend > span { display: inline-flex; align-items: center; gap: 6px; }
 .overview-line { display: inline-block; width: 20px; border-top: 2px solid var(--runtime-edge); }
 .overview-line.development { border-top-style: dashed; border-top-color: var(--muted); }
-.overview-scroll {
-  overflow-x: auto; padding: 4px; border: 1px solid var(--border); border-radius: 10px;
-  background: var(--bg);
+.overview-scroll, .overview-matrix-scroll {
+  overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--bg);
 }
-.overview-plot { position: relative; margin-inline: auto; }
-.overview-plot > svg { display: block; width: 100%; height: auto; pointer-events: none; }
-.overview-node {
-  position: absolute; transform: translate(-50%, -50%);
-  display: flex; align-items: center; gap: 7px; padding: 5px 7px; text-align: left;
-  border: 1px solid var(--border); border-radius: 6px;
-  background: var(--panel); color: var(--text);
-  font: inherit; font-size: 12px; font-weight: 600; line-height: 1.2;
-  overflow-wrap: anywhere; cursor: pointer;
+.overview-flow {
+  display: grid; grid-template-columns: minmax(158px, 1fr) 88px minmax(166px, .88fr) 88px minmax(158px, 1fr);
+  align-items: center; min-width: 682px; max-width: 1110px; margin-inline: auto; padding: 12px;
 }
+.overview-flow[hidden] { display: none; }
+.overview-column-label {
+  grid-row: 1; margin: 0 0 8px; padding-bottom: 5px; border-bottom: 1px solid var(--border);
+  font-size: 12px; font-weight: 700; color: var(--muted); text-align: center;
+}
+.overview-incoming { grid-column: 1; }
+.overview-selected { grid-column: 3; }
+.overview-outgoing { grid-column: 5; }
+.overview-fan, .overview-column, .overview-center { grid-row: 2; }
+.overview-column { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.overview-node, .overview-center {
+  display: flex; align-items: center; gap: 7px; width: 100%; padding: 5px 9px; text-align: left;
+  border: 1px solid var(--border); border-radius: 7px; box-sizing: border-box;
+  background: var(--panel); color: var(--text); font: inherit; font-size: 12px;
+  font-weight: 600; line-height: 1.2; overflow-wrap: anywhere;
+}
+.overview-node { height: 44px; cursor: pointer; }
+.overview-node:hover, .overview-node:focus-visible { border-color: var(--accent); color: var(--accent); }
+.overview-center { min-height: 82px; border-color: var(--accent); }
+.overview-center strong { display: block; margin-bottom: 5px; font-size: 14px; }
+.overview-center button {
+  padding: 0; border: 0; background: none; color: var(--accent);
+  font: inherit; text-align: left; text-decoration: underline; cursor: pointer;
+}
+.overview-count { margin-left: auto; flex: 0 0 auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.overview-fan { display: block; width: 88px; color: var(--runtime-edge); }
+.overview-fan.incoming { grid-column: 2; }
+.overview-fan.outgoing { grid-column: 4; }
+.overview-arrow { fill: none; stroke: var(--runtime-edge); stroke-width: 1.65; }
+.overview-arrow.development { stroke: var(--muted); stroke-dasharray: 4 3; stroke-width: 1.25; }
+.overview-empty { grid-row: 2; margin: 0; color: var(--muted); text-align: center; font-size: 12px; }
 .overview-scroll-hint { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
 .category-icon { flex: 0 0 auto; width: 18px; height: 18px; color: var(--accent); }
-.overview-node .category-icon {
+.overview-node .category-icon, .overview-center .category-icon {
   width: 23px; height: 23px; padding: 3px; border-radius: 5px;
   background: color-mix(in srgb, var(--accent) 12%, var(--panel));
 }
-.overview-node > span { min-width: 0; }
-.overview-node:hover, .overview-node:focus-visible, .overview-node.current { border-color: var(--accent); color: var(--accent); }
-.category-overview[data-overview-focus] .overview-node:not(.connected) { opacity: .54; }
-.overview-edge { fill: none; stroke: var(--runtime-edge); stroke-width: 1.3; opacity: .62; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.overview-edge.development { stroke: var(--muted); opacity: .5; stroke-dasharray: 5 4; stroke-width: 1; }
-.category-overview[data-overview-focus] .overview-edge { opacity: .07; }
-.category-overview[data-overview-focus] .overview-edge.connected { opacity: 1; stroke-width: 2.2; }
-.category-overview[data-hide-overview-development] [data-overview-development-only] { display: none; }
-.category-overview[data-hide-overview-development] .overview-development-count { display: none; }
 .overview-details { margin: 12px 0 0; }
-.overview-details table { width: 100%; min-width: 0; table-layout: fixed; margin-top: 8px; font-size: 12px; }
-.overview-details th, .overview-details td { padding: 5px 8px; text-align: left; white-space: normal; overflow-wrap: anywhere; }
-.overview-details th:first-child { width: 70%; }
-@media (max-width: 600px) {
+.overview-details > p { margin: 6px 0; color: var(--muted); font-size: 12px; }
+.overview-matrix { min-width: 0; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 12px; }
+.overview-matrix th, .overview-matrix td { padding: 5px 4px; vertical-align: middle; text-align: center; }
+.overview-matrix thead th { white-space: normal; overflow-wrap: anywhere; text-transform: none; letter-spacing: 0; line-height: 1.17; }
+.overview-matrix th:first-child {
+  position: sticky; left: 0; z-index: 1; width: 156px; padding-left: 9px;
+  background: var(--panel); text-align: left; box-shadow: 1px 0 var(--border);
+}
+.overview-matrix .category-icon { width: 16px; height: 16px; vertical-align: middle; }
+.overview-matrix thead th > .category-icon { display: block; margin: 0 auto 4px; }
+.overview-matrix tbody th { font-size: 11px; }
+.overview-matrix tbody th > .category-icon { margin-right: 4px; }
+.overview-matrix td { color: var(--muted); font-variant-numeric: tabular-nums; }
+.overview-matrix td[data-matrix-primary] {
+  color: var(--text); font-weight: 700; background: color-mix(in srgb, var(--runtime-edge) 14%, var(--panel));
+}
+.overview-matrix td[data-matrix-primary="0"] { color: var(--muted); font-weight: 400; background: transparent; }
+.overview-matrix td[data-matrix-same] { background: var(--idle-bg); }
+.overview-matrix td[data-matrix-dev-only] { background: color-mix(in srgb, var(--runtime-edge) 8%, var(--panel)); }
+.category-overview:not([data-overview-development]) .overview-matrix td[data-matrix-dev-only] { background: transparent; }
+.category-overview[data-overview-development] [data-count-kind="primary"],
+.category-overview:not([data-overview-development]) [data-count-kind="all"] { display: none; }
+.overview-mobile-arrow { display: none; }
+@media (max-width: 720px) {
   .category-overview { padding: 13px 10px; }
-  .overview-details th:first-child { width: 60%; }
+  .overview-flow { grid-template-columns: minmax(0, 1fr); min-width: 0; row-gap: 4px; }
+  .overview-column-label { margin: 0; padding-bottom: 4px; text-align: left; }
+  .overview-incoming, .overview-selected, .overview-outgoing { grid-column: 1; }
+  .overview-column.overview-incoming, .overview-empty.overview-incoming { grid-row: 2; }
+  .overview-mobile-arrow {
+    display: block; grid-column: 1; justify-self: center;
+    color: var(--runtime-edge); font-size: 19px; line-height: 1.1;
+  }
+  .overview-mobile-arrow.incoming { grid-row: 3; }
+  .overview-column-label.overview-selected { grid-row: 4; }
+  .overview-center { grid-row: 5; min-height: 56px; }
+  .overview-mobile-arrow.outgoing { grid-row: 6; }
+  .overview-column-label.overview-outgoing { grid-row: 7; }
+  .overview-column.overview-outgoing, .overview-empty.overview-outgoing { grid-row: 8; }
+  .overview-fan { display: none; }
+  .overview-column { gap: 4px; }
+  .overview-node { height: 38px; }
+  .overview-node.development { border-inline-start: 2px dashed var(--muted); }
 }
 
 .graph-panel { padding: 12px; }
@@ -534,47 +592,38 @@ function apply() {
 
 const overview = document.querySelector('.category-overview');
 if (overview) {
-  const connections = [...overview.querySelectorAll('.overview-edge')];
-  const nodes = [...overview.querySelectorAll('[data-overview-node]')];
+  const views = [...overview.querySelectorAll('[data-overview-category]')];
+  const selectors = [...overview.querySelectorAll('[data-overview-picker]')];
   const development = overview.querySelector('[data-overview-show-dev]');
   const scroll = overview.querySelector('.overview-scroll');
   const scrollHint = overview.querySelector('.overview-scroll-hint');
+  let selected = selectors[0].value;
   function updateScrollHint() {
     const overflow = scroll.scrollWidth > scroll.clientWidth;
     scrollHint.hidden = !overflow;
     scroll.tabIndex = overflow ? 0 : -1;
   }
-  new ResizeObserver(updateScrollHint).observe(scroll);
-  updateScrollHint();
-  let hovered = '';
-  let focused = '';
-  function highlightOverview() {
-    const selected = hovered || focused;
-    overview.toggleAttribute('data-overview-focus', Boolean(selected));
-    const related = new Set([selected]);
-    for (const connection of connections) {
-      const { overviewSource: source, overviewTarget: target } = connection.dataset;
-      const visible = development.checked || !connection.hasAttribute('data-overview-development-only');
-      const connected = visible && (selected === source || selected === target);
-      connection.classList.toggle('connected', connected);
-      if (connected) { related.add(source); related.add(target); }
-    }
-    for (const node of nodes) {
-      const id = node.dataset.overviewNode;
-      node.classList.toggle('current', selected === id);
-      node.classList.toggle('connected', related.has(id));
-    }
+  function showOverview() {
+    const mode = development.checked ? 'all' : 'primary';
+    overview.toggleAttribute('data-overview-development', development.checked);
+    for (const view of views) view.hidden = view.dataset.overviewCategory !== selected || view.dataset.overviewMode !== mode;
+    for (const dropdown of selectors) dropdown.value = selected;
+    updateScrollHint();
   }
-  development.addEventListener('change', () => {
-    overview.toggleAttribute('data-hide-overview-development', !development.checked);
-    highlightOverview();
+  for (const dropdown of selectors) dropdown.addEventListener('change', () => {
+    selected = dropdown.value;
+    showOverview();
   });
-  for (const node of nodes) {
-    node.addEventListener('pointerenter', () => { hovered = node.dataset.overviewNode; highlightOverview(); });
-    node.addEventListener('pointerleave', () => { hovered = ''; highlightOverview(); });
-    node.addEventListener('focus', () => { focused = node.dataset.overviewNode; highlightOverview(); });
-    node.addEventListener('blur', () => { focused = ''; highlightOverview(); });
-  }
+  development.addEventListener('change', showOverview);
+  overview.addEventListener('click', (event) => {
+    const node = event.target.closest('[data-overview-select]');
+    if (!node) return;
+    selected = node.dataset.overviewSelect;
+    showOverview();
+    selectors.find((dropdown) => dropdown.lang === document.documentElement.lang)?.focus();
+  });
+  new ResizeObserver(updateScrollHint).observe(scroll);
+  showOverview();
 }
 
 const dialogState = new WeakMap();
@@ -1099,180 +1148,110 @@ function springOrder<T>(
     .map(({ id }, index) => [id, rows[index]!] as const));
 }
 
-type OverviewPoint = readonly [x: number, y: number];
-
-function overviewRoutingCost(routes: OverviewPoint[][], overlapScale = 12) {
-  // Count crossings and shared stretches of wire, with a small preference for short routes.
-  const segments = routes.flatMap((route, edge) => route.slice(1).flatMap(([x, y], i) => {
-    const [prevX, prevY] = route[i]!;
-    if (x === prevX && y === prevY) return [];
-    return [{ edge, left: Math.min(x, prevX), right: Math.max(x, prevX),
-      top: Math.min(y, prevY), bottom: Math.max(y, prevY) }];
-  }));
-  let score = 0;
-  for (const [i, a] of segments.entries()) {
-    score += (a.right - a.left + a.bottom - a.top) / 200;
-    for (let j = 0; j < i; j++) {
-      const b = segments[j]!;
-      if (a.edge === b.edge) continue;
-      const aHorizontal = a.top === a.bottom;
-      const bHorizontal = b.top === b.bottom;
-      if (aHorizontal && bHorizontal && a.top === b.top) {
-        score += Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) / overlapScale;
-      } else if (!aHorizontal && !bHorizontal && a.left === b.left) {
-        score += Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)) / overlapScale;
-      } else if (aHorizontal !== bHorizontal) {
-        const [h, v] = aHorizontal ? [a, b] : [b, a];
-        if (h.left < v.left && v.left < h.right && v.top < h.top && h.top < v.bottom) score += 10;
-      }
-    }
-  }
-  return score;
-}
-
 function categoryOverview(categories: DashboardReport['categories'], connections: ReturnType<typeof categoryNetwork>): string {
   if (!categories.length) return '';
-  const categoryIds = new Set(categories.map(({ id }) => id));
-  const edges = connections.filter(({ source, target }) => categoryIds.has(source) && categoryIds.has(target));
-  const labels = new Map(categories.map((category) => [category.id, t(esc(category.title), esc(category.titleJa ?? category.title))]));
-  const depth = new Map(categories.map(({ id }) => [id, 0]));
-  // Put consumers before their dependencies. Cap propagation so a cycle still renders.
-  for (let i = 0; i < categories.length; i++) {
-    for (const { source, target, primary } of edges) {
-      if (primary) depth.set(source, Math.min(categories.length, Math.max(depth.get(source)!, depth.get(target)! + 1)));
-    }
-  }
-  const sorted = [...categories].sort((a, b) => depth.get(b.id)! - depth.get(a.id)!);
-  const columns = Math.min(5, categories.length);
-  const rows = Math.ceil(categories.length / columns);
-  const cellWidth = 234;
-  const cellHeight = 99;
-  const nodeWidth = 174;
-  const nodeHeight = 54;
-  const width = columns * cellWidth;
-  const height = rows * cellHeight;
-  const nodes = new Map(sorted.map(({ id }, i) => {
-    const column = Math.floor(i * columns / sorted.length);
-    const row = i - Math.ceil(column * sorted.length / columns);
-    return [id, { column, row, x: (column + .5) * cellWidth, y: (row + .5) * cellHeight }] as const;
-  }));
-  const developmentOnly = (primary: number) => primary ? '' : ' data-overview-development-only';
-  const lanes = edges.map((_, index) => index % 9 - 4);
-  const route = ({ source, target }: (typeof edges)[number], index: number): OverviewPoint[] => {
-    const a = nodes.get(source)!;
-    const b = nodes.get(target)!;
-    const delta = b.column - a.column;
-    const direction = Math.sign(delta) || (a.column === columns - 1 ? -1 : 1);
-    const targetDirection = delta ? -direction : direction;
-    const x1 = a.x + direction * nodeWidth / 2;
-    const x2 = b.x + targetDirection * nodeWidth / 2;
-    const lane = lanes[index]!;
-    const y1 = a.y + lane * 3;
-    const y2 = b.y + lane * 3;
-    const gap = cellWidth - nodeWidth;
-    const out = x1 + direction * (gap / 2 + lane * 4);
-    if (Math.abs(delta) <= 1) return y1 === y2 ? [[x1, y1], [x2, y2]]
-      : [[x1, y1], [out, y1], [out, y2], [x2, y2]];
-    // Orthogonal routes use gaps between columns and rows, clear of every unrelated box.
-    const inside = x2 + targetDirection * (gap / 2 - lane * 4);
-    const rail = a.row === b.row ? a.row + Number(lane >= 0) : Math.floor((a.row + b.row + 1) / 2);
-    const track = rail === 0 ? 12 + lane * 2 : rail === rows ? height - 12 + lane * 2 : rail * cellHeight + lane * 3;
-    return [[x1, y1], [out, y1], [out, track], [inside, track], [inside, y2], [x2, y2]];
+  const byId = new Map(categories.map((category) => [category.id, category]));
+  const edges = connections.filter(({ source, target }) => byId.has(source) && byId.has(target));
+  const label = (id: string) => {
+    const category = byId.get(id)!;
+    return t(esc(category.title), esc(category.titleJa ?? category.title));
   };
-  const scored = edges.map((edge, index) => ({ edge, index })).filter(({ edge }) => edge.primary);
-  const cost = (overlapScale?: number) => overviewRoutingCost(scored.map(({ edge, index }) => route(edge, index)), overlapScale);
-  // Try swapping nearby boxes without moving a dependency far from its usual layer.
-  const polish = () => improveNodePositions(nodes, cost, (first, second) => {
-    const a = nodes.get(first)!;
-    const b = nodes.get(second)!;
-    return Math.abs(a.column - b.column) <= 1 &&
-      (a.column === b.column || Math.abs(depth.get(first)! - depth.get(second)!) <= 1);
-  });
-  const initial = [...nodes];
-  polish();
-  let best = [...nodes];
-  let bestCost = cost();
-  const springs = edges.map(({ source, target, primary, development }) =>
-    ({ source, target, strength: (primary ? 1 : .15) * Math.sqrt(primary || development) }));
-  const columnsOf = (layout: typeof initial) => Array.from({ length: columns }, (_, column) =>
-    ({ prefix: '', slots: new Map(layout.filter(([, slot]) => slot.column === column)) }));
-  // Try relaxation from both the dependency order and the locally refined order.
-  for (const seed of [initial, best]) {
-    for (const [id, slot] of springOrder(columnsOf(seed), springs, (slot) => slot.y).flat()) nodes.set(id, slot);
-    polish();
-    const score = cost();
-    if (score < bestCost) {
-      best = [...nodes];
-      bestCost = score;
-    }
-  }
-  for (const [id, slot] of best) nodes.set(id, slot);
-  // Keep the grid and choose a neighboring routing lane when paths share a long stretch.
-  let routingCost = cost(6);
-  for (const { index } of scored) {
-    const originalLane = lanes[index]!;
-    let bestLane = originalLane;
-    for (const lane of [originalLane - 1, originalLane + 1]) {
-      if (lane < -4 || lane > 4) continue;
-      lanes[index] = lane;
-      const score = cost(6);
-      if (score < routingCost) {
-        routingCost = score;
-        bestLane = lane;
-      }
-    }
-    lanes[index] = bestLane;
-  }
-  const paths = edges.map((edge, index) => {
-    const { source, target, primary } = edge;
-    const points = route(edge, index);
-    const d = points.map(([x, y], i) => i === 0 ? `M ${x} ${y}`
-      : points[i - 1]![1] === y ? `H ${x}` : `V ${y}`).join(' ');
-    const marker = primary ? 'overview-arrow' : 'overview-dev-arrow';
-    return `<path class="overview-edge${primary ? '' : ' development'}"${developmentOnly(primary)}
-      data-overview-source="${esc(source)}" data-overview-target="${esc(target)}"
-      d="${d}" marker-end="url(#${marker})"/>`;
-  }).join('\n');
-  const percent = (size: number, extent: number) => (size * 100 / extent).toFixed(3) + '%';
-  const orderedNodes = [...nodes].sort(([, a], [, b]) => a.column - b.column || a.row - b.row);
-  const buttons = orderedNodes.map(([id, { x, y }]) => {
-    const style = `left:${percent(x, width)};top:${percent(y, height)};width:${percent(nodeWidth, width)};height:${percent(nodeHeight, height)}`;
-    return `<button type="button" class="overview-node" data-overview-node="${esc(id)}" style="${style}"
-      data-graph-open="relationships-${esc(id)}" aria-haspopup="dialog" aria-controls="relationships-${esc(id)}">${categoryIcon(id)}<span>${labels.get(id)}</span></button>`;
-  }).join('\n');
-  const details = edges.map(({ source, target, primary, development }) => `<tr${developmentOnly(primary)}>
-    <td>${labels.get(source)} → ${labels.get(target)}</td><td>${primary}</td><td class="overview-development-count">${development}</td>
-  </tr>`).join('\n');
-  return `<figure class="panel category-overview" id="category-dependency-overview" aria-labelledby="category-network-heading" data-hide-overview-development>
+  const neighbors = categories.map(({ id }) => ({
+    id, incoming: edges.filter(({ target }) => target === id), outgoing: edges.filter(({ source }) => source === id),
+  }));
+  // Open on an example with traffic on both sides, if the catalog has one.
+  const prominence = ({ incoming, outgoing }: (typeof neighbors)[number]) => {
+    const left = incoming.filter(({ primary }) => primary).length;
+    const right = outgoing.filter(({ primary }) => primary).length;
+    return Number(left > 0 && right > 0) * (edges.length + 1) + left + right;
+  };
+  const initial = neighbors.reduce((best, node) => prominence(node) > prominence(best) ? node : best).id;
+  const picker = (lang: 'en' | 'ja') => {
+    const options = categories.map(({ id, title, titleJa }) =>
+      `<option value="${esc(id)}"${id === initial ? ' selected' : ''}>${esc(lang === 'ja' ? titleJa ?? title : title)}</option>`).join('');
+    return `<label lang="${lang}">${lang === 'ja' ? '表示するカテゴリ' : 'Category'} <select lang="${lang}" data-overview-picker>${options}</select></label>`;
+  };
+  const card = (id: string, count: number, developmentOnly: boolean) =>
+    `<li><button type="button" class="overview-node${developmentOnly ? ' development' : ''}" data-overview-select="${esc(id)}">
+      ${categoryIcon(id)}<span>${label(id)}</span><span class="overview-count">${count}</span></button></li>`;
+  const lane = (edgesOnSide: typeof edges, side: 'incoming' | 'outgoing', height: number, includeDev: boolean) => {
+    if (!edgesOnSide.length) return `<p class="overview-empty overview-${side}">${t('None', '該当なし')}</p>`;
+    const incoming = side === 'incoming';
+    const cards = edgesOnSide.map((edge) => card(incoming ? edge.source : edge.target,
+      edge.primary + (includeDev ? edge.development : 0), !edge.primary));
+    const arrows = edgesOnSide.map(({ source, target, primary, development }, i) => {
+      // Match the vertical order at both ends. Shared control-point X coordinates
+      // keep the paths from intersecting as they fan out at the center box.
+      const offset = i - (edgesOnSide.length - 1) / 2;
+      const outerY = height / 2 + offset * 52;
+      const innerY = height / 2 + offset * Math.min(9, 48 / Math.max(1, edgesOnSide.length - 1));
+      const [fromY, toY] = incoming ? [outerY, innerY] : [innerY, outerY];
+      const kind = primary ? '' : ' development';
+      return `<path class="overview-arrow${kind}" data-overview-source="${esc(source)}" data-overview-target="${esc(target)}"
+        data-primary="${primary}" data-development="${development}" d="M 0 ${fromY} C 39 ${fromY} 49 ${toY} 86 ${toY}" marker-end="url(#overview-arrow${primary ? '' : '-dev'})"/>`;
+    }).join('');
+    return `<ul class="overview-column overview-${side}">${cards.join('')}</ul>
+      <span class="overview-mobile-arrow ${side}" aria-hidden="true">↓</span>
+      <svg class="overview-fan ${side}" viewBox="0 0 88 ${height}" height="${height}" aria-hidden="true">${arrows}</svg>`;
+  };
+  const views = neighbors.flatMap(({ id, incoming, outgoing }) => [false, true].map((includeDev) => {
+    const left = includeDev ? incoming : incoming.filter(({ primary }) => primary);
+    const right = includeDev ? outgoing : outgoing.filter(({ primary }) => primary);
+    const height = Math.max(82, Math.max(left.length, right.length) * 52 - 8);
+    return `<div class="overview-flow" data-overview-category="${esc(id)}" data-overview-mode="${includeDev ? 'all' : 'primary'}"${id !== initial || includeDev ? ' hidden' : ''}>
+      <h3 class="overview-column-label overview-incoming">${t('Uses this category', 'このカテゴリを使う')}</h3>
+      ${lane(left, 'incoming', height, includeDev)}
+      <h3 class="overview-column-label overview-selected">${t('Selected category', '選択中のカテゴリ')}</h3>
+      <div class="overview-center overview-selected">${categoryIcon(id)}<div><strong>${label(id)}</strong>
+        <button type="button" data-graph-open="relationships-${esc(id)}" aria-haspopup="dialog" aria-controls="relationships-${esc(id)}">${t('Package graph', 'パッケージ相関図')}</button>
+      </div></div>
+      <h3 class="overview-column-label overview-outgoing">${t('This category uses', 'このカテゴリが使う')}</h3>
+      ${lane(right, 'outgoing', height, includeDev)}
+    </div>`;
+  })).join('');
+  const headers = categories.map(({ id }) => `<th scope="col">${categoryIcon(id)}${label(id)}</th>`).join('');
+  const matrix = neighbors.map(({ id, outgoing }) => {
+    const counts = new Map(outgoing.map((edge) => [edge.target, edge]));
+    const cells = categories.map(({ id: target }) => {
+      const edge = counts.get(target);
+      if (target === id) return '<td data-matrix-same>–</td>';
+      if (!edge) return '<td>·</td>';
+      const { primary, development } = edge;
+      const value = development
+        ? `<span data-count-kind="primary">${primary || '·'}</span><span data-count-kind="all">${primary + development}</span>`
+        : String(primary);
+      return `<td data-matrix-primary="${primary}" data-matrix-development="${development}"${primary ? '' : ' data-matrix-dev-only'}>${value}</td>`;
+    }).join('');
+    return `<tr><th scope="row">${categoryIcon(id)}${label(id)}</th>${cells}</tr>`;
+  }).join('');
+  return `<figure class="panel category-overview" id="category-dependency-overview" aria-labelledby="category-network-heading">
   <figcaption>
     <h2 id="category-network-heading">${t('Category dependencies', 'カテゴリ間の依存関係')}</h2>
-    <p>${t('Arrows point from the category that uses a package to the category it uses. Select a category to see its packages.', '矢印の向きは「利用するカテゴリ → 依存先」です。カテゴリを選ぶとパッケージ別の関係が開きます。')}</p>
+    <p>${t('Arrows go from the category that uses a package to its dependency. Numbers count package pairs.', '矢印は利用側から依存先へ向かいます。数字は依存するパッケージの組数です。')}</p>
   </figcaption>
   <div class="overview-controls">
-    <span><i class="overview-line" aria-hidden="true"></i>${t('Runtime, build and other', '実行・ビルドなど')}</span>
-    <span><i class="overview-line development" aria-hidden="true"></i>${t('Development only', '開発時のみ')}</span>
+    ${picker('ja')}${picker('en')}
     <label class="development-toggle"><input type="checkbox" data-overview-show-dev> ${t('Include development dependencies', '開発時の依存も表示')}</label>
   </div>
-  <div class="overview-scroll" tabindex="0" role="region" aria-labelledby="category-network-heading">
-    <div class="overview-plot" style="min-width:${Math.round(width * .78)}px;max-width:${Math.round(width * 1.38)}px">
-    <svg viewBox="0 0 ${width} ${height}" aria-hidden="true">
-      <defs>
-        <marker id="overview-arrow" viewBox="0 0 14 12" markerWidth="9" markerHeight="8" refX="13" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M 0 0 L 14 6 L 0 12 Z" fill="var(--runtime-edge)"/></marker>
-        <marker id="overview-dev-arrow" viewBox="0 0 14 12" markerWidth="9" markerHeight="8" refX="13" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M 0 0 L 14 6 L 0 12 Z" fill="var(--muted)"/></marker>
-      </defs>
-      ${paths}
-    </svg>
-    ${buttons}
-    </div>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+    <marker id="overview-arrow" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M 0 0 L 8 4 L 0 8 Z" fill="var(--runtime-edge)"/></marker>
+    <marker id="overview-arrow-dev" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M 0 0 L 8 4 L 0 8 Z" fill="var(--muted)"/></marker>
+  </defs></svg>
+  <div class="overview-scroll" tabindex="0" role="region" aria-labelledby="category-network-heading">${views}</div>
+  <p class="overview-scroll-hint" hidden>${t('Scroll sideways to see both sides of the diagram.', '図を横にスクロールすると左右の関係を確認できます。')}</p>
+  <div class="overview-legend">
+    <span><i class="overview-line" aria-hidden="true"></i>${t('Runtime, build and other', '実行・ビルドなど')}</span>
+    <span data-count-kind="all"><i class="overview-line development" aria-hidden="true"></i>${t('Development only', '開発時のみ')}</span>
   </div>
-  <p class="overview-scroll-hint" hidden>${t('Scroll the diagram horizontally for more categories.', '図は横にスクロールできます。')}</p>
-  ${edges.length ? `<details class="relationship-details overview-details">
-    <summary>${t('Package-pair counts by category', 'カテゴリごとのパッケージ依存数')}</summary>
-    <table>
-      <thead><tr><th scope="col">${t('Using category → dependency', '利用側 → 依存先')}</th><th scope="col">${t('Runtime, build and other', '実行・ビルドなど')}</th><th scope="col" class="overview-development-count">${t('Development only', '開発時のみ')}</th></tr></thead>
-      <tbody>${details}</tbody>
-    </table>
-  </details>` : `<p class="relation-note">${t('No declared dependencies between categories.', 'カテゴリ間の依存宣言はありません。')}</p>`}
+  <details class="relationship-details overview-details">
+    <summary id="overview-matrix-heading">${t('All category pairs', '全カテゴリの依存を一覧')}</summary>
+    <p>${t('Read from the category using a package in the row to its dependency in the column.', '行が利用側、列が依存先です。')}</p>
+    <div class="overview-matrix-scroll" tabindex="0" role="region" aria-labelledby="overview-matrix-heading">
+      <table class="overview-matrix" style="min-width:${166 + categories.length * 62}px">
+        <thead><tr><th scope="col">${t('Uses ↓ / Dependency →', '利用側 ↓ ／ 依存先 →')}</th>${headers}</tr></thead><tbody>${matrix}</tbody>
+      </table>
+    </div>
+  </details>
 </figure>`;
 }
 

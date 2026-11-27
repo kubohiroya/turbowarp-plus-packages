@@ -24,10 +24,11 @@ English | [日本語](README.ja.md)
 
 ## What the dashboard shows
 
-The dashboard opens with **Category dependencies**. Arrows point from the
-category using a package to its dependency's category. Enable development links
-when needed. Choose a category to open its detailed package graph, or expand the
-package-pair counts.
+The dashboard opens with **Category dependencies**. Choose a category to see
+which categories use it on the left and which it uses on the right. Enable
+development links when needed. Open the package graph from the center box, or
+expand **All category pairs** for a matrix of counts, with users in rows and
+dependencies in columns.
 
 The **Package list** and its table of contents separate **Apps & Documentation** (Kamishibai and Other (in development)),
 **Editor** (Editor, Editor Extensions and Editor Test Support),
