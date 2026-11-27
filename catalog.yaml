@@ -44,8 +44,9 @@ localProtocols: [file:, link:, workspace:, portal:, patch:]
 #      project test runner or minimal runtime used in package tests? -> editor-testing
 #   6. Is it an editor distribution (web or desktop)?               -> foundation
 #      Is it a library that only the editor uses?                   -> editor-extensions
-#   7. Does a packaged app use it to host the TurboWarp runtime in
-#      its own page, or is it the template such an app starts from? -> shell
+#   7. Does it provide shared extension loading or review support,
+#      host the TurboWarp runtime in a packaged app's own page,
+#      or provide the template such an app starts from?            -> shell
 #   8. Is it a contract, API or adapter that extensions from several
 #      other categories build on, with no domain of its own?        -> contracts
 #   9. Is it a camera source or an optical code format that packages
@@ -111,17 +112,16 @@ categories:
       - turbowarp-plus-editor
       - turbowarp-plus-desktop
 
-  # Includes: editor-only libraries, such as the security dialog and workspace UI.
+  # Includes: editor-only libraries, such as the workspace UI.
   # Excludes: contracts shared by extensions (-> contracts), packaged-app
-  #   infrastructure (-> shell), and host interfaces, shared project test runners
-  #   and test runtimes (-> editor-testing).
+  #   infrastructure and shared extension loading/review support (-> shell),
+  #   and host interfaces, shared project test runners and test runtimes (-> editor-testing).
   - id: editor-extensions
     title: Editor Extensions
     titleJa: エディター拡張
     description: Editor-only libraries and components that extend the editor.
     descriptionJa: エディターの機能を拡張する専用ライブラリ・構成要素。
     packages:
-      - turbowarp-extension-security-dialog
       - turbowarp-document-editor
       - turbowarp-sb3-save-format
       - turbowarp-script-transfer
@@ -175,20 +175,23 @@ categories:
   # Includes: DOM shell primitives, runtime adapters, and the title and
   #   application menu chrome and live reload control used to host the TurboWarp
   #   runtime in a packaged application page, the verified extension loading
-  #   core shared by the editor and generated apps through host-owned trust and
-  #   registration ports, and the template a packaged app starts from.
+  #   core and its extension catalog/review UI. Keep loading and review support
+  #   together: the UI uses the loader, whose tests use the UI's catalog parser.
+  #   The core is shared by the editor and generated apps through host-owned
+  #   trust and registration ports. Includes the template a packaged app starts from.
   #   Every app depends on turbowarp-app-shell.
   # Excludes: the editor (-> foundation), build-time preview (-> toolchain),
   #   and the apps themselves (-> apps).
   - id: shell
     title: App Shell
     titleJa: アプリシェル
-    description: Host the TurboWarp runtime inside a packaged application page.
-    descriptionJa: パッケージ化したアプリのページに TurboWarp の実行環境を載せる。
+    description: Host the TurboWarp runtime and provide shared extension loading and review support.
+    descriptionJa: アプリに TurboWarp の実行環境を載せ、ホスト共通の機能拡張の読み込み・確認を支える。
     packages:
       - turbowarp-app-shell
       - turbowarp-runtime-adapter
       - turbowarp-extension-loader
+      - turbowarp-extension-security-dialog
       - turbowarp-title-menu
       - turbowarp-live-reload-controller
       - turbowarp-app-template

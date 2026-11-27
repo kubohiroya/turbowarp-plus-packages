@@ -45,7 +45,7 @@ test('dashboard separates runnable extensions, support and forks without losing 
     assert.deepEqual([...groups.keys()], ['use', 'editor', 'toolchain', 'extensions', 'infrastructure', 'forks']);
     const repos = (group: string) => [...groups.get(group)!.matchAll(/<tr [^>]*data-repo="([^"]+)"/g)].map(([, repo]) => repo!);
     assert.equal(repos('extensions').length, 42);
-    assert.equal(repos('infrastructure').length, 12);
+    assert.equal(repos('infrastructure').length, 13);
     assert.equal(repos('forks').length, 5);
     for (const repo of ['turbowarp-title-menu', 'turbowarp-runtime-expression', 'turbowarp-named-data',
       'turbowarp-named-functions', 'turbowarp-jotai-adapter', 'turbowarp-react-islands', 'turbowarp-diagnostic-overlay']) {
@@ -53,6 +53,7 @@ test('dashboard separates runnable extensions, support and forks without losing 
     }
     for (const repo of ['turbowarp-extension-template', 'turbowarp-extension-manifest', 'turbowarp-extension-data-editor',
       'turbowarp-document-source', 'turbowarp-app-shell', 'turbowarp-runtime-adapter', 'turbowarp-extension-loader',
+      'turbowarp-extension-security-dialog',
       'turbowarp-live-reload-controller', 'turbowarp-app-template', 'turbowarp-scene-graph', 'qrcode-structured-append', 'future-library']) {
       assert.ok(repos('infrastructure').includes(repo), repo);
     }
