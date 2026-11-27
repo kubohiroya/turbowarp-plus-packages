@@ -46,7 +46,9 @@ test('renders the category overview above the package list and preserves detaile
     assert.deepEqual([...overview.matchAll(/data-overview-node="([^"]+)"/g)].map(([, id]) => id), ['focus', 'other', 'network']);
     assert.match(overview, /overview-edge development" data-overview-development-only\s+data-overview-source="focus" data-overview-target="other"/);
     assert.doesNotMatch(overview, /data-overview-target="focus"|unlisted/);
-    assert.match(overview, /data-overview-show-dev checked/);
+    assert.match(overview, /<figure[^>]* data-hide-overview-development>/);
+    assert.match(overview, /data-overview-show-dev>/);
+    assert.match(overview, /<svg viewBox="0 0 702 99"/);
     assert.match(overview, /<td>0<\/td><td class="overview-development-count">1<\/td>/);
     assert.match(overview, /data-graph-open="relationships-focus" aria-haspopup="dialog"/);
     assert.ok(top < list);

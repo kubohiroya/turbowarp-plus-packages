@@ -295,27 +295,26 @@ picture { display: block; }
 .overview-controls > span { display: inline-flex; align-items: center; gap: 6px; }
 .overview-line { display: inline-block; width: 20px; border-top: 2px solid var(--runtime-edge); }
 .overview-line.development { border-top-style: dashed; border-top-color: var(--muted); }
-.overview-plot {
-  --overview-step: 46px;
-  position: relative; display: grid; grid-template-columns: minmax(0, 28%) minmax(0, 28%);
-  justify-content: space-between; background: radial-gradient(ellipse, color-mix(in srgb, var(--accent) 6%, transparent), transparent 72%);
+.overview-scroll {
+  overflow-x: auto; padding: 4px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg);
 }
-.overview-stack {
-  display: grid; grid-template-rows: repeat(var(--overview-rows), var(--overview-step)); align-items: center;
-  position: relative; z-index: 1; min-width: 0;
-}
-.overview-plot svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.overview-plot { position: relative; margin-inline: auto; }
+.overview-plot svg { display: block; width: 100%; height: auto; pointer-events: none; }
 .overview-node {
-  width: 100%; min-height: 34px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 7px;
+  position: absolute; transform: translate(-50%, -50%);
+  display: grid; place-content: center; padding: 3px 6px;
+  border: 1px solid var(--border); border-radius: 6px;
   background: var(--panel); color: var(--text);
-  font-family: inherit; font-size: 13px; font-weight: 600; line-height: 1.2;
+  font: inherit; font-size: 12px; font-weight: 600; line-height: 1.2;
   overflow-wrap: anywhere; cursor: pointer;
 }
+.overview-scroll-hint { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
 .overview-node:hover, .overview-node:focus-visible { border-color: var(--accent); color: var(--accent); }
-.overview-edge { fill: none; stroke: var(--runtime-edge); stroke-width: 1.4; opacity: .58; vector-effect: non-scaling-stroke; }
-.overview-edge.development { stroke: var(--muted); opacity: .46; stroke-dasharray: 5 4; stroke-width: 1; }
+.overview-edge { fill: none; stroke: var(--runtime-edge); stroke-width: 1.3; opacity: .62; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.overview-edge.development { stroke: var(--muted); opacity: .5; stroke-dasharray: 5 4; stroke-width: 1; }
 .category-overview[data-overview-focus] .overview-edge { opacity: .07; }
-.category-overview[data-overview-focus] .overview-edge.connected { opacity: 1; stroke-width: 2.4; }
+.category-overview[data-overview-focus] .overview-edge.connected { opacity: 1; stroke-width: 2.2; }
 .category-overview[data-hide-overview-development] [data-overview-development-only] { display: none; }
 .category-overview[data-hide-overview-development] .overview-development-count { display: none; }
 .overview-details { margin: 12px 0 0; }
@@ -324,12 +323,7 @@ picture { display: block; }
 .overview-details th:first-child { width: 70%; }
 @media (max-width: 600px) {
   .category-overview { padding: 13px 10px; }
-  .overview-plot { --overview-step: 51px; }
   .overview-details th:first-child { width: 60%; }
-  .overview-node { font-size: 11px; padding-inline: 3px; min-height: 38px; }
-}
-@media (max-width: 360px) {
-  .overview-plot { --overview-step: 62px; }
 }
 
 .graph-panel { padding: 12px; }
@@ -532,6 +526,15 @@ function apply() {
 const overview = document.querySelector('.category-overview');
 if (overview) {
   const connections = [...overview.querySelectorAll('.overview-edge')];
+  const scroll = overview.querySelector('.overview-scroll');
+  const scrollHint = overview.querySelector('.overview-scroll-hint');
+  function updateScrollHint() {
+    const overflow = scroll.scrollWidth > scroll.clientWidth;
+    scrollHint.hidden = !overflow;
+    scroll.tabIndex = overflow ? 0 : -1;
+  }
+  new ResizeObserver(updateScrollHint).observe(scroll);
+  updateScrollHint();
   let hovered = '';
   let focused = '';
   function highlightOverview() {
@@ -958,41 +961,68 @@ const FILTERS = [
 
 function categoryOverview(categories: DashboardReport['categories'], connections: ReturnType<typeof categoryNetwork>): string {
   if (!categories.length) return '';
-  const rows = Math.ceil(categories.length / 2);
-  const columns = [categories.slice(0, rows), categories.slice(rows).reverse()];
+  const categoryIds = new Set(categories.map(({ id }) => id));
+  const edges = connections.filter(({ source, target }) => categoryIds.has(source) && categoryIds.has(target));
   const labels = new Map(categories.map((category) => [category.id, t(esc(category.title), esc(category.titleJa ?? category.title))]));
-  const nodes = new Map(columns.flatMap((column, i) => column.map((category, j) =>
-    [category.id, { x: i === 0 ? 280 : 720, y: j * 60 + 30, inward: i === 0 ? 1 : -1 }] as const)));
-  const edges = connections.filter(({ source, target }) => nodes.has(source) && nodes.has(target));
-  // Keep arrowheads separate when several categories use the same dependency.
-  const entryOffsets = new Map(edges.map((edge) => [edge, 0]));
-  for (const target of nodes.keys()) {
-    const incoming = edges.filter((edge) => edge.target === target)
-      .sort((a, b) => nodes.get(a.source)!.y - nodes.get(b.source)!.y);
-    incoming.forEach((edge, i) => entryOffsets.set(edge, 28 * ((i + 1) / (incoming.length + 1) - .5)));
+  const depth = new Map(categories.map(({ id }) => [id, 0]));
+  // Put consumers before their dependencies. Cap propagation so a cycle still renders.
+  for (let i = 0; i < categories.length; i++) {
+    for (const { source, target, primary } of edges) {
+      if (primary) depth.set(source, Math.min(categories.length, Math.max(depth.get(source)!, depth.get(target)! + 1)));
+    }
   }
+  const sorted = [...categories].sort((a, b) => depth.get(b.id)! - depth.get(a.id)!);
+  const columns = Math.min(5, categories.length);
+  const rows = Math.ceil(categories.length / columns);
+  const cellWidth = 234;
+  const cellHeight = 99;
+  const nodeWidth = 156;
+  const nodeHeight = 46;
+  const width = columns * cellWidth;
+  const height = rows * cellHeight;
+  const nodes = new Map(sorted.map(({ id }, i) => {
+    const column = Math.floor(i * columns / sorted.length);
+    const row = i - Math.ceil(column * sorted.length / columns);
+    return [id, { column, row, x: (column + .5) * cellWidth, y: (row + .5) * cellHeight }] as const;
+  }));
   const developmentOnly = (primary: number) => primary ? '' : ' data-overview-development-only';
-  const paths = edges.map((edge) => {
-    const { source, target, primary } = edge;
+  const paths = edges.map(({ source, target, primary }, index) => {
     const a = nodes.get(source)!;
     const b = nodes.get(target)!;
-    const startY = a.y + 13;
-    const endY = b.y + entryOffsets.get(edge)!;
-    const bend = a.inward === b.inward ? Math.min(310, 78 + Math.abs(a.y - b.y) * .6) : 155;
+    const delta = b.column - a.column;
+    const direction = Math.sign(delta) || (a.column === columns - 1 ? -1 : 1);
+    const targetDirection = delta ? -direction : direction;
+    const x1 = a.x + direction * nodeWidth / 2;
+    const x2 = b.x + targetDirection * nodeWidth / 2;
+    const lane = index % 9 - 4;
+    const y1 = a.y + lane * 3;
+    const y2 = b.y + lane * 3;
+    const gap = cellWidth - nodeWidth;
+    // The vertical segments stay in column gaps. Long horizontal segments use a row gap.
+    const out = x1 + direction * (gap / 2 + lane * 5);
+    const inside = x2 + targetDirection * (gap / 2 - lane * 5);
+    const rail = Math.floor((a.row + b.row) / 2) + 1;
+    const track = Math.min(height - 13, rail * cellHeight) + lane * 3;
+    let route = `H ${out} V ${track} H ${inside} V ${y2} H ${x2}`;
+    if (Math.abs(delta) <= 1) route = y1 === y2
+      ? `H ${x2}`
+      : `H ${out} V ${y2} H ${x2}`;
     const marker = primary ? 'overview-arrow' : 'overview-dev-arrow';
     return `<path class="overview-edge${primary ? '' : ' development'}"${developmentOnly(primary)}
       data-overview-source="${esc(source)}" data-overview-target="${esc(target)}"
-      d="M ${a.x} ${startY} C ${a.x + a.inward * bend} ${startY}, ${b.x + b.inward * bend} ${endY}, ${b.x} ${endY}"
-      marker-end="url(#${marker})"/>`;
+      d="M ${x1} ${y1} ${route}" marker-end="url(#${marker})"/>`;
   }).join('\n');
-  const columnsHtml = columns.map((column) => `<div class="overview-stack">
-    ${column.map(({ id }) => `<button type="button" class="overview-node" data-overview-node="${esc(id)}"
-      data-graph-open="relationships-${esc(id)}" aria-haspopup="dialog" aria-controls="relationships-${esc(id)}">${labels.get(id)}</button>`).join('\n')}
-  </div>`).join('\n');
+  const percent = (size: number, extent: number) => (size * 100 / extent).toFixed(3) + '%';
+  const buttons = sorted.map(({ id }) => {
+    const { x, y } = nodes.get(id)!;
+    const style = `left:${percent(x, width)};top:${percent(y, height)};width:${percent(nodeWidth, width)};height:${percent(nodeHeight, height)}`;
+    return `<button type="button" class="overview-node" data-overview-node="${esc(id)}" style="${style}"
+      data-graph-open="relationships-${esc(id)}" aria-haspopup="dialog" aria-controls="relationships-${esc(id)}">${labels.get(id)}</button>`;
+  }).join('\n');
   const details = edges.map(({ source, target, primary, development }) => `<tr${developmentOnly(primary)}>
     <td>${labels.get(source)} → ${labels.get(target)}</td><td>${primary}</td><td class="overview-development-count">${development}</td>
   </tr>`).join('\n');
-  return `<figure class="panel category-overview" id="category-dependency-overview" aria-labelledby="category-network-heading">
+  return `<figure class="panel category-overview" id="category-dependency-overview" aria-labelledby="category-network-heading" data-hide-overview-development>
   <figcaption>
     <h2 id="category-network-heading">${t('Category dependencies', 'カテゴリ間の依存関係')}</h2>
     <p>${t('Arrows point from the category that uses a package to the category it uses. Select a category to see its packages.', '矢印の向きは「利用するカテゴリ → 依存先」です。カテゴリを選ぶとパッケージ別の関係が開きます。')}</p>
@@ -1000,18 +1030,21 @@ function categoryOverview(categories: DashboardReport['categories'], connections
   <div class="overview-controls">
     <span><i class="overview-line" aria-hidden="true"></i>${t('Runtime, build and other', '実行・ビルドなど')}</span>
     <span><i class="overview-line development" aria-hidden="true"></i>${t('Development only', '開発時のみ')}</span>
-    <label class="development-toggle"><input type="checkbox" data-overview-show-dev checked> ${t('Include development dependencies', '開発時の依存も表示')}</label>
+    <label class="development-toggle"><input type="checkbox" data-overview-show-dev> ${t('Include development dependencies', '開発時の依存も表示')}</label>
   </div>
-  <div class="overview-plot" style="--overview-rows:${rows}">
-    <svg viewBox="0 0 1000 ${rows * 60}" preserveAspectRatio="none" aria-hidden="true">
+  <div class="overview-scroll" tabindex="0" role="region" aria-labelledby="category-network-heading">
+    <div class="overview-plot" style="min-width:${Math.round(width * .78)}px;max-width:${Math.round(width * 1.38)}px">
+    <svg viewBox="0 0 ${width} ${height}" aria-hidden="true">
       <defs>
-        <marker id="overview-arrow" viewBox="0 0 14 12" markerWidth="13" markerHeight="11" refX="13" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M 0 0 L 14 6 L 0 12 Z" fill="var(--runtime-edge)"/></marker>
-        <marker id="overview-dev-arrow" viewBox="0 0 14 12" markerWidth="13" markerHeight="11" refX="13" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M 0 0 L 14 6 L 0 12 Z" fill="var(--muted)"/></marker>
+        <marker id="overview-arrow" viewBox="0 0 14 12" markerWidth="9" markerHeight="8" refX="13" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M 0 0 L 14 6 L 0 12 Z" fill="var(--runtime-edge)"/></marker>
+        <marker id="overview-dev-arrow" viewBox="0 0 14 12" markerWidth="9" markerHeight="8" refX="13" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M 0 0 L 14 6 L 0 12 Z" fill="var(--muted)"/></marker>
       </defs>
       ${paths}
     </svg>
-    ${columnsHtml}
+    ${buttons}
+    </div>
   </div>
+  <p class="overview-scroll-hint" hidden>${t('Scroll the diagram horizontally for more categories.', '図は横にスクロールできます。')}</p>
   ${edges.length ? `<details class="relationship-details overview-details">
     <summary>${t('Package-pair counts by category', 'カテゴリごとのパッケージ依存数')}</summary>
     <table>
