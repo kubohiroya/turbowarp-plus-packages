@@ -149,7 +149,8 @@ a:hover { text-decoration: underline; }
   font-size: 15px; font-weight: 700; line-height: 1.4;
 }
 .category-toc ul { list-style: none; padding: 0 0 0 8px; margin: 0 0 0 10px; border-left: 1px solid var(--border); }
-.category-toc a { display: block; padding: 7px 8px; border-radius: 7px; color: var(--text); overflow-wrap: anywhere; }
+.category-toc a { display: flex; align-items: flex-start; gap: 7px; padding: 7px 8px; border-radius: 7px; color: var(--text); overflow-wrap: anywhere; }
+.category-toc a > .category-icon { margin-top: 2px; }
 .category-toc a:hover { background: var(--idle-bg); text-decoration: none; }
 .category-toc a[aria-current="location"] { background: var(--idle-bg); color: var(--accent); font-weight: 600; }
 .package-group { margin: 32px 0 40px; }
@@ -452,7 +453,7 @@ html.modal-open { overflow: hidden; scrollbar-gutter: stable; }
 .graph-secondary > p { font-size: 13px; margin: 6px 0; }
 .graph-help { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .category-heading { display: flex; gap: 10px; align-items: center; margin-bottom: 4px; }
-.category-heading h4 { margin: 0; font-size: 19px; }
+.category-heading h4 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 19px; }
 .category-graph {
   display: inline-flex; justify-content: center; align-items: center; flex: none;
   width: 36px; height: 36px; padding: 7px; cursor: pointer; color: var(--accent);
@@ -1617,7 +1618,7 @@ async function main() {
   <h2 id="toc-heading">${t('Contents', '目次')}</h2>
   ${groups.map((group) => `<div class="toc-group" data-toc-group="${group.id}">
     <h3>${group.title}</h3>
-    <ul>${group.categories.map((category) => `<li><a href="#category-${esc(category.id)}" data-category-link="${esc(category.id)}">${t(esc(category.title), esc(category.titleJa ?? category.title))}</a></li>`).join('')}</ul>
+    <ul>${group.categories.map((category) => `<li><a href="#category-${esc(category.id)}" data-category-link="${esc(category.id)}">${categoryIcon(category.sourceCategory.id)}${t(esc(category.title), esc(category.titleJa ?? category.title))}</a></li>`).join('')}</ul>
   </div>`).join('\n')}
 </nav>`;
 
@@ -1633,7 +1634,7 @@ async function main() {
         : '';
 
       return [category.id, `<section data-category="${esc(category.id)}" id="category-${esc(category.id)}" aria-labelledby="category-heading-${esc(category.id)}" tabindex="-1">
-  <div class="category-heading"><h4 id="category-heading-${esc(category.id)}">${heading}</h4>
+  <div class="category-heading"><h4 id="category-heading-${esc(category.id)}">${categoryIcon(source.id)}${heading}</h4>
     <button type="button" class="category-graph" data-graph-open="relationships-${esc(source.id)}" aria-haspopup="dialog" aria-controls="relationships-${esc(source.id)}" title="${esc(source.title)} / ${esc(source.titleJa ?? source.title)}: All packages in this dependency category / 依存カテゴリ全体のパッケージ相関図">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 7L16 7M7 9L11 17M17 9L13 17"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="19" r="3"/></svg>
       <span class="sr-only">${t(`View all relationships: ${esc(source.title)}`, `依存カテゴリ全体のパッケージ相関図を表示：${esc(source.titleJa ?? source.title)}`)}</span>
