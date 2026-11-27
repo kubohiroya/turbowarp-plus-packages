@@ -138,6 +138,72 @@ test('testOnly is accepted in snapshots only on dev dependencies', () => {
   assert.throws(() => createReleasePlan(bad, 'a'), /パッケージ情報が不正/);
 });
 
+test('a test-only cycle uses a compatible published fixture independently of root order', () => {
+  const fixture = {...dep('dialog', '^1.2.3', 'dev'), testOnly: true as const};
+  const input = report(pkg('loader', {dependencies: [fixture]}),
+    pkg('dialog', {dependencies: [dep('loader', '^1.2.3', 'peer')]}));
+  const before = JSON.stringify(input);
+  for (const roots of [['loader', 'dialog'], ['dialog', 'loader']]) {
+    const plan = createDownstreamReleasePlan(input, roots);
+    assert.equal(plan.ready, true);
+    assert.deepEqual(plan.order, ['loader', 'dialog']);
+    assert.deepEqual(plan.publishTargets, []);
+    assert(plan.steps[0].issues.some(i => i.code === 'test-only-cycle-baseline' && !i.requiresReview));
+  }
+  assert.equal(JSON.stringify(input), before);
+});
+
+test('a test-only cycle keeps a compatible published fixture when latest leaves the pinned range', () => {
+  const fixture = {...dep('dialog', '1.2.3', 'dev'), testOnly: true as const};
+  const dialog = pkg('dialog', {dependencies: [dep('loader', '^1.2.3', 'peer')]});
+  dialog.npm = {...dialog.npm!, latest: '2.0.0', versions: ['1.2.2', '2.0.0', '1.2.3']};
+  const plan = createReleasePlan(report(pkg('loader', {dependencies: [fixture]}), dialog), 'loader');
+  assert.equal(plan.ready, true);
+  assert(plan.steps[0].issues.some(i => i.code === 'test-only-cycle-baseline' && i.message.includes('1.2.3')));
+  assert.deepEqual(plan.steps[0].dependencyUpdates, []);
+});
+
+test('a cycle fixture stays on the published version when both packages have other release reasons', () => {
+  const fixture = {...dep('dialog', '^1.0.0', 'dev'), testOnly: true as const};
+  const input = report(pkg('loader', {dependencies: [dep('contract'), fixture]}),
+    ahead('dialog', {dependencies: [dep('loader', '^1.2.3', 'peer')]}), ahead('contract'));
+  const plan = createDownstreamReleasePlan(input, ['dialog', 'contract']);
+  const loader = plan.steps.find(s => s.repo === 'loader')!;
+  assert.equal(plan.ready, true);
+  assert.equal(loader.action, 'publish');
+  assert.equal(plan.steps.find(s => s.repo === 'dialog')!.nextVersion, '1.3.0');
+  assert.deepEqual(loader.dependencyUpdates.find(u => u.name === '@family/dialog'), {
+    field: 'devDependencies', name: '@family/dialog', upstreamRepo: 'dialog',
+    from: '^1.0.0', to: '^1.2.3', targetVersion: '1.2.3', source: 'published',
+  });
+});
+
+test('an unavailable or incompatible published fixture does not bypass cycle detection', () => {
+  const fixture = {...dep('dialog', '^1.2.3', 'dev'), testOnly: true as const};
+  const dialog = pkg('dialog', {dependencies: [dep('loader', '^1.2.3', 'peer')]});
+  const variants = [
+    {...dialog, errors: ['collection failed']},
+    {...dialog, npm: {...dialog.npm!, published: false}},
+    {...dialog, npm: {...dialog.npm!, versions: undefined}},
+    {...dialog, npm: {...dialog.npm!, latest: '2.0.0', versions: ['2.0.0']}},
+    {...dialog, npm: {...dialog.npm!, latest: '1.2.4-rc.1', versions: ['1.2.4-rc.1']}},
+    {...dialog, npm: {...dialog.npm!, name: '@family/renamed'}},
+  ];
+  for (const upstream of variants) {
+    assert.throws(() => createReleasePlan(report(pkg('loader', {dependencies: [fixture]}), upstream), 'loader'), /循環依存/);
+  }
+});
+
+test('ordinary development and production cycles remain errors even alongside a test-only edge', () => {
+  const fixture = {...dep('dialog', '^1.2.3', 'dev'), testOnly: true as const};
+  for (const dependencies of [[dep('dialog', '^1.2.3', 'dev')], [dep('dialog'), fixture]]) {
+    assert.throws(() => createReleasePlan(report(pkg('loader', {dependencies}),
+      pkg('dialog', {dependencies: [dep('loader')]})), 'loader'), /循環依存/);
+  }
+  const self = {...dep('loader', '^1.2.3', 'dev'), testOnly: true as const};
+  assert.throws(() => createReleasePlan(report(pkg('loader', {dependencies: [self]})), 'loader'), /循環依存/);
+});
+
 test('compatible broad and peer ranges remain unchanged; external dependencies are not traversed', () => {
   const external = { ...dep('not-in-catalog', '^1'), family: false, stale: true };
   const plan = createReleasePlan(report(pkg('a', { dependencies: [dep('b', '>=1 <2'),

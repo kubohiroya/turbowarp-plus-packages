@@ -646,7 +646,8 @@ overrides:
   turbowarp-extension-data-editor:
     testOnlyDependencies: ["@kubohiroya/turbowarp-plus-editor-test-runtime"]
   turbowarp-extension-loader:
-    testOnlyDependencies: ["@kubohiroya/turbowarp-plus-editor-test-runtime"]
+    # Security Dialog supplies parseExtensionCatalog only to test/catalog-trust.test.ts.
+    testOnlyDependencies: ["@kubohiroya/turbowarp-plus-editor-test-runtime", "@kubohiroya/turbowarp-extension-security-dialog"]
   turbowarp-plus-editor-code-views:
     testOnlyDependencies: ["@kubohiroya/turbowarp-plus-editor-test-runtime"]
   turbowarp-plus-editor-git:
