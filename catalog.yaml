@@ -457,6 +457,9 @@ overrides:
     description: Explore the Plus Editor in 56 short interactive chapters.
     descriptionJa: Plus Editorの機能を、56の短い章から選んで体験します。
     npm: false
+    npmReason: &courseDistribution
+      en: The course is distributed as an SB3 in its GitHub repository.
+      ja: 講座のSB3は各講座のGitHubリポジトリで配布しています。
     pages: false
     demoPath: docs/work/plus-library-4.0.sb3
   turbowarp-plus-guides-functions:
@@ -464,6 +467,7 @@ overrides:
     description: Learn responsibilities, inputs, outputs and tests by extracting small blocks.
     descriptionJa: 関数の責務、引数と戻り値、副作用、テストを学びます。
     npm: false
+    npmReason: *courseDistribution
     pages: false
     demoPath: docs/work/functions-4.0.sb3
   turbowarp-plus-guides-git:
@@ -471,6 +475,7 @@ overrides:
     description: Follow a project change from a diff to a commit, branch, and review.
     descriptionJa: Scratch作品の差分、コミット、ブランチと共有を練習します。
     npm: false
+    npmReason: *courseDistribution
     pages: false
     demoPath: docs/work/git-4.0.sb3
   turbowarp-plus-guides-extension-authoring:
@@ -478,6 +483,7 @@ overrides:
     description: Design and test a small custom block.
     descriptionJa: カスタムブロックの定義、入力、戻り値、権限を学びます。
     npm: false
+    npmReason: *courseDistribution
     pages: false
     demoPath: docs/work/extensions-4.0.sb3
   turbowarp-plus-guides-pair-programming:
@@ -485,6 +491,7 @@ overrides:
     description: Switch roles and work together on one focused change.
     descriptionJa: 作業を相談し、役割を交代して一つの変更を確かめます。
     npm: false
+    npmReason: *courseDistribution
     pages: false
     demoPath: docs/work/pair-programming-4.0.sb3
   turbowarp-plus-guides-debugging:
@@ -492,6 +499,7 @@ overrides:
     description: Reproduce a double-scoring bug and test the fix.
     descriptionJa: 星を一つ取ると2点入る不具合を調べ、修正前後をテストします。
     npm: false
+    npmReason: *courseDistribution
     pages: false
     demoPath: docs/work/debugging-4.0.sb3
   turbowarp-plus-guides-state-design:
@@ -499,6 +507,7 @@ overrides:
     description: Use shared scores, ordered lists and clone-local state.
     descriptionJa: 得点、取得記録、クローンごとの寿命を使って状態を設計します。
     npm: false
+    npmReason: *courseDistribution
     pages: false
     demoPath: docs/work/state-design-4.0.sb3
   turbowarp-plus-guides-events:
@@ -506,6 +515,7 @@ overrides:
     description: Trace broadcasts and stop an action from running after the round ends.
     descriptionJa: メッセージをたどり、試合終了後も続く処理を直します。
     npm: false
+    npmReason: *courseDistribution
     pages: false
     demoPath: docs/work/events-4.0.sb3
   turbowarp-plus-guides-playtesting:
@@ -513,6 +523,7 @@ overrides:
     description: Observe a first-time player and retest one change.
     descriptionJa: 遊ぶ人の行動を観察し、案内を一つ変えて試し直します。
     npm: false
+    npmReason: *courseDistribution
     pages: false
     demoPath: docs/work/playtesting-4.0.sb3
   turbowarp-plus-guides-remix:
@@ -520,6 +531,7 @@ overrides:
     description: Reuse a star script and document dependencies and credits.
     descriptionJa: 星を並べる処理を再利用し、依存関係と出典を記録します。
     npm: false
+    npmReason: *courseDistribution
     pages: false
     demoPath: docs/work/remix-4.0.sb3
   turbowarp-plus-guides-distribution:
@@ -527,6 +539,7 @@ overrides:
     description: Write launch instructions and reopen the SB3 you plan to share.
     descriptionJa: 受け手が使う環境でSB3を開き直し、配布する手順を整えます。
     npm: false
+    npmReason: *courseDistribution
     pages: false
     demoPath: docs/work/distribution-4.0.sb3
   turbowarp-plus-guides-kamishibai-authoring:
@@ -534,6 +547,7 @@ overrides:
     description: Edit and build a two-scene starter story.
     descriptionJa: 2シーンのYAMLを編集してSB3を書き出します。
     npm: false
+    npmReason: *courseDistribution
     pages: false
     demoPath: docs/work/kamishibai-authoring-4.0.sb3
   turbowarp-plus-editor-guide:
