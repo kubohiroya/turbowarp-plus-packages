@@ -31,6 +31,7 @@ export interface RawCatalog {
     npm?: string | false;
     npmReason?: { en: string; ja: string };
     pages?: false;
+    demoPath?: string;
     application?: true;
     dashboardGroup?: DashboardGroup;
     note?: string;
@@ -54,6 +55,8 @@ export interface CatalogEntry {
   npmReason?: { en: string; ja: string };
   /** False when the repository's Pages site is deliberately not shown. */
   pages: boolean;
+  /** The repository-relative path to a project distributed with its source. */
+  demoPath?: string;
   note: string | null;
   label: string;
   description: string | null;

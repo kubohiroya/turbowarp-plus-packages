@@ -44,6 +44,24 @@ overrides:
   );
 });
 
+test('a repository demo path can be set independently of Pages', async () => {
+  const entries = (await loadCatalog(await catalog(`${BASE}
+overrides:
+  hidden-site:
+    pages: false
+    demoPath: docs/work/lesson-4.0.sb3
+`))).entries;
+  assert.equal(entries.find(entry => entry.repo === 'hidden-site')?.demoPath, 'docs/work/lesson-4.0.sb3');
+  assert.equal(entries.find(entry => entry.repo === 'hidden-site')?.pages, false);
+  for (const value of ['../lesson.sb3', '/lesson.sb3', 'docs/../lesson.sb3', 'https://example.org/lesson.sb3', 'lesson.zip', 'null']) {
+    await assert.rejects(loadCatalog(await catalog(`${BASE}
+overrides:
+  hidden-site:
+    demoPath: ${value}
+`)), /must be a repository-relative SB3 path/);
+  }
+});
+
 test('an Editor catalog hold carries its reason and must give one', async () => {
   const entries = (await loadCatalog(await catalog(`${BASE}
 overrides:

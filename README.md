@@ -156,6 +156,11 @@ to the published SB3. The default destination is
 [TurboWarp-Plus-Editor](https://kubohiroya.github.io/turbowarp-plus-editor/).
 Custom extension permission prompts still apply.
 
+For projects distributed in a public source repository, such as the Pura &
+Moko courses, set `demoPath` in `catalog.yaml` to the repository-relative SB3
+path. The collector verifies the URL pinned to the collected default-branch
+commit and uses the same Demo button.
+
 ## Adding or moving a package
 
 Everything hand-maintained lives in [`catalog.yaml`](catalog.yaml): the

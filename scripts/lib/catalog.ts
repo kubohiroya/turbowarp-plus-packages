@@ -42,6 +42,10 @@ export async function loadCatalog(path = 'catalog.yaml'): Promise<Catalog> {
       if (override.pages !== undefined && override.pages !== false) {
         throw new Error(`${path}: "pages" for "${repo}" may only be false`);
       }
+      if (override.demoPath !== undefined && (typeof override.demoPath !== 'string' ||
+        !/^(?:[\w-][\w.-]*\/)*[\w-][\w.-]*\.sb3$/.test(override.demoPath))) {
+        throw new Error(`${path}: "demoPath" for "${repo}" must be a repository-relative SB3 path`);
+      }
       if (override.editorCatalogHold !== undefined &&
         (typeof override.editorCatalogHold !== 'string' || !override.editorCatalogHold.trim())) {
         throw new Error(`${path}: "editorCatalogHold" for "${repo}" must say why it is held`);
@@ -67,6 +71,7 @@ export async function loadCatalog(path = 'catalog.yaml'): Promise<Catalog> {
         ...(override.application ? { application: true as const } : {}),
         npm: override.npm === false ? null : (override.npm ?? `${scope}/${repo}`),
         pages: override.pages !== false,
+        ...(override.demoPath ? { demoPath: override.demoPath } : {}),
         ...(override.npmReason ? { npmReason: override.npmReason } : {}),
         note: override.note ?? null,
         label: override.label ?? repo,

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test, type TestContext } from 'node:test';
-import { publishedDemo } from '../scripts/lib/demos.ts';
+import { publishedDemo, publishedRepositoryDemo } from '../scripts/lib/demos.ts';
 
 const PAGE = 'https://example.github.io/extension/';
 const PROJECT = `${PAGE}samples/hello-world.sb3`;
@@ -61,4 +61,19 @@ test('tries the next sample after a missing one and uses its name when no title 
   assert.deepEqual(await publishedDemo(JSON.stringify({ samples: [{ name: 'hello-world' }, { name: 'second' }] }),
     { enabled: true, url: PAGE.slice(0, -1) }), { projectUrl: second, title: 'second' });
   assert.deepEqual(calls, [PROJECT, second]);
+});
+
+test('a public repository demo is verified at its collected commit', async (t) => {
+  const commit = '1234567890abcdef1234567890abcdef12345678';
+  const path = 'docs/work/lesson-4.0.sb3';
+  const projectUrl = `https://raw.githubusercontent.com/example/course/${commit}/${path}`;
+  const calls = mockFetch(t, { [projectUrl]: new Response(ZIP, {
+    status: 206, headers: { 'access-control-allow-origin': '*' },
+  }) });
+  assert.equal(await publishedRepositoryDemo('example', 'course', undefined, path, 'Lesson'), null);
+  assert.equal(await publishedRepositoryDemo('example', 'course', 'main', path, 'Lesson'), null);
+  assert.deepEqual(await publishedRepositoryDemo('example', 'course', commit, path, 'Lesson'), {
+    projectUrl, title: 'Lesson',
+  });
+  assert.deepEqual(calls, [projectUrl]);
 });

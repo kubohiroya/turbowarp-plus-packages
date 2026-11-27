@@ -34,7 +34,8 @@ localProtocols: [file:, link:, workspace:, portal:, patch:]
 # and stop at the first "yes":
 #   1. Is it a GitHub fork of an upstream TurboWarp repository
 #      (scratch-gui, scratch-vm and the like)?                      -> forks
-#   2. Is it the Kamishibai app, its guides, samples or navigation? -> kamishibai
+#   2. Is it part of the Pura and Moko course series?             -> courses
+#      Is it the Kamishibai app, its guides, samples or navigation? -> kamishibai
 #   3. Is it another non-editor app, documentation site or shared
 #      documentation infrastructure still under development?       -> in-development
 #   4. Is it a standalone project-development command?             -> toolchain
@@ -367,6 +368,26 @@ categories:
       - turbowarp-webusb-pasori
       - turbowarp-uuid
 
+  # Includes: the published Pura and Moko courses opened in Plus Editor.
+  - id: courses
+    title: Pura & Moko Courses
+    titleJa: プラとモコの講座
+    description: Interactive courses for Scratch users, from using Plus Editor to making a Kamishibai story.
+    descriptionJa: Scratchユーザー向けの体験講座。Plus Editorの使い方から紙芝居の制作まで学べます。
+    packages:
+      - turbowarp-plus-guides-intro
+      - turbowarp-plus-guides-functions
+      - turbowarp-plus-guides-git
+      - turbowarp-plus-guides-extension-authoring
+      - turbowarp-plus-guides-pair-programming
+      - turbowarp-plus-guides-debugging
+      - turbowarp-plus-guides-state-design
+      - turbowarp-plus-guides-events
+      - turbowarp-plus-guides-playtesting
+      - turbowarp-plus-guides-remix
+      - turbowarp-plus-guides-distribution
+      - turbowarp-plus-guides-kamishibai-authoring
+
   # Includes: the Kamishibai app and its dedicated guides, samples and navigation.
   # Excludes: shared site infrastructure and other apps (-> in-development).
   - id: kamishibai
@@ -411,6 +432,8 @@ categories:
 # site is not ours to show, instead of reporting it as down. Repositories
 # left at the default are reported as "unpublished" until they appear on npm,
 # which is intentional: that is a status worth seeing.
+# `demoPath` points to an SB3 tracked in this public repository. The collector
+# probes the URL pinned to the collected default-branch commit.
 # `application: true` identifies deployed apps independently of their category
 # for favicon collection and bundled-extension sandbox requirements.
 # `dashboardGroup: extensions | infrastructure` changes only the list and TOC
@@ -429,6 +452,90 @@ categories:
 # repository's package.json (`turbowarpPlus.testOnlyDependencies`); declaring
 # it here avoids a commit that would itself become a reason to publish.
 overrides:
+  turbowarp-plus-guides-intro:
+    label: Plus Editor紹介
+    description: Explore the Plus Editor in 56 short interactive chapters.
+    descriptionJa: Plus Editorの機能を、56の短い章から選んで体験します。
+    npm: false
+    pages: false
+    demoPath: docs/work/plus-library-4.0.sb3
+  turbowarp-plus-guides-functions:
+    label: 関数
+    description: Learn responsibilities, inputs, outputs and tests by extracting small blocks.
+    descriptionJa: 関数の責務、引数と戻り値、副作用、テストを学びます。
+    npm: false
+    pages: false
+    demoPath: docs/work/functions-4.0.sb3
+  turbowarp-plus-guides-git:
+    label: Git
+    description: Follow a project change from a diff to a commit, branch, and review.
+    descriptionJa: Scratch作品の差分、コミット、ブランチと共有を練習します。
+    npm: false
+    pages: false
+    demoPath: docs/work/git-4.0.sb3
+  turbowarp-plus-guides-extension-authoring:
+    label: 機能拡張づくり
+    description: Design and test a small custom block.
+    descriptionJa: カスタムブロックの定義、入力、戻り値、権限を学びます。
+    npm: false
+    pages: false
+    demoPath: docs/work/extensions-4.0.sb3
+  turbowarp-plus-guides-pair-programming:
+    label: ペアプログラミング
+    description: Switch roles and work together on one focused change.
+    descriptionJa: 作業を相談し、役割を交代して一つの変更を確かめます。
+    npm: false
+    pages: false
+    demoPath: docs/work/pair-programming-4.0.sb3
+  turbowarp-plus-guides-debugging:
+    label: デバッグ・テスト
+    description: Reproduce a double-scoring bug and test the fix.
+    descriptionJa: 星を一つ取ると2点入る不具合を調べ、修正前後をテストします。
+    npm: false
+    pages: false
+    demoPath: docs/work/debugging-4.0.sb3
+  turbowarp-plus-guides-state-design:
+    label: 変数・リストと状態の設計
+    description: Use shared scores, ordered lists and clone-local state.
+    descriptionJa: 得点、取得記録、クローンごとの寿命を使って状態を設計します。
+    npm: false
+    pages: false
+    demoPath: docs/work/state-design-4.0.sb3
+  turbowarp-plus-guides-events:
+    label: メッセージと並行処理
+    description: Trace broadcasts and stop an action from running after the round ends.
+    descriptionJa: メッセージをたどり、試合終了後も続く処理を直します。
+    npm: false
+    pages: false
+    demoPath: docs/work/events-4.0.sb3
+  turbowarp-plus-guides-playtesting:
+    label: プレイテスト
+    description: Observe a first-time player and retest one change.
+    descriptionJa: 遊ぶ人の行動を観察し、案内を一つ変えて試し直します。
+    npm: false
+    pages: false
+    demoPath: docs/work/playtesting-4.0.sb3
+  turbowarp-plus-guides-remix:
+    label: リミックスと再利用
+    description: Reuse a star script and document dependencies and credits.
+    descriptionJa: 星を並べる処理を再利用し、依存関係と出典を記録します。
+    npm: false
+    pages: false
+    demoPath: docs/work/remix-4.0.sb3
+  turbowarp-plus-guides-distribution:
+    label: 作品の配布と発表
+    description: Write launch instructions and reopen the SB3 you plan to share.
+    descriptionJa: 受け手が使う環境でSB3を開き直し、配布する手順を整えます。
+    npm: false
+    pages: false
+    demoPath: docs/work/distribution-4.0.sb3
+  turbowarp-plus-guides-kamishibai-authoring:
+    label: 紙芝居制作
+    description: Edit and build a two-scene starter story.
+    descriptionJa: 2シーンのYAMLを編集してSB3を書き出します。
+    npm: false
+    pages: false
+    demoPath: docs/work/kamishibai-authoring-4.0.sb3
   turbowarp-plus-editor-guide:
     description: Project-driven GUI guides for TurboWarp Plus Editor
   turbowarp-title-menu:
