@@ -126,6 +126,7 @@ categories:
       - turbowarp-sb3-save-format
       - turbowarp-script-transfer
       - turbowarp-plus-editor-workbench
+      - turbowarp-plus-editor-guide
       - turbowarp-plus-editor-project-model
       - turbowarp-plus-editor-windows
       - turbowarp-plus-editor-sprite-panes
@@ -428,6 +429,8 @@ categories:
 # repository's package.json (`turbowarpPlus.testOnlyDependencies`); declaring
 # it here avoids a commit that would itself become a reason to publish.
 overrides:
+  turbowarp-plus-editor-guide:
+    description: Project-driven GUI guides for TurboWarp Plus Editor
   turbowarp-title-menu:
     dashboardGroup: extensions
   turbowarp-runtime-expression:
