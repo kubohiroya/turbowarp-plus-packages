@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { categoryCycles, categoryRelationships } from '../scripts/lib/relationships.ts';
+import { categoryCycles, categoryNetwork, categoryRelationships } from '../scripts/lib/relationships.ts';
 import type { DashboardPackage, Dependency } from '../scripts/lib/types.ts';
 
 function pkg(repo: string, category: string, dependencies: [string, Dependency['kind']][] = []): DashboardPackage {
@@ -33,6 +33,10 @@ test('category diagrams resolve exact names and preserve incoming/outgoing kinds
   assert.equal(group.outgoing.length, 2);
   assert.deepEqual(group.outgoing.find((edge) => edge.source === 'two'), { source: 'two', target: 'outside-a', kinds: ['dev'] });
   assert.equal(graph.edges.length, 6);
+  assert.deepEqual(categoryNetwork(packages), [
+    { source: 'focus', target: 'other', primary: 1, development: 1 },
+    { source: 'other', target: 'focus', primary: 3, development: 0 },
+  ]);
   assert.ok(!graph.edges.some((edge) => /unknown|unrelated|retired/.test(edge.source + edge.target)));
   // Input collection is authoritative and must remain untouched.
   assert.equal(packages.length, 6);
@@ -75,6 +79,10 @@ test('primary graph includes a verified build source and runtime edges; developm
   assert.notEqual(build.revision, gui.revision.head!.oid);
   assert.equal(gui.revision.head!.oid, 'c'.repeat(40));
   assert.equal(categoryRelationships(packages, 'focus', { includeDev: true }).internal.length, 4);
+  assert.deepEqual(categoryNetwork([editor, { ...gui, category: 'forks' }, ...packages.slice(2)]), [
+    { source: 'focus', target: 'forks', primary: 1, development: 0 },
+    { source: 'forks', target: 'focus', primary: 2, development: 0 },
+  ]);
 });
 
 test('category cycles are found through other categories and through development dependencies', () => {

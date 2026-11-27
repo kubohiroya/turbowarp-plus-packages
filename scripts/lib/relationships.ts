@@ -63,6 +63,18 @@ export function categoryRelationships(packages: DashboardPackage[], category: st
   return { primary, internal, external, edges };
 }
 
+
+/** Aggregate distinct package pairs between each ordered pair of catalog categories. */
+export function categoryNetwork(packages: DashboardPackage[]) {
+  const categories = new Set(packages.filter((pkg) => !pkg.npm?.deprecated).map((pkg) => pkg.category));
+  return [...categories].sort().flatMap((source) =>
+    categoryRelationships(packages, source).external.flatMap(({ category: target, outgoing }) => {
+      if (!outgoing.length) return [];
+      const development = outgoing.filter(({ kinds }) => kinds.every((kind) => kind === 'dev')).length;
+      return [{ source, target, primary: outgoing.length - development, development }];
+    }));
+}
+
 /**
  * Groups of categories that depend on one another, directly or through other
  * categories. Every dependency kind counts, so the result is empty only when

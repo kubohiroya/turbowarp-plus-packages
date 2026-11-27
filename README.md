@@ -24,8 +24,11 @@ English | [日本語](README.ja.md)
 
 ## What the dashboard shows
 
-The dashboard displays the **Package list** only. Both the list and its table of
-contents separate **Apps & Documentation** (Kamishibai and Other (in development)),
+The dashboard opens with **Category dependencies**. Arrows point from the
+category using a package to its dependency's category. Choose a category to open
+its detailed package graph, or expand the package-pair counts.
+
+The **Package list** and its table of contents separate **Apps & Documentation** (Kamishibai and Other (in development)),
 **Editor** (Editor, Editor Extensions and Editor Test Support),
 **Toolchain** (Standalone Tools and Build Plugins & Tool Libraries), **TurboWarp-Plus Extensions**,
 **Development & Runtime Support**, and **Upstream Forks**. On wide screens, the table

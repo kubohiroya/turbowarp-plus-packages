@@ -17,7 +17,7 @@ import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { DashboardPackage, DashboardReport, GitHubSummary, NpmStatus } from './lib/types.ts';
-import { categoryCycles, categoryRelationships } from './lib/relationships.ts';
+import { categoryCycles, categoryNetwork, categoryRelationships } from './lib/relationships.ts';
 
 interface Thumbnail {
   light: string | null;
@@ -287,6 +287,51 @@ picture { display: block; }
 .chip.local { background: var(--bad-bg); color: var(--bad-fg); }
 .chip.external[hidden] { display: none; }
 
+
+.category-overview { grid-column: 1 / -1; min-width: 0; margin: 0; padding: 18px 22px; }
+.category-overview figcaption h2 { margin: 0; font-size: 21px; }
+.category-overview figcaption p { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
+.overview-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; margin: 12px 0; font-size: 12px; }
+.overview-controls > span { display: inline-flex; align-items: center; gap: 6px; }
+.overview-line { display: inline-block; width: 20px; border-top: 2px solid var(--runtime-edge); }
+.overview-line.development { border-top-style: dashed; border-top-color: var(--muted); }
+.overview-plot {
+  --overview-step: 46px;
+  position: relative; display: grid; grid-template-columns: minmax(0, 28%) minmax(0, 28%);
+  justify-content: space-between; background: radial-gradient(ellipse, color-mix(in srgb, var(--accent) 6%, transparent), transparent 72%);
+}
+.overview-stack {
+  display: grid; grid-template-rows: repeat(var(--overview-rows), var(--overview-step)); align-items: center;
+  position: relative; z-index: 1; min-width: 0;
+}
+.overview-plot svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.overview-node {
+  width: 100%; min-height: 34px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 7px;
+  background: var(--panel); color: var(--text);
+  font-family: inherit; font-size: 13px; font-weight: 600; line-height: 1.2;
+  overflow-wrap: anywhere; cursor: pointer;
+}
+.overview-node:hover, .overview-node:focus-visible { border-color: var(--accent); color: var(--accent); }
+.overview-edge { fill: none; stroke: var(--runtime-edge); stroke-width: 1.4; opacity: .58; vector-effect: non-scaling-stroke; }
+.overview-edge.development { stroke: var(--muted); opacity: .46; stroke-dasharray: 5 4; stroke-width: 1; }
+.category-overview[data-overview-focus] .overview-edge { opacity: .07; }
+.category-overview[data-overview-focus] .overview-edge.connected { opacity: 1; stroke-width: 2.4; }
+.category-overview[data-hide-overview-development] [data-overview-development-only] { display: none; }
+.category-overview[data-hide-overview-development] .overview-development-count { display: none; }
+.overview-details { margin: 12px 0 0; }
+.overview-details table { width: 100%; min-width: 0; table-layout: fixed; margin-top: 8px; font-size: 12px; }
+.overview-details th, .overview-details td { padding: 5px 8px; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.overview-details th:first-child { width: 70%; }
+@media (max-width: 600px) {
+  .category-overview { padding: 13px 10px; }
+  .overview-plot { --overview-step: 51px; }
+  .overview-details th:first-child { width: 60%; }
+  .overview-node { font-size: 11px; padding-inline: 3px; min-height: 38px; }
+}
+@media (max-width: 360px) {
+  .overview-plot { --overview-step: 62px; }
+}
+
 .graph-panel { padding: 12px; }
 .relationship-svg { display: block; width: 100%; min-width: 1000px; color: var(--text); }
 .category-boundary { fill: var(--idle-bg); stroke: var(--border); stroke-width: 2; }
@@ -481,6 +526,31 @@ function apply() {
   updateCurrentCategory();
   document.getElementById('view-status').textContent = document.documentElement.lang === 'ja'
     ? matching + ' 件が一致' : matching + ' packages match';
+}
+
+
+const overview = document.querySelector('.category-overview');
+if (overview) {
+  const connections = [...overview.querySelectorAll('.overview-edge')];
+  let hovered = '';
+  let focused = '';
+  function highlightOverview() {
+    const selected = hovered || focused;
+    overview.toggleAttribute('data-overview-focus', Boolean(selected));
+    for (const connection of connections) {
+      connection.classList.toggle('connected', selected === connection.dataset.overviewSource
+        || selected === connection.dataset.overviewTarget);
+    }
+  }
+  overview.querySelector('[data-overview-show-dev]').addEventListener('change', (event) => {
+    overview.toggleAttribute('data-hide-overview-development', !event.target.checked);
+  });
+  for (const node of overview.querySelectorAll('[data-overview-node]')) {
+    node.addEventListener('pointerenter', () => { hovered = node.dataset.overviewNode; highlightOverview(); });
+    node.addEventListener('pointerleave', () => { hovered = ''; highlightOverview(); });
+    node.addEventListener('focus', () => { focused = node.dataset.overviewNode; highlightOverview(); });
+    node.addEventListener('blur', () => { focused = ''; highlightOverview(); });
+  }
 }
 
 const dialogState = new WeakMap();
@@ -885,6 +955,73 @@ const FILTERS = [
   ['local', 'local upstream', 'ローカル参照'],
 ];
 
+
+function categoryOverview(categories: DashboardReport['categories'], connections: ReturnType<typeof categoryNetwork>): string {
+  if (!categories.length) return '';
+  const rows = Math.ceil(categories.length / 2);
+  const columns = [categories.slice(0, rows), categories.slice(rows).reverse()];
+  const labels = new Map(categories.map((category) => [category.id, t(esc(category.title), esc(category.titleJa ?? category.title))]));
+  const nodes = new Map(columns.flatMap((column, i) => column.map((category, j) =>
+    [category.id, { x: i === 0 ? 280 : 720, y: j * 60 + 30, inward: i === 0 ? 1 : -1 }] as const)));
+  const edges = connections.filter(({ source, target }) => nodes.has(source) && nodes.has(target));
+  // Keep arrowheads separate when several categories use the same dependency.
+  const entryOffsets = new Map(edges.map((edge) => [edge, 0]));
+  for (const target of nodes.keys()) {
+    const incoming = edges.filter((edge) => edge.target === target)
+      .sort((a, b) => nodes.get(a.source)!.y - nodes.get(b.source)!.y);
+    incoming.forEach((edge, i) => entryOffsets.set(edge, 28 * ((i + 1) / (incoming.length + 1) - .5)));
+  }
+  const developmentOnly = (primary: number) => primary ? '' : ' data-overview-development-only';
+  const paths = edges.map((edge) => {
+    const { source, target, primary } = edge;
+    const a = nodes.get(source)!;
+    const b = nodes.get(target)!;
+    const startY = a.y + 13;
+    const endY = b.y + entryOffsets.get(edge)!;
+    const bend = a.inward === b.inward ? Math.min(310, 78 + Math.abs(a.y - b.y) * .6) : 155;
+    const marker = primary ? 'overview-arrow' : 'overview-dev-arrow';
+    return `<path class="overview-edge${primary ? '' : ' development'}"${developmentOnly(primary)}
+      data-overview-source="${esc(source)}" data-overview-target="${esc(target)}"
+      d="M ${a.x} ${startY} C ${a.x + a.inward * bend} ${startY}, ${b.x + b.inward * bend} ${endY}, ${b.x} ${endY}"
+      marker-end="url(#${marker})"/>`;
+  }).join('\n');
+  const columnsHtml = columns.map((column) => `<div class="overview-stack">
+    ${column.map(({ id }) => `<button type="button" class="overview-node" data-overview-node="${esc(id)}"
+      data-graph-open="relationships-${esc(id)}" aria-haspopup="dialog" aria-controls="relationships-${esc(id)}">${labels.get(id)}</button>`).join('\n')}
+  </div>`).join('\n');
+  const details = edges.map(({ source, target, primary, development }) => `<tr${developmentOnly(primary)}>
+    <td>${labels.get(source)} → ${labels.get(target)}</td><td>${primary}</td><td class="overview-development-count">${development}</td>
+  </tr>`).join('\n');
+  return `<figure class="panel category-overview" id="category-dependency-overview" aria-labelledby="category-network-heading">
+  <figcaption>
+    <h2 id="category-network-heading">${t('Category dependencies', 'カテゴリ間の依存関係')}</h2>
+    <p>${t('Arrows point from the category that uses a package to the category it uses. Select a category to see its packages.', '矢印の向きは「利用するカテゴリ → 依存先」です。カテゴリを選ぶとパッケージ別の関係が開きます。')}</p>
+  </figcaption>
+  <div class="overview-controls">
+    <span><i class="overview-line" aria-hidden="true"></i>${t('Runtime, build and other', '実行・ビルドなど')}</span>
+    <span><i class="overview-line development" aria-hidden="true"></i>${t('Development only', '開発時のみ')}</span>
+    <label class="development-toggle"><input type="checkbox" data-overview-show-dev checked> ${t('Include development dependencies', '開発時の依存も表示')}</label>
+  </div>
+  <div class="overview-plot" style="--overview-rows:${rows}">
+    <svg viewBox="0 0 1000 ${rows * 60}" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <marker id="overview-arrow" viewBox="0 0 14 12" markerWidth="13" markerHeight="11" refX="13" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M 0 0 L 14 6 L 0 12 Z" fill="var(--runtime-edge)"/></marker>
+        <marker id="overview-dev-arrow" viewBox="0 0 14 12" markerWidth="13" markerHeight="11" refX="13" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M 0 0 L 14 6 L 0 12 Z" fill="var(--muted)"/></marker>
+      </defs>
+      ${paths}
+    </svg>
+    ${columnsHtml}
+  </div>
+  ${edges.length ? `<details class="relationship-details overview-details">
+    <summary>${t('Package-pair counts by category', 'カテゴリごとのパッケージ依存数')}</summary>
+    <table>
+      <thead><tr><th scope="col">${t('Using category → dependency', '利用側 → 依存先')}</th><th scope="col">${t('Runtime, build and other', '実行・ビルドなど')}</th><th scope="col" class="overview-development-count">${t('Development only', '開発時のみ')}</th></tr></thead>
+      <tbody>${details}</tbody>
+    </table>
+  </details>` : `<p class="relation-note">${t('No declared dependencies between categories.', 'カテゴリ間の依存宣言はありません。')}</p>`}
+</figure>`;
+}
+
 function relationshipDiagram(report: DashboardReport, categoryId: string, freshness = '', provenance = '', options: { includeDev?: boolean; diagramOnly?: boolean } = {}): string {
   const category = report.categories.find((entry) => entry.id === categoryId)!;
   const includeDev = options.includeDev !== false;
@@ -1113,6 +1250,7 @@ async function main() {
   const head = HEADERS.map(([en, ja]) => `<th>${t(en, ja)}</th>`).join('');
 
   const visibleCategories = report.categories.filter((category) => byCategory.get(category.id)?.length);
+  const overview = categoryOverview(visibleCategories, categoryNetwork(report.packages));
   const defaultGroup = (category: string) => {
     if (['kamishibai', 'in-development', 'apps', 'docs'].includes(category)) return 'use';
     if (['foundation', 'editor-extensions', 'editor-testing'].includes(category)) return 'editor';
@@ -1279,6 +1417,7 @@ ${rows}
 </header>
 
 <main class="catalog-layout">
+${overview}
 ${toc}
 <section id="package-list" class="main-content" aria-labelledby="list-heading">
 <h2 id="list-heading">${t('Package list', 'パッケージ一覧')}</h2>

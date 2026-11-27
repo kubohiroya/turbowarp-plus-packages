@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import { createHash } from 'node:crypto';
 import type { DashboardPackage, DashboardReport, Dependency } from '../scripts/lib/types.ts';
 
-test('renders category graph buttons and labelled dialogs while keeping the dashboard list-only', async () => {
+test('renders the category overview above the package list and preserves detailed dialogs', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dashboard-relationships-'));
   const pkg = (repo: string, category: string): DashboardPackage => ({
     repo, category, label: repo, note: null, errors: [],
@@ -20,8 +20,8 @@ test('renders category graph buttons and labelled dialogs while keeping the dash
     kind: 'dev', family: true, local: false, stale: false }));
   const report: DashboardReport = {
     generatedAt: '2026-10-30', owner: 'test', scope: '@test', site: {},
-    categories: [{ id: 'focus', title: 'Focus', titleJa: '対象' }, { id: 'other', title: 'Other' }, { id: 'isolated', title: 'Isolated' }],
-    packages: [one, pkg('two', 'focus'), pkg('outside', 'other'), pkg('alone', 'isolated')],
+    categories: [{ id: 'focus', title: 'Focus', titleJa: '対象' }, { id: 'other', title: 'Other' }, { id: 'network', title: 'Isolated' }],
+    packages: [one, pkg('two', 'focus'), pkg('outside', 'other'), pkg('alone', 'network')],
   };
   try {
     for (const directory of ['scripts/lib', 'data', 'site']) await mkdir(join(root, directory), { recursive: true });
@@ -37,6 +37,19 @@ test('renders category graph buttons and labelled dialogs while keeping the dash
     const html = await readFile(join(root, 'site/index.html'), 'utf8');
     assert.doesNotMatch(html, /class="content-nav"|role="tab"|id="package-relationships"|id="graph-category"/);
     const list = html.indexOf('<section id="package-list"');
+    const top = html.indexOf('<figure class="panel category-overview"');
+    assert.ok(top > html.indexOf('<main class="catalog-layout">') && top < html.indexOf('<nav class="category-toc"'));
+    const overview = html.slice(top, html.indexOf('</figure>', top));
+    assert.equal([...html.matchAll(/id="category-network"/g)].length, 1);
+    assert.match(overview, /id="category-dependency-overview"/);
+    assert.match(overview, /Category dependencies<\/span><span lang="ja">カテゴリ間の依存関係<\/span>/);
+    assert.deepEqual([...overview.matchAll(/data-overview-node="([^"]+)"/g)].map(([, id]) => id), ['focus', 'other', 'network']);
+    assert.match(overview, /overview-edge development" data-overview-development-only\s+data-overview-source="focus" data-overview-target="other"/);
+    assert.doesNotMatch(overview, /data-overview-target="focus"|unlisted/);
+    assert.match(overview, /data-overview-show-dev checked/);
+    assert.match(overview, /<td>0<\/td><td class="overview-development-count">1<\/td>/);
+    assert.match(overview, /data-graph-open="relationships-focus" aria-haspopup="dialog"/);
+    assert.ok(top < list);
     const end = html.indexOf('</main>', list);
     const listHtml = html.slice(list, end);
     assert.match(listHtml, /class="stats"/);
@@ -144,6 +157,11 @@ test('renders category graph buttons and labelled dialogs while keeping the dash
       { id: 'data', title: 'Data & Documents', titleJa: 'データ・ドキュメント' },
       { id: 'toolchain', title: '<Toolchain>', titleJa: 'ツールチェーン' }];
     const editorHtml = await rerender();
+    const editorOverview = editorHtml.slice(editorHtml.indexOf('<figure'), editorHtml.indexOf('</figure>'));
+    assert.match(editorOverview, /data-overview-source="data" data-overview-target="foundation"/);
+    assert.match(editorOverview, /data-overview-source="foundation" data-overview-target="data"/);
+    assert.match(editorOverview, /<td>3<\/td><td class="overview-development-count">1<\/td>/);
+    assert.match(editorOverview, /&lt;Toolchain&gt;/);
     const editorDialog = editorHtml.slice(editorHtml.indexOf('id="relationships-foundation"'), editorHtml.indexOf('</dialog>'));
     const variants = [...editorDialog.matchAll(/<svg class="relationship-svg"[\s\S]*?<\/svg>/g)].map(([svg]) => svg);
     assert.equal(variants.length, 2);
