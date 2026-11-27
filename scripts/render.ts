@@ -159,6 +159,12 @@ a:hover { text-decoration: underline; }
 .package-group > header p { margin: 0; color: var(--muted); font-size: 13px; }
 .nowrap { white-space: nowrap; }
 #package-list section[data-category] { scroll-margin-top: calc(var(--toolbar-height, 160px) + 16px); }
+#package-list tr[id] { scroll-margin-top: calc(var(--toolbar-height, 160px) + 16px); }
+#package-list tr:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+.graph-jump { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 5px; color: var(--accent); background: var(--panel); vertical-align: middle; }
+.graph-jump:hover, .graph-jump:focus-visible { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 1px; }
+.graph-jump svg { width: 16px; height: 16px; }
+.graph-name { display: inline-flex; align-items: center; gap: 6px; }
 
 header.hero { padding: 40px 0 24px; display: flex; gap: 20px; align-items: flex-start; }
 .hero .mark { width: 66px; height: 66px; flex: none; }
@@ -325,7 +331,8 @@ picture { display: block; }
   background: var(--panel); color: var(--text); font: inherit; font-size: 12px;
   font-weight: 600; line-height: 1.2; overflow-wrap: anywhere;
 }
-.overview-node { height: 44px; cursor: pointer; }
+.overview-node { min-height: 44px; }
+.overview-select { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .overview-node:hover, .overview-node:focus-visible { border-color: var(--accent); color: var(--accent); }
 .overview-center { min-height: 82px; border-color: var(--accent); }
 .overview-center strong { display: block; margin-bottom: 5px; font-size: 14px; }
@@ -403,8 +410,10 @@ picture { display: block; }
 .package-graph-label .icon { width: 20px; height: 20px; object-fit: contain; }
 .node-label { font: 12px/1.3 system-ui, sans-serif; overflow-wrap: anywhere; padding: 9px 12px; color: var(--text); }
 .node-label strong { display: block; font-size: 12px; }
+.node-label strong.graph-name { display: flex; }
+.node-label .graph-name > a:first-child { min-width: 0; }
 .node-label small { display: block; margin-top: 5px; font-size: 10px; }
-.graph-node a:hover rect, .graph-node a:focus-visible rect { stroke-width: 3; }
+.graph-node:has(a:hover) rect, .graph-node:has(a:focus-visible) rect { stroke-width: 3; }
 .graph-edge { fill: none; stroke: var(--runtime-edge); stroke-width: 1.5; }
 .graph-edge.aggregate { stroke-width: 2; }
 .graph-edge.development { stroke: var(--muted); stroke-width: .75; stroke-dasharray: 6 4; }
@@ -630,6 +639,36 @@ if (overview) {
 }
 
 const dialogState = new WeakMap();
+function listDestination(link) {
+  if (link.dataset.listPackage) return document.getElementById('package-' + link.dataset.listPackage);
+  const sections = categorySections.filter((section) => section.dataset.sourceCategory === link.dataset.listCategory);
+  return sections.find((section) => !section.hidden) || sections[0];
+}
+function revealListDestination(target) {
+  if (target.hidden || target.closest('[hidden]')) {
+    search.value = '';
+    for (const filter of filters) filter.checked = false;
+    apply();
+  }
+  history.replaceState(null, '', '#' + target.id);
+  target.focus({ preventScroll: true });
+  target.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+}
+for (const link of document.querySelectorAll('[data-list-category], [data-list-package]')) {
+  const destination = listDestination(link);
+  if (destination) link.href = '#' + destination.id;
+  link.addEventListener('click', (event) => {
+    const target = listDestination(link);
+    if (!target) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const dialog = link.closest('dialog[open]');
+    if (dialog) {
+      dialogState.set(dialog, { ...dialogState.get(dialog), destination: target });
+      dialog.close();
+    } else revealListDestination(target);
+  });
+}
 window.addEventListener('resize', () => {
   const panel = document.querySelector('.relationship-dialog[open] .graph-variant:not([hidden]) .graph-panel');
   if (panel) panel.scrollLeft = (panel.scrollWidth - panel.clientWidth) / 2;
@@ -732,6 +771,10 @@ for (const dialog of document.querySelectorAll('.relationship-dialog')) {
   dialog.addEventListener('close', () => {
     document.documentElement.classList.remove('modal-open');
     const state = dialogState.get(dialog);
+    if (state?.destination) {
+      revealListDestination(state.destination);
+      return;
+    }
     state?.opener.focus({ preventScroll: true });
     if (state) window.scrollTo(state.x, state.y);
   });
@@ -991,6 +1034,11 @@ function categoryIcon(id: string) {
   return `<svg class="category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
 }
 
+function listJump(kind: 'category' | 'package', id: string, label: string) {
+  const title = `Go to ${label} in this page / ページ内の${label}へ移動`;
+  return `<a class="graph-jump" href="#package-list" data-list-${kind}="${esc(id)}" title="${esc(title)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 3h7v7m0-7L10 14M10 3H3v18h18v-7"/></svg><span class="sr-only">${t(`Go to ${esc(label)} in this page`, `ページ内の${esc(label)}へ移動`)}</span></a>`;
+}
+
 function packageIcon(pkg: DashboardPackage, asImage = false) {
   // Favicons stay in an image context; only vetted palette drawings can be inlined.
   const favicon = pkg.application || pkg.category === 'apps' ? pkg.pages?.svgFaviconUrl ?? pkg.pages?.faviconUrl : null;
@@ -1018,7 +1066,7 @@ function row(pkg: DashboardPackage, thumb: Thumbnail | undefined, editorUrl: str
   // in both languages rather than leaving an empty cell.
   const summary = ja && ja !== en ? t(esc(en), esc(ja)) : esc(en);
 
-  return `<tr data-search="${esc(haystack)}" data-repo="${esc(pkg.repo)}" data-npm-version="${esc(pkg.npm?.latest ?? '')}" data-flags="${esc(flagsFor(pkg).join(' '))}">
+  return `<tr data-search="${esc(haystack)}" data-repo="${esc(pkg.repo)}" data-npm-version="${esc(pkg.npm?.latest ?? '')}" data-flags="${esc(flagsFor(pkg).join(' '))}" id="package-${esc(pkg.repo)}" tabindex="-1">
   <td class="name">
     <div class="pkg">${icon}<a href="${esc(gh.url ?? '#')}">${esc(pkg.label)}</a>${archived}</div>
     <div class="desc">${summary}</div>
@@ -1180,8 +1228,8 @@ function categoryOverview(categories: DashboardReport['categories'], connections
     return `<label lang="${lang}">${lang === 'ja' ? '表示するカテゴリ' : 'Category'} <select lang="${lang}" data-overview-picker>${options}</select></label>`;
   };
   const card = (id: string, count: number, developmentOnly: boolean) =>
-    `<li><button type="button" class="overview-node${developmentOnly ? ' development' : ''}" data-overview-select="${esc(id)}">
-      ${categoryIcon(id)}<span>${label(id)}</span><span class="overview-count">${count}</span></button></li>`;
+    `<li><div class="overview-node${developmentOnly ? ' development' : ''}"><button type="button" class="overview-select" data-overview-select="${esc(id)}">
+      ${categoryIcon(id)}<span>${label(id)}</span></button>${listJump('category', id, categories.find(c => c.id === id)?.title ?? id)}<span class="overview-count">${count}</span></div></li>`;
   const lane = (edgesOnSide: typeof edges, side: 'incoming' | 'outgoing', height: number, includeDev: boolean) => {
     if (!edgesOnSide.length) return `<p class="overview-empty overview-${side}">${t('None', '該当なし')}</p>`;
     const incoming = side === 'incoming';
@@ -1210,14 +1258,14 @@ function categoryOverview(categories: DashboardReport['categories'], connections
       <h3 class="overview-column-label overview-incoming">${t('Uses this category', 'このカテゴリを使う')}</h3>
       ${lane(left, 'incoming', height, includeDev)}
       <h3 class="overview-column-label overview-selected">${t('Selected category', '選択中のカテゴリ')}</h3>
-      <div class="overview-center overview-selected">${categoryIcon(id)}<div><strong>${label(id)}</strong>
+      <div class="overview-center overview-selected">${categoryIcon(id)}<div><strong><span class="graph-name">${label(id)}${listJump('category', id, categories.find(c => c.id === id)?.title ?? id)}</span></strong>
         <button type="button" data-graph-open="relationships-${esc(id)}" aria-haspopup="dialog" aria-controls="relationships-${esc(id)}">${t('Package graph', 'パッケージ相関図')}</button>
       </div></div>
       <h3 class="overview-column-label overview-outgoing">${t('This category uses', 'このカテゴリが使う')}</h3>
       ${lane(right, 'outgoing', height, includeDev)}
     </div>`;
   })).join('');
-  const headers = categories.map(({ id }) => `<th scope="col">${categoryIcon(id)}${label(id)}</th>`).join('');
+  const headers = categories.map(({ id, title }) => `<th scope="col">${categoryIcon(id)}${label(id)}${listJump('category', id, title)}</th>`).join('');
   const matrix = neighbors.map(({ id, outgoing }) => {
     const counts = new Map(outgoing.map((edge) => [edge.target, edge]));
     const cells = categories.map(({ id: target }) => {
@@ -1230,7 +1278,7 @@ function categoryOverview(categories: DashboardReport['categories'], connections
         : String(primary);
       return `<td data-matrix-primary="${primary}" data-matrix-development="${development}"${primary ? '' : ' data-matrix-dev-only'}>${value}</td>`;
     }).join('');
-    return `<tr><th scope="row">${categoryIcon(id)}${label(id)}</th>${cells}</tr>`;
+    return `<tr><th scope="row">${categoryIcon(id)}${label(id)}${listJump('category', id, categories.find(c => c.id === id)?.title ?? id)}</th>${cells}</tr>`;
   }).join('');
   return `<figure class="panel category-overview" id="category-dependency-overview" aria-labelledby="category-network-heading">
   <figcaption>
@@ -1356,10 +1404,8 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
     `<li>${link(edge.source)} → ${link(edge.target)} <span class="muted">(${kindText(edge)})</span>${edge.build ? `<br/><span class="muted">${t('Fixed GUI', '固定GUI')}: <a href="https://github.com/${esc(report.owner)}/${esc(edge.target)}/tree/${esc(edge.build.revision)}"><code>${esc(edge.build.revision)}</code></a><br/>${t('Collected HEAD', '収集時のHEAD')}: <code>${esc(byRepo.get(edge.target)?.revision?.head?.oid ?? '')}</code><br/>${t('Source', '根拠')}: <a href="https://github.com/${esc(report.owner)}/${esc(edge.source)}/blob/${esc(edge.build.sourceRevision)}/${edge.build.sourcePath}">site/source.json</a></span>` : ''}</li>`).join('')}</ul>`;
   const node = (pkg: DashboardPackage, x: number, y: number, caption = '') =>
     `<g class="graph-node primary" data-repo="${esc(pkg.repo)}">
-      <a href="${esc(pkg.github?.url ?? `https://github.com/${report.owner}/${pkg.repo}`)}">
-        <rect x="${x}" y="${y}" width="250" height="60" rx="9"/>
-        <foreignObject x="${x}" y="${y}" width="250" height="60"><div xmlns="http://www.w3.org/1999/xhtml" class="node-label package-graph-label">${packageIcon(pkg, true) || categoryIcon('package')}<div><strong>${esc(pkg.label)}</strong>${caption}</div></div></foreignObject>
-      </a>
+      <rect x="${x}" y="${y}" width="250" height="60" rx="9"/>
+      <foreignObject x="${x}" y="${y}" width="250" height="60"><div xmlns="http://www.w3.org/1999/xhtml" class="node-label package-graph-label">${packageIcon(pkg, true) || categoryIcon('package')}<div><strong class="graph-name"><a href="${esc(pkg.github?.url ?? `https://github.com/${report.owner}/${pkg.repo}`)}">${esc(pkg.label)}</a>${listJump('package', pkg.repo, pkg.label)}</strong>${caption}</div></div></foreignObject>
     </g>`;
   // Solid blue arrows are dependencies needed outside development;
   // development-only ones are thin and dashed, inside the category and toward
@@ -1398,7 +1444,7 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
       const categoryTitle = t(esc(c?.title ?? group.category), esc(c?.titleJa ?? c?.title ?? group.category));
       outsideNodes.push(`<g class="graph-node external" data-category="${esc(group.category)}" data-direction="${direction}">
         <rect x="${x}" y="${y}" width="250" height="60" rx="9"/>
-        <foreignObject x="${x}" y="${y}" width="250" height="60"><div xmlns="http://www.w3.org/1999/xhtml" class="node-label">${categoryIcon(group.category)}<strong>${categoryTitle}</strong></div></foreignObject>
+        <foreignObject x="${x}" y="${y}" width="250" height="60"><div xmlns="http://www.w3.org/1999/xhtml" class="node-label">${categoryIcon(group.category)}<strong>${categoryTitle}</strong>${listJump('category', group.category, c?.title ?? group.category)}</div></foreignObject>
       </g>`);
       // Aggregate outside packages only; preserve the actual central endpoint.
       const endpoints = new Map<string, typeof group.incoming>();
@@ -1640,7 +1686,7 @@ async function main() {
         ? `<p class="lead">${t(esc(category.description), esc(category.descriptionJa ?? category.description))}</p>`
         : '';
 
-      return [category.id, `<section data-category="${esc(category.id)}" id="category-${esc(category.id)}" aria-labelledby="category-heading-${esc(category.id)}" tabindex="-1">
+      return [category.id, `<section data-category="${esc(category.id)}" data-source-category="${esc(source.id)}" id="category-${esc(category.id)}" aria-labelledby="category-heading-${esc(category.id)}" tabindex="-1">
   <div class="category-heading"><h4 id="category-heading-${esc(category.id)}">${categoryIcon(source.id)}${heading}</h4>
     <button type="button" class="category-graph" data-graph-open="relationships-${esc(source.id)}" aria-haspopup="dialog" aria-controls="relationships-${esc(source.id)}" title="${esc(source.title)} / ${esc(source.titleJa ?? source.title)}: All packages in this dependency category / 依存カテゴリ全体のパッケージ相関図">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 7L16 7M7 9L11 17M17 9L13 17"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="19" r="3"/></svg>

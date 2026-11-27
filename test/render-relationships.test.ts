@@ -108,7 +108,8 @@ test('renders the category overview above the package list and preserves detaile
     for (const [node] of externalNodes) {
       assert.match(node, /data-category="other"/);
       assert.match(node, /<strong><span lang="en">Other<\/span>/);
-      assert.doesNotMatch(node, /data-repo=|<a\b|outside|representative/);
+      assert.doesNotMatch(node, /data-repo=|href="https?:|outside|representative/);
+      assert.match(node, /data-list-category="other"/);
     }
     assert.match(html, /aria-live="polite"/);
     assert.match(html, /data-freshness="warning"/);
@@ -181,7 +182,10 @@ test('renders the category overview above the package list and preserves detaile
     for (const [node, position] of nodeBoxes(primary)) assert.deepEqual(allBoxes.get(node), position);
     for (const svg of variants) {
       const outside = [...svg.matchAll(/<g class="graph-node external"[^>]*>[\s\S]*?<\/g>/g)];
-      for (const [node] of outside) assert.doesNotMatch(node, /data-repo=|<a\b|data-a|data-b|dev-only/);
+      for (const [node] of outside) {
+        assert.doesNotMatch(node, /data-repo=|href="https?:|data-a|data-b|dev-only/);
+        assert.match(node, /data-list-category=/);
+      }
       assert.match(svg, /Data &amp; Documents/);
       assert.match(svg, /データ・ドキュメント/);
       assert.match(svg, /データ編集の契約・API/);
