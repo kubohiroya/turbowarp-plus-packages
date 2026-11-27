@@ -300,17 +300,24 @@ picture { display: block; }
   background: var(--bg);
 }
 .overview-plot { position: relative; margin-inline: auto; }
-.overview-plot svg { display: block; width: 100%; height: auto; pointer-events: none; }
+.overview-plot > svg { display: block; width: 100%; height: auto; pointer-events: none; }
 .overview-node {
   position: absolute; transform: translate(-50%, -50%);
-  display: grid; place-content: center; padding: 3px 6px;
+  display: flex; align-items: center; gap: 7px; padding: 5px 7px; text-align: left;
   border: 1px solid var(--border); border-radius: 6px;
   background: var(--panel); color: var(--text);
   font: inherit; font-size: 12px; font-weight: 600; line-height: 1.2;
   overflow-wrap: anywhere; cursor: pointer;
 }
 .overview-scroll-hint { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
-.overview-node:hover, .overview-node:focus-visible { border-color: var(--accent); color: var(--accent); }
+.category-icon { flex: 0 0 auto; width: 18px; height: 18px; color: var(--accent); }
+.overview-node .category-icon {
+  width: 23px; height: 23px; padding: 3px; border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+}
+.overview-node > span { min-width: 0; }
+.overview-node:hover, .overview-node:focus-visible, .overview-node.current { border-color: var(--accent); color: var(--accent); }
+.category-overview[data-overview-focus] .overview-node:not(.connected) { opacity: .54; }
 .overview-edge { fill: none; stroke: var(--runtime-edge); stroke-width: 1.3; opacity: .62; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .overview-edge.development { stroke: var(--muted); opacity: .5; stroke-dasharray: 5 4; stroke-width: 1; }
 .category-overview[data-overview-focus] .overview-edge { opacity: .07; }
@@ -332,7 +339,9 @@ picture { display: block; }
 .graph-node rect { fill: var(--panel); stroke: var(--accent); stroke-width: 1.5; }
 .graph-node.external { opacity: .7; }
 .graph-node.external rect { stroke-dasharray: 5 4; }
-.graph-node.external .node-label { height: 60px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; text-align: center; }
+.graph-node.external .node-label { height: 60px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 9px; text-align: center; }
+.node-label.package-graph-label { height: 60px; display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: center; gap: 9px; }
+.package-graph-label .icon { width: 20px; height: 20px; object-fit: contain; }
 .node-label { font: 12px/1.3 system-ui, sans-serif; overflow-wrap: anywhere; padding: 9px 12px; color: var(--text); }
 .node-label strong { display: block; font-size: 12px; }
 .node-label small { display: block; margin-top: 5px; font-size: 10px; }
@@ -526,6 +535,8 @@ function apply() {
 const overview = document.querySelector('.category-overview');
 if (overview) {
   const connections = [...overview.querySelectorAll('.overview-edge')];
+  const nodes = [...overview.querySelectorAll('[data-overview-node]')];
+  const development = overview.querySelector('[data-overview-show-dev]');
   const scroll = overview.querySelector('.overview-scroll');
   const scrollHint = overview.querySelector('.overview-scroll-hint');
   function updateScrollHint() {
@@ -540,15 +551,25 @@ if (overview) {
   function highlightOverview() {
     const selected = hovered || focused;
     overview.toggleAttribute('data-overview-focus', Boolean(selected));
+    const related = new Set([selected]);
     for (const connection of connections) {
-      connection.classList.toggle('connected', selected === connection.dataset.overviewSource
-        || selected === connection.dataset.overviewTarget);
+      const { overviewSource: source, overviewTarget: target } = connection.dataset;
+      const visible = development.checked || !connection.hasAttribute('data-overview-development-only');
+      const connected = visible && (selected === source || selected === target);
+      connection.classList.toggle('connected', connected);
+      if (connected) { related.add(source); related.add(target); }
+    }
+    for (const node of nodes) {
+      const id = node.dataset.overviewNode;
+      node.classList.toggle('current', selected === id);
+      node.classList.toggle('connected', related.has(id));
     }
   }
-  overview.querySelector('[data-overview-show-dev]').addEventListener('change', (event) => {
-    overview.toggleAttribute('data-hide-overview-development', !event.target.checked);
+  development.addEventListener('change', () => {
+    overview.toggleAttribute('data-hide-overview-development', !development.checked);
+    highlightOverview();
   });
-  for (const node of overview.querySelectorAll('[data-overview-node]')) {
+  for (const node of nodes) {
     node.addEventListener('pointerenter', () => { hovered = node.dataset.overviewNode; highlightOverview(); });
     node.addEventListener('pointerleave', () => { hovered = ''; highlightOverview(); });
     node.addEventListener('focus', () => { focused = node.dataset.overviewNode; highlightOverview(); });
@@ -887,6 +908,42 @@ function sandboxBadge(pkg: DashboardPackage) {
   return `<div class="sandbox-status"><span class="tag ${style}"${title}><span aria-hidden="true">${icon}</span>${t(en, ja)}</span></div>`;
 }
 
+const categoryIconPaths: Record<string, string> = {
+  toolchain: 'M4 6h16M4 12h16M4 18h16M8 4v4m8 2v4m-6 2v4',
+  'toolchain-components': 'm12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 16l9 5 9-5',
+  foundation: 'M3 4h18v13H3zM8 21h8m-4-4v4M3 8h18',
+  'editor-extensions': 'M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm11 3h5m-2.5-2.5v5',
+  'editor-testing': 'M9 4h6m-5 0v6L5 18a1.2 1.2 0 0 0 1 2h12a1.2 1.2 0 0 0 1-2l-5-8V4M8 15h8',
+  forks: 'M7 6a2 2 0 1 0 0 .01M7 18a2 2 0 1 0 0 .01M19 6a2 2 0 1 0 0 .01M7 8v8m12-8a5 5 0 0 1-5 5H7',
+  shell: 'M3 5h18v14H3zM7 10l2 2-2 2m5 1h5',
+  contracts: 'M8 5H5v14h3m8-14h3v14h-3m-5-4 2-6',
+  data: 'M6 3h8l4 4v14H6zM14 3v5h4M9 12h6m-6 4h6',
+  media: 'M3 5h18v14H3zM10 9l5 3-5 3z',
+  spatial: 'm12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Zm-8 4.5 8 4.5 8-4.5M12 12v9',
+  camera: 'M4 7h4l2-3h4l2 3h4v12H4zM15 13a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
+  sensing: 'M4 16a8 8 0 0 1 16 0M7 16a5 5 0 0 1 10 0m-7 0a2 2 0 0 1 4 0m-2 4h.01',
+  network: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18Z',
+  wraps: 'M5 6h14v12H5zM9 10H3v11h11v-3M13 14h8V3H10v3',
+  kamishibai: 'M3 4h7a2 2 0 0 1 2 2v14a3 3 0 0 0-3-2H3zm18 0h-7a2 2 0 0 0-2 2v14a3 3 0 0 1 3-2h6z',
+  'in-development': 'M4 19h16l-5-9h-6zm3-6h10M10 10l1-3h2l1 3M4 22h16',
+  package: 'm12 3 8 4v10l-8 4-8-4V7zm-8 4 8 4 8-4m-8 4v10m-4-16 8 4',
+};
+
+function categoryIcon(id: string) {
+  const d = Object.hasOwn(categoryIconPaths, id) ? categoryIconPaths[id] : categoryIconPaths.package;
+  return `<svg class="category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+}
+
+function packageIcon(pkg: DashboardPackage, asImage = false) {
+  // Favicons stay in an image context; only vetted palette drawings can be inlined.
+  const favicon = pkg.application || pkg.category === 'apps' ? pkg.pages?.svgFaviconUrl ?? pkg.pages?.faviconUrl : null;
+  // The same icon appears in both graph variants. An image keeps its SVG IDs private.
+  const source = favicon || (asImage && pkg.icon ? `data:image/svg+xml,${encodeURIComponent(pkg.icon)}` : null);
+  return source
+    ? `<img class="icon" src="${esc(source)}" alt="" width="20" height="20">`
+    : pkg.icon ? `<span class="icon" aria-hidden="true">${pkg.icon}</span>` : '';
+}
+
 function row(pkg: DashboardPackage, thumb: Thumbnail | undefined, editorUrl: string) {
   const gh: Partial<GitHubSummary> = pkg.github ?? {};
   const { en = '', ja = '' } = pkg.descriptions ?? {};
@@ -898,11 +955,7 @@ function row(pkg: DashboardPackage, thumb: Thumbnail | undefined, editorUrl: str
     .toLowerCase();
 
   const archived = gh.isArchived ? ` <span class="tag">${t('archived', 'アーカイブ')}</span>` : '';
-  // Favicons stay in an image context; only vetted palette drawings are inlined.
-  const favicon = pkg.application || pkg.category === 'apps' ? pkg.pages?.svgFaviconUrl ?? pkg.pages?.faviconUrl : null;
-  const icon = favicon
-    ? `<img class="icon" src="${esc(favicon)}" alt="" width="20" height="20">`
-    : pkg.icon ? `<span class="icon" aria-hidden="true">${pkg.icon}</span>` : '';
+  const icon = packageIcon(pkg);
   const note = pkg.note ? `<span class="sub">${esc(pkg.note)}</span>` : '';
   // With no Japanese summary the English one stands in, untagged, so it shows
   // in both languages rather than leaving an empty cell.
@@ -959,6 +1012,60 @@ const FILTERS = [
 ];
 
 
+function improveNodePositions<T>(positions: Map<string, T>, cost: () => number, canSwap = (_a: string, _b: string) => true) {
+  const ids = [...positions.keys()];
+  let best = cost();
+  for (let pass = 0; pass < 2 && best > 0; pass++) {
+    for (const [i, first] of ids.entries()) {
+      for (const second of ids.slice(i + 1)) {
+        if (!canSwap(first, second)) continue;
+        const a = positions.get(first)!;
+        const b = positions.get(second)!;
+        positions.set(first, b);
+        positions.set(second, a);
+        const next = cost();
+        if (next < best) {
+          best = next;
+        } else {
+          positions.set(first, a);
+          positions.set(second, b);
+        }
+      }
+    }
+  }
+}
+
+type OverviewPoint = readonly [x: number, y: number];
+
+function overviewRoutingCost(routes: OverviewPoint[][]) {
+  // Count crossings and shared stretches of wire, with a small preference for short routes.
+  const segments = routes.flatMap((route, edge) => route.slice(1).flatMap(([x, y], i) => {
+    const [prevX, prevY] = route[i]!;
+    if (x === prevX && y === prevY) return [];
+    return [{ edge, left: Math.min(x, prevX), right: Math.max(x, prevX),
+      top: Math.min(y, prevY), bottom: Math.max(y, prevY) }];
+  }));
+  let score = 0;
+  for (const [i, a] of segments.entries()) {
+    score += (a.right - a.left + a.bottom - a.top) / 200;
+    for (let j = 0; j < i; j++) {
+      const b = segments[j]!;
+      if (a.edge === b.edge) continue;
+      const aHorizontal = a.top === a.bottom;
+      const bHorizontal = b.top === b.bottom;
+      if (aHorizontal && bHorizontal && a.top === b.top) {
+        score += Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) / 12;
+      } else if (!aHorizontal && !bHorizontal && a.left === b.left) {
+        score += Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)) / 12;
+      } else if (aHorizontal !== bHorizontal) {
+        const [h, v] = aHorizontal ? [a, b] : [b, a];
+        if (h.left < v.left && v.left < h.right && v.top < h.top && h.top < v.bottom) score += 10;
+      }
+    }
+  }
+  return score;
+}
+
 function categoryOverview(categories: DashboardReport['categories'], connections: ReturnType<typeof categoryNetwork>): string {
   if (!categories.length) return '';
   const categoryIds = new Set(categories.map(({ id }) => id));
@@ -976,8 +1083,8 @@ function categoryOverview(categories: DashboardReport['categories'], connections
   const rows = Math.ceil(categories.length / columns);
   const cellWidth = 234;
   const cellHeight = 99;
-  const nodeWidth = 156;
-  const nodeHeight = 46;
+  const nodeWidth = 174;
+  const nodeHeight = 54;
   const width = columns * cellWidth;
   const height = rows * cellHeight;
   const nodes = new Map(sorted.map(({ id }, i) => {
@@ -986,7 +1093,7 @@ function categoryOverview(categories: DashboardReport['categories'], connections
     return [id, { column, row, x: (column + .5) * cellWidth, y: (row + .5) * cellHeight }] as const;
   }));
   const developmentOnly = (primary: number) => primary ? '' : ' data-overview-development-only';
-  const paths = edges.map(({ source, target, primary }, index) => {
+  const route = ({ source, target }: (typeof edges)[number], index: number): OverviewPoint[] => {
     const a = nodes.get(source)!;
     const b = nodes.get(target)!;
     const delta = b.column - a.column;
@@ -998,26 +1105,40 @@ function categoryOverview(categories: DashboardReport['categories'], connections
     const y1 = a.y + lane * 3;
     const y2 = b.y + lane * 3;
     const gap = cellWidth - nodeWidth;
-    // The vertical segments stay in column gaps. Long horizontal segments use a row gap.
-    const out = x1 + direction * (gap / 2 + lane * 5);
-    const inside = x2 + targetDirection * (gap / 2 - lane * 5);
-    const rail = Math.floor((a.row + b.row) / 2) + 1;
-    const track = Math.min(height - 13, rail * cellHeight) + lane * 3;
-    let route = `H ${out} V ${track} H ${inside} V ${y2} H ${x2}`;
-    if (Math.abs(delta) <= 1) route = y1 === y2
-      ? `H ${x2}`
-      : `H ${out} V ${y2} H ${x2}`;
+    const out = x1 + direction * (gap / 2 + lane * 4);
+    if (Math.abs(delta) <= 1) return y1 === y2 ? [[x1, y1], [x2, y2]]
+      : [[x1, y1], [out, y1], [out, y2], [x2, y2]];
+    // Orthogonal routes use gaps between columns and rows, clear of every unrelated box.
+    const inside = x2 + targetDirection * (gap / 2 - lane * 4);
+    const rail = a.row === b.row ? a.row + Number(lane >= 0) : Math.floor((a.row + b.row + 1) / 2);
+    const track = rail === 0 ? 12 + lane * 2 : rail === rows ? height - 12 + lane * 2 : rail * cellHeight + lane * 3;
+    return [[x1, y1], [out, y1], [out, track], [inside, track], [inside, y2], [x2, y2]];
+  };
+  const scored = edges.map((edge, index) => ({ edge, index })).filter(({ edge }) => edge.primary);
+  const cost = () => overviewRoutingCost(scored.map(({ edge, index }) => route(edge, index)));
+  // Try swapping nearby boxes without moving a dependency far from its usual layer.
+  improveNodePositions(nodes, cost, (first, second) => {
+    const a = nodes.get(first)!;
+    const b = nodes.get(second)!;
+    return Math.abs(a.column - b.column) <= 1 &&
+      (a.column === b.column || Math.abs(depth.get(first)! - depth.get(second)!) <= 1);
+  });
+  const paths = edges.map((edge, index) => {
+    const { source, target, primary } = edge;
+    const points = route(edge, index);
+    const d = points.map(([x, y], i) => i === 0 ? `M ${x} ${y}`
+      : points[i - 1]![1] === y ? `H ${x}` : `V ${y}`).join(' ');
     const marker = primary ? 'overview-arrow' : 'overview-dev-arrow';
     return `<path class="overview-edge${primary ? '' : ' development'}"${developmentOnly(primary)}
       data-overview-source="${esc(source)}" data-overview-target="${esc(target)}"
-      d="M ${x1} ${y1} ${route}" marker-end="url(#${marker})"/>`;
+      d="${d}" marker-end="url(#${marker})"/>`;
   }).join('\n');
   const percent = (size: number, extent: number) => (size * 100 / extent).toFixed(3) + '%';
-  const buttons = sorted.map(({ id }) => {
-    const { x, y } = nodes.get(id)!;
+  const orderedNodes = [...nodes].sort(([, a], [, b]) => a.column - b.column || a.row - b.row);
+  const buttons = orderedNodes.map(([id, { x, y }]) => {
     const style = `left:${percent(x, width)};top:${percent(y, height)};width:${percent(nodeWidth, width)};height:${percent(nodeHeight, height)}`;
     return `<button type="button" class="overview-node" data-overview-node="${esc(id)}" style="${style}"
-      data-graph-open="relationships-${esc(id)}" aria-haspopup="dialog" aria-controls="relationships-${esc(id)}">${labels.get(id)}</button>`;
+      data-graph-open="relationships-${esc(id)}" aria-haspopup="dialog" aria-controls="relationships-${esc(id)}">${categoryIcon(id)}<span>${labels.get(id)}</span></button>`;
   }).join('\n');
   const details = edges.map(({ source, target, primary, development }) => `<tr${developmentOnly(primary)}>
     <td>${labels.get(source)} → ${labels.get(target)}</td><td>${primary}</td><td class="overview-development-count">${development}</td>
@@ -1063,9 +1184,40 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
   const title = t(esc(category.title), esc(category.titleJa ?? category.title));
   // Dependents sit on the left and dependencies on the right, so every arrow
   // points left to right; a category related both ways appears on both sides.
-  const left = graph.external.filter((group) => group.incoming.length);
-  const right = graph.external.filter((group) => group.outgoing.length);
-  const height = Math.max(graph.primary.length * 76 + 90, left.length * 108 + 90, right.length * 108 + 90, 240);
+  const layoutGraph = includeDev ? graph : categoryRelationships(report.packages, categoryId);
+  const positions = new Map(graph.primary.map((pkg, i) => [pkg.repo, 64 + i * 76]));
+  const sides = (['incoming', 'outgoing'] as const).map((direction) => {
+    const incoming = direction === 'incoming';
+    const groups = layoutGraph.external.filter((group) => group[direction].length);
+    return {
+      direction,
+      rows: new Map(groups.map((group, i) => [group.category, 64 + i * 108])),
+      links: groups.flatMap((group) => [...new Set(group[direction].map((edge) => incoming ? edge.target : edge.source))]
+        .map((repo) => ({ category: group.category, repo }))),
+    };
+  });
+  const height = Math.max(graph.primary.length * 76 + 90, ...sides.map(({ rows }) => rows.size * 108 + 90), 240);
+  // Keep boxes stable across the development toggle and reduce crossings between columns.
+  const cost = () => {
+    let total = layoutGraph.internal.reduce((distance, edge) =>
+      distance + Math.abs(positions.get(edge.source)! - positions.get(edge.target)!), 0);
+    for (const { rows, links } of sides) {
+      for (let i = 0; i < links.length; i++) {
+        const link = links[i]!;
+        const outside = rows.get(link.category)!;
+        const inside = positions.get(link.repo)!;
+        total += Math.abs(outside - inside) / 4;
+        for (let j = i + 1; j < links.length; j++) {
+          const other = links[j]!;
+          if ((outside - rows.get(other.category)!) * (inside - positions.get(other.repo)!) < 0) total += height;
+        }
+      }
+    }
+    return total;
+  };
+  for (const { rows } of sides) improveNodePositions(rows, cost);
+  improveNodePositions(positions, cost);
+  for (const { rows } of sides) improveNodePositions(rows, cost);
   const variantId = `${categoryId}-${includeDev ? 'all' : 'primary'}`;
   const marker = `arrow-${variantId}`;
   const byRepo = new Map(report.packages.map((pkg) => [pkg.repo, pkg]));
@@ -1088,15 +1240,15 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
     `<g class="graph-node primary" data-repo="${esc(pkg.repo)}">
       <a href="${esc(pkg.github?.url ?? `https://github.com/${report.owner}/${pkg.repo}`)}">
         <rect x="${x}" y="${y}" width="250" height="60" rx="9"/>
-        <foreignObject x="${x}" y="${y}" width="250" height="60"><div xmlns="http://www.w3.org/1999/xhtml" class="node-label"><strong>${esc(pkg.label)}</strong>${caption}</div></foreignObject>
+        <foreignObject x="${x}" y="${y}" width="250" height="60"><div xmlns="http://www.w3.org/1999/xhtml" class="node-label package-graph-label">${packageIcon(pkg, true) || categoryIcon('package')}<div><strong>${esc(pkg.label)}</strong>${caption}</div></div></foreignObject>
       </a>
     </g>`;
   // Solid blue arrows are dependencies needed outside development;
   // development-only ones are thin and dashed, inside the category and toward
   // other categories alike.
   const developmentOnly = (edge: (typeof graph.edges)[number]) => edge.kinds.every((kind) => kind === 'dev');
-  const positions = new Map(graph.primary.map((pkg, i) => [pkg.repo, 64 + i * 76]));
-  const primaryNodes = graph.primary.map((pkg) => {
+  const orderedPackages = [...graph.primary].sort((a, b) => positions.get(a.repo)! - positions.get(b.repo)!);
+  const primaryNodes = orderedPackages.map((pkg) => {
     const pin = graph.edges.find((edge) => edge.target === pkg.repo && edge.build)?.build;
     const caption = (pkg.repo === 'turbowarp-extension-data-editor'
       ? `<small>${t('Data editing contract / API', 'データ編集の契約・API')}</small>` : '')
@@ -1114,21 +1266,25 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
   // Each count explains itself on hover with its rows of the exact list below,
   // without links, since the tooltip closes when the pointer leaves the count.
   const tooltips: string[] = [];
-  for (const [groups, x, packageX, incoming] of [[left, 14, 390, true], [right, 756, 640, false]] as const) {
-    groups.forEach((group, i) => {
-      const y = 64 + i * 108;
+  for (const { rows, direction } of sides) {
+    const incoming = direction === 'incoming';
+    const x = incoming ? 14 : 756;
+    const packageX = incoming ? 390 : 640;
+    for (const group of graph.external) {
+      const edges = group[direction];
+      if (!edges.length) continue;
+      const y = rows.get(group.category)!;
       const outsideY = y + 30;
       const outsideX = incoming ? x + 250 : x;
       const c = report.categories.find((entry) => entry.id === group.category);
       const categoryTitle = t(esc(c?.title ?? group.category), esc(c?.titleJa ?? c?.title ?? group.category));
-      const direction = incoming ? 'incoming' : 'outgoing';
       outsideNodes.push(`<g class="graph-node external" data-category="${esc(group.category)}" data-direction="${direction}">
         <rect x="${x}" y="${y}" width="250" height="60" rx="9"/>
-        <foreignObject x="${x}" y="${y}" width="250" height="60"><div xmlns="http://www.w3.org/1999/xhtml" class="node-label"><strong>${categoryTitle}</strong></div></foreignObject>
+        <foreignObject x="${x}" y="${y}" width="250" height="60"><div xmlns="http://www.w3.org/1999/xhtml" class="node-label">${categoryIcon(group.category)}<strong>${categoryTitle}</strong></div></foreignObject>
       </g>`);
       // Aggregate outside packages only; preserve the actual central endpoint.
       const endpoints = new Map<string, typeof group.incoming>();
-      for (const edge of incoming ? group.incoming : group.outgoing) {
+      for (const edge of edges) {
         const repo = incoming ? edge.target : edge.source;
         const groupEdges = endpoints.get(repo) ?? [];
         groupEdges.push(edge);
@@ -1168,7 +1324,7 @@ function relationshipDiagram(report: DashboardReport, categoryId: string, freshn
           </g>`);
         }
       }
-    });
+    }
   }
   const details = graph.external.map((group) => {
     const c = report.categories.find((entry) => entry.id === group.category);

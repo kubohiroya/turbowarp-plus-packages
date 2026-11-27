@@ -64,6 +64,12 @@ test('render prefers app favicons, escapes URLs, and preserves other icons and m
     assert.doesNotMatch(rows[7], /block-icon/);
     assert.match(rows[8], /block-icon/);
     assert.doesNotMatch(rows[8], /unused.svg/);
+    const graphNode = (repo: string) => html.match(new RegExp(
+      `<g class="graph-node primary" data-repo="${repo}">[\\s\\S]*?<\\/g>`))?.[0] ?? '';
+    assert.match(graphNode('app-with-favicon'), /package-graph-label[\s\S]*class="icon" src="https:\/\/example.org\/icon.svg/);
+    assert.match(graphNode('app-with-block'), /class="icon" src="data:image\/svg\+xml,%3Csvg%20id%3D%22block-icon/);
+    assert.match(graphNode('app-without-icon'), /package-graph-label[\s\S]*<svg class="category-icon"/);
+    assert.doesNotMatch(graphNode('app-with-block'), /<svg id="block-icon"/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

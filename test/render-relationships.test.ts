@@ -44,6 +44,7 @@ test('renders the category overview above the package list and preserves detaile
     assert.match(overview, /id="category-dependency-overview"/);
     assert.match(overview, /Category dependencies<\/span><span lang="ja">カテゴリ間の依存関係<\/span>/);
     assert.deepEqual([...overview.matchAll(/data-overview-node="([^"]+)"/g)].map(([, id]) => id), ['focus', 'other', 'network']);
+    assert.equal([...overview.matchAll(/<svg class="category-icon"/g)].length, 3);
     assert.match(overview, /overview-edge development" data-overview-development-only\s+data-overview-source="focus" data-overview-target="other"/);
     assert.doesNotMatch(overview, /data-overview-target="focus"|unlisted/);
     assert.match(overview, /<figure[^>]* data-hide-overview-development>/);
@@ -165,9 +166,15 @@ test('renders the category overview above the package list and preserves detaile
     assert.match(editorOverview, /<td>3<\/td><td class="overview-development-count">1<\/td>/);
     assert.match(editorOverview, /&lt;Toolchain&gt;/);
     const editorDialog = editorHtml.slice(editorHtml.indexOf('id="relationships-foundation"'), editorHtml.indexOf('</dialog>'));
-    const variants = [...editorDialog.matchAll(/<svg class="relationship-svg"[\s\S]*?<\/svg>/g)].map(([svg]) => svg);
+    const variants = [...editorDialog.matchAll(/<svg class="relationship-svg"[\s\S]*?<\/svg>(?=\s*(?:<div class="edge-tooltip"|<\/div>))/g)].map(([svg]) => svg);
     assert.equal(variants.length, 2);
     const [primary, all] = variants as [string, string];
+    // Common node positions stay fixed while development-only connections are toggled.
+    const nodeBoxes = (svg: string) => new Map([...svg.matchAll(/<g class="graph-node (?:primary|external)" ([^>]+)>\s*(?:<a[^>]+>\s*)?<rect x="(\d+)" y="(\d+)"/g)]
+      .map(([, node, x, y]) => [node, [x, y]]));
+    const allBoxes = nodeBoxes(all);
+    assert.equal(nodeBoxes(primary).size, 6);
+    for (const [node, position] of nodeBoxes(primary)) assert.deepEqual(allBoxes.get(node), position);
     for (const svg of variants) {
       const outside = [...svg.matchAll(/<g class="graph-node external"[^>]*>[\s\S]*?<\/g>/g)];
       for (const [node] of outside) assert.doesNotMatch(node, /data-repo=|<a\b|data-a|data-b|dev-only/);
