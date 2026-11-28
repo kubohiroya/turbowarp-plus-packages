@@ -128,6 +128,7 @@ categories:
       - turbowarp-script-transfer
       - turbowarp-plus-editor-workbench
       - turbowarp-plus-editor-guide
+      - turbowarp-plus-editor-pair-programming
       - turbowarp-plus-editor-project-model
       - turbowarp-plus-editor-windows
       - turbowarp-plus-editor-sprite-panes
@@ -540,6 +541,9 @@ overrides:
     demoPath: docs/work/kamishibai-authoring-4.0.sb3
   turbowarp-plus-editor-guide:
     description: Project-driven GUI guides for TurboWarp Plus Editor
+  turbowarp-plus-editor-pair-programming:
+    description: Pair programming roles, shared commit attribution and retrospective timeline for TurboWarp Plus Editor
+    descriptionJa: ペアプログラミングの役割分担、共同コミット、振り返りのタイムラインを提供するエディター拡張。
   turbowarp-title-menu:
     dashboardGroup: extensions
   turbowarp-runtime-expression:
